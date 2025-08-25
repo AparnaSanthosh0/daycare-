@@ -1,0 +1,87 @@
+/* Landing Page Specific Styles */
+
+/* Background Image Animation */
+@keyframes backgroundFloat {
+  0%, 100% {
+    transform: scale(1) translateY(0px);
+  }
+  50% {
+    transform: scale(1.05) translateY(-10px);
+  }
+}
+
+/* Hero Section Background - Handled by styled components */
+.hero-background {
+  animation: backgroundFloat 20s ease-in-out infinite;
+}
+
+/* Mobile Background Optimization */
+@media (max-width: 768px) {
+  .hero-background {
+    animation: none;
+  }
+}
+
+/* Text Shadows for Better Readability */
+.hero-text {
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.6);
+}
+
+.hero-subtitle {
+  text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* Button Enhancements */
+.hero-button {
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s ease;
+}
+
+.hero-button:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+
+/* Overlay Effects */
+.hero-overlay {
+  background: 
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.1) 0%, transparent 50%),
+    radial-gradient(circle at 70% 80%, rgba(255, 255, 255, 0.05) 0%, transparent 50%);
+}
+
+/* Responsive Image Handling */
+@media (max-width: 1200px) {
+  .hero-background {
+    background-position: center center;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero-background {
+    background-position: center top;
+    min-height: 80vh;
+  }
+}
+
+/* Loading Animation for Background */
+.hero-background::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.1) 50%, transparent 70%);
+  animation: shimmer 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}

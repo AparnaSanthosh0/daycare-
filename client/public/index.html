@@ -1,0 +1,716 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.svg" type="image/svg+xml" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1976d2" />
+    <meta
+      name="description"
+      content="TinyTots - Professional Daycare Management System. Streamline your daycare operations with our comprehensive solution for child care centers."
+    />
+    <meta name="keywords" content="daycare, management, childcare, preschool, kindergarten, children, parents, staff" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.svg" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+    
+    <!-- Animation Library -->
+    <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+    
+    <title>TinyTots - Daycare Management System</title>
+    
+    <style>
+      /* Custom CSS for landing page */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      
+      body {
+        font-family: 'Inter', sans-serif;
+        line-height: 1.6;
+        color: #333;
+        overflow-x: hidden;
+      }
+      
+      .landing-page {
+        min-height: 100vh;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      }
+      
+      /* Navigation */
+      .navbar {
+        position: fixed;
+        top: 0;
+        width: 100%;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        z-index: 1000;
+        padding: 1rem 0;
+        transition: all 0.3s ease;
+      }
+      
+      .navbar.scrolled {
+        background: rgba(255, 255, 255, 0.98);
+        box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+      }
+      
+      .nav-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      
+      .logo {
+        font-family: 'Poppins', sans-serif;
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #1976d2;
+        text-decoration: none;
+      }
+      
+      .nav-links {
+        display: flex;
+        list-style: none;
+        gap: 2rem;
+      }
+      
+      .nav-links a {
+        text-decoration: none;
+        color: #333;
+        font-weight: 500;
+        transition: color 0.3s ease;
+      }
+      
+      .nav-links a:hover {
+        color: #1976d2;
+      }
+      
+      .nav-buttons {
+        display: flex;
+        gap: 1rem;
+      }
+      
+      .btn {
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 50px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        display: inline-block;
+        text-align: center;
+      }
+      
+      .btn-outline {
+        background: transparent;
+        color: #1976d2;
+        border: 2px solid #1976d2;
+      }
+      
+      .btn-outline:hover {
+        background: #1976d2;
+        color: white;
+        transform: translateY(-2px);
+      }
+      
+      .btn-primary {
+        background: #1976d2;
+        color: white;
+      }
+      
+      .btn-primary:hover {
+        background: #1565c0;
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(25, 118, 210, 0.4);
+      }
+      
+      /* Hero Section */
+      .hero {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        color: white;
+        position: relative;
+        overflow: hidden;
+      }
+      
+      .hero::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000"><defs><radialGradient id="a" cx="50%" cy="50%"><stop offset="0%" stop-color="%23ffffff" stop-opacity="0.1"/><stop offset="100%" stop-color="%23ffffff" stop-opacity="0"/></radialGradient></defs><circle cx="200" cy="200" r="100" fill="url(%23a)"/><circle cx="800" cy="300" r="150" fill="url(%23a)"/><circle cx="400" cy="700" r="120" fill="url(%23a)"/></svg>');
+        animation: float 20s ease-in-out infinite;
+      }
+      
+      @keyframes float {
+        0%, 100% { transform: translateY(0px) rotate(0deg); }
+        50% { transform: translateY(-20px) rotate(180deg); }
+      }
+      
+      .hero-content {
+        max-width: 800px;
+        padding: 0 2rem;
+        position: relative;
+        z-index: 2;
+      }
+      
+      .hero h1 {
+        font-family: 'Poppins', sans-serif;
+        font-size: 3.5rem;
+        font-weight: 700;
+        margin-bottom: 1.5rem;
+        line-height: 1.2;
+      }
+      
+      .hero p {
+        font-size: 1.3rem;
+        margin-bottom: 2.5rem;
+        opacity: 0.9;
+      }
+      
+      .hero-buttons {
+        display: flex;
+        gap: 1.5rem;
+        justify-content: center;
+        flex-wrap: wrap;
+      }
+      
+      .btn-hero {
+        padding: 1rem 2rem;
+        font-size: 1.1rem;
+        border-radius: 50px;
+        font-weight: 600;
+        text-decoration: none;
+        transition: all 0.3s ease;
+        display: inline-block;
+      }
+      
+      .btn-hero.primary {
+        background: white;
+        color: #1976d2;
+      }
+      
+      .btn-hero.primary:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+      }
+      
+      .btn-hero.secondary {
+        background: transparent;
+        color: white;
+        border: 2px solid white;
+      }
+      
+      .btn-hero.secondary:hover {
+        background: white;
+        color: #1976d2;
+        transform: translateY(-3px);
+      }
+      
+      /* Features Section */
+      .features {
+        padding: 5rem 0;
+        background: #f8fafc;
+      }
+      
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 0 2rem;
+      }
+      
+      .section-title {
+        text-align: center;
+        margin-bottom: 4rem;
+      }
+      
+      .section-title h2 {
+        font-family: 'Poppins', sans-serif;
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #1a202c;
+        margin-bottom: 1rem;
+      }
+      
+      .section-title p {
+        font-size: 1.2rem;
+        color: #64748b;
+        max-width: 600px;
+        margin: 0 auto;
+      }
+      
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 2rem;
+      }
+      
+      .feature-card {
+        background: white;
+        padding: 2.5rem;
+        border-radius: 20px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s ease;
+        text-align: center;
+      }
+      
+      .feature-card:hover {
+        transform: translateY(-10px);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+      }
+      
+      .feature-icon {
+        width: 80px;
+        height: 80px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1.5rem;
+        font-size: 2rem;
+        color: white;
+      }
+      
+      .feature-card h3 {
+        font-family: 'Poppins', sans-serif;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #1a202c;
+        margin-bottom: 1rem;
+      }
+      
+      .feature-card p {
+        color: #64748b;
+        line-height: 1.6;
+      }
+      
+      /* Stats Section */
+      .stats {
+        padding: 5rem 0;
+        background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+        color: white;
+      }
+      
+      .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 2rem;
+        text-align: center;
+      }
+      
+      .stat-item h3 {
+        font-family: 'Poppins', sans-serif;
+        font-size: 3rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+      }
+      
+      .stat-item p {
+        font-size: 1.1rem;
+        opacity: 0.9;
+      }
+      
+      /* CTA Section */
+      .cta {
+        padding: 5rem 0;
+        background: #1a202c;
+        color: white;
+        text-align: center;
+      }
+      
+      .cta h2 {
+        font-family: 'Poppins', sans-serif;
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin-bottom: 1rem;
+      }
+      
+      .cta p {
+        font-size: 1.2rem;
+        margin-bottom: 2.5rem;
+        opacity: 0.9;
+      }
+      
+      /* Footer */
+      .footer {
+        background: #0f172a;
+        color: white;
+        padding: 3rem 0 1rem;
+      }
+      
+      .footer-content {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+        gap: 2rem;
+        margin-bottom: 2rem;
+      }
+      
+      .footer-section h3 {
+        font-family: 'Poppins', sans-serif;
+        font-weight: 600;
+        margin-bottom: 1rem;
+      }
+      
+      .footer-section p,
+      .footer-section a {
+        color: #94a3b8;
+        text-decoration: none;
+        line-height: 1.8;
+      }
+      
+      .footer-section a:hover {
+        color: white;
+      }
+      
+      .footer-bottom {
+        border-top: 1px solid #334155;
+        padding-top: 1rem;
+        text-align: center;
+        color: #64748b;
+      }
+      
+      /* Mobile Menu */
+      .mobile-menu {
+        display: none;
+      }
+      
+      .hamburger {
+        display: none;
+        flex-direction: column;
+        cursor: pointer;
+      }
+      
+      .hamburger span {
+        width: 25px;
+        height: 3px;
+        background: #333;
+        margin: 3px 0;
+        transition: 0.3s;
+      }
+      
+      /* Responsive Design */
+      @media (max-width: 768px) {
+        .nav-links {
+          display: none;
+        }
+        
+        .hamburger {
+          display: flex;
+        }
+        
+        .hero h1 {
+          font-size: 2.5rem;
+        }
+        
+        .hero p {
+          font-size: 1.1rem;
+        }
+        
+        .hero-buttons {
+          flex-direction: column;
+          align-items: center;
+        }
+        
+        .section-title h2 {
+          font-size: 2rem;
+        }
+        
+        .nav-buttons {
+          display: none;
+        }
+      }
+      
+      @media (max-width: 480px) {
+        .hero h1 {
+          font-size: 2rem;
+        }
+        
+        .container {
+          padding: 0 1rem;
+        }
+        
+        .feature-card {
+          padding: 2rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+    
+    <!-- Landing Page HTML (will be replaced by React when app loads) -->
+    <div id="landing-page" class="landing-page">
+      <!-- Navigation -->
+      <nav class="navbar">
+        <div class="nav-container">
+          <a href="#" class="logo">TinyTots</a>
+          <ul class="nav-links">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#about">About</a></li>
+            <li><a href="#contact">Contact</a></li>
+          </ul>
+          <div class="nav-buttons">
+            <a href="#" class="btn btn-outline" onclick="showLogin()">Login</a>
+            <a href="#" class="btn btn-primary" onclick="showRegister()">Get Started</a>
+          </div>
+          <div class="hamburger">
+            <span></span>
+            <span></span>
+            <span></span>
+          </div>
+        </div>
+      </nav>
+
+      <!-- Hero Section -->
+      <section class="hero">
+        <div class="hero-content" data-aos="fade-up">
+          <h1>Welcome to TinyTots</h1>
+          <p>The complete daycare management solution that streamlines operations, enhances parent communication, and ensures the best care for every child.</p>
+          <div class="hero-buttons">
+            <a href="#" class="btn-hero primary" onclick="showRegister()">Start Free Trial</a>
+            <a href="#features" class="btn-hero secondary">Learn More</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features Section -->
+      <section class="features" id="features">
+        <div class="container">
+          <div class="section-title" data-aos="fade-up">
+            <h2>Everything You Need to Manage Your Daycare</h2>
+            <p>Comprehensive tools designed specifically for daycare centers, preschools, and childcare facilities.</p>
+          </div>
+          <div class="features-grid">
+            <div class="feature-card" data-aos="fade-up" data-aos-delay="100">
+              <div class="feature-icon">👶</div>
+              <h3>Child Management</h3>
+              <p>Complete profiles, medical records, allergies, and developmental milestones tracking for every child.</p>
+            </div>
+            <div class="feature-card" data-aos="fade-up" data-aos-delay="200">
+              <div class="feature-icon">👨‍👩‍👧‍👦</div>
+              <h3>Parent Portal</h3>
+              <p>Real-time updates, photo sharing, and seamless communication between parents and caregivers.</p>
+            </div>
+            <div class="feature-card" data-aos="fade-up" data-aos-delay="300">
+              <div class="feature-icon">⏰</div>
+              <h3>Attendance Tracking</h3>
+              <p>Digital check-in/out system with automated notifications and detailed attendance reports.</p>
+            </div>
+            <div class="feature-card" data-aos="fade-up" data-aos-delay="400">
+              <div class="feature-icon">💳</div>
+              <h3>Billing & Payments</h3>
+              <p>Automated invoicing, payment processing, and financial reporting to streamline your revenue.</p>
+            </div>
+            <div class="feature-card" data-aos="fade-up" data-aos-delay="500">
+              <div class="feature-icon">👥</div>
+              <h3>Staff Management</h3>
+              <p>Employee scheduling, performance tracking, and role-based access control.</p>
+            </div>
+            <div class="feature-card" data-aos="fade-up" data-aos-delay="600">
+              <div class="feature-icon">📊</div>
+              <h3>Analytics & Reports</h3>
+              <p>Comprehensive insights into your daycare operations with customizable reports and dashboards.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Stats Section -->
+      <section class="stats">
+        <div class="container">
+          <div class="stats-grid" data-aos="fade-up">
+            <div class="stat-item">
+              <h3>500+</h3>
+              <p>Daycare Centers</p>
+            </div>
+            <div class="stat-item">
+              <h3>10,000+</h3>
+              <p>Happy Children</p>
+            </div>
+            <div class="stat-item">
+              <h3>25,000+</h3>
+              <p>Satisfied Parents</p>
+            </div>
+            <div class="stat-item">
+              <h3>99.9%</h3>
+              <p>Uptime</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CTA Section -->
+      <section class="cta">
+        <div class="container" data-aos="fade-up">
+          <h2>Ready to Transform Your Daycare?</h2>
+          <p>Join thousands of daycare centers already using TinyTots to provide better care and streamline operations.</p>
+          <a href="#" class="btn-hero primary" onclick="showRegister()">Start Your Free Trial Today</a>
+        </div>
+      </section>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <div class="container">
+          <div class="footer-content">
+            <div class="footer-section">
+              <h3>TinyTots</h3>
+              <p>The leading daycare management system trusted by childcare professionals worldwide.</p>
+            </div>
+            <div class="footer-section">
+              <h3>Features</h3>
+              <p><a href="#">Child Management</a></p>
+              <p><a href="#">Parent Portal</a></p>
+              <p><a href="#">Attendance Tracking</a></p>
+              <p><a href="#">Billing & Payments</a></p>
+            </div>
+            <div class="footer-section">
+              <h3>Support</h3>
+              <p><a href="#">Help Center</a></p>
+              <p><a href="#">Contact Us</a></p>
+              <p><a href="#">Training</a></p>
+              <p><a href="#">API Documentation</a></p>
+            </div>
+            <div class="footer-section">
+              <h3>Company</h3>
+              <p><a href="#">About Us</a></p>
+              <p><a href="#">Privacy Policy</a></p>
+              <p><a href="#">Terms of Service</a></p>
+              <p><a href="#">Careers</a></p>
+            </div>
+          </div>
+          <div class="footer-bottom">
+            <p>&copy; 2024 TinyTots. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    <script>
+      // Initialize AOS (Animate On Scroll)
+      AOS.init({
+        duration: 800,
+        easing: 'ease-in-out',
+        once: true
+      });
+
+      // Navbar scroll effect
+      window.addEventListener('scroll', function() {
+        const navbar = document.querySelector('.navbar');
+        if (window.scrollY > 50) {
+          navbar.classList.add('scrolled');
+        } else {
+          navbar.classList.remove('scrolled');
+        }
+      });
+
+      // Smooth scrolling for anchor links
+      document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function (e) {
+          e.preventDefault();
+          const target = document.querySelector(this.getAttribute('href'));
+          if (target) {
+            target.scrollIntoView({
+              behavior: 'smooth',
+              block: 'start'
+            });
+          }
+        });
+      });
+
+      // Show login/register (these will be handled by React Router)
+      function showLogin() {
+        // This will be handled by React Router when the app loads
+        window.location.hash = '#/login';
+        location.reload();
+      }
+
+      function showRegister() {
+        // This will be handled by React Router when the app loads
+        window.location.hash = '#/register';
+        location.reload();
+      }
+
+      // Hide landing page when React app loads
+      window.addEventListener('load', function() {
+        setTimeout(function() {
+          const landingPage = document.getElementById('landing-page');
+          const reactRoot = document.getElementById('root');
+          
+          // Check if React has loaded
+          if (reactRoot && reactRoot.children.length > 0) {
+            if (landingPage) {
+              landingPage.style.display = 'none';
+            }
+          }
+        }, 1000);
+      });
+
+      // Mobile menu toggle
+      const hamburger = document.querySelector('.hamburger');
+      const navLinks = document.querySelector('.nav-links');
+      
+      if (hamburger) {
+        hamburger.addEventListener('click', function() {
+          navLinks.classList.toggle('active');
+        });
+      }
+
+      // Counter animation for stats
+      function animateCounters() {
+        const counters = document.querySelectorAll('.stat-item h3');
+        const speed = 200;
+
+        counters.forEach(counter => {
+          const updateCount = () => {
+            const target = parseInt(counter.getAttribute('data-target') || counter.innerText.replace(/[^0-9]/g, ''));
+            const count = parseInt(counter.innerText.replace(/[^0-9]/g, ''));
+            const inc = target / speed;
+
+            if (count < target) {
+              counter.innerText = Math.ceil(count + inc) + (counter.innerText.includes('+') ? '+' : '') + (counter.innerText.includes('%') ? '%' : '');
+              setTimeout(updateCount, 1);
+            } else {
+              counter.innerText = target + (counter.innerText.includes('+') ? '+' : '') + (counter.innerText.includes('%') ? '%' : '');
+            }
+          };
+          updateCount();
+        });
+      }
+
+      // Trigger counter animation when stats section is visible
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            animateCounters();
+            observer.unobserve(entry.target);
+          }
+        });
+      });
+
+      const statsSection = document.querySelector('.stats');
+      if (statsSection) {
+        observer.observe(statsSection);
+      }
+    </script>
+  </body>
+</html>
