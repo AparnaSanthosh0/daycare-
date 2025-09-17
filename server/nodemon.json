@@ -1,0 +1,18 @@
+{
+  "watch": [
+    "index.js",
+    ".env",
+    "routes",
+    "models",
+    "utils",
+    "middleware"
+  ],
+  "ext": "js,json,env",
+  "ignore": [
+    "uploads/*",
+    "node_modules/*"
+  ],
+  "env": {
+    "NODE_ENV": "development"
+  }
+}

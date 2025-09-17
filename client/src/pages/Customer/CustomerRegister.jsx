@@ -1,140 +1,349 @@
 import React, { useState } from 'react';
-import { Box, Container, Typography, TextField, Button, Card, CardContent, Grid } from '@mui/material';
-import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  Container,
+  Paper,
+  TextField,
+  Button,
+  Typography,
+  Box,
+  Alert,
+  Grid,
+  InputAdornment,
+  IconButton
+} from '@mui/material';
+import { Visibility, VisibilityOff, Person, Lock, Email, Phone, Home, ArrowBack } from '@mui/icons-material';
+import api from '../../config/api';
 
 const CustomerRegister = () => {
   const navigate = useNavigate();
-  const location = useLocation();
-  const { register } = useAuth();
-
-  const [form, setForm] = useState({
-    name: '',
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
     email: '',
+    phone: '',
     password: '',
-    address: ''
+    confirmPassword: '',
+    gender: '',
+    address: {
+      street: '',
+      city: '',
+      state: '',
+      zipCode: '',
+      country: 'US'
+    }
   });
-  const [submitting, setSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setForm((prev) => ({ ...prev, [name]: value }));
+    if (name.startsWith('address.')) {
+      const field = name.split('.')[1];
+      setFormData({
+        ...formData,
+        address: {
+          ...formData.address,
+          [field]: value
+        }
+      });
+    } else {
+      setFormData({
+        ...formData,
+        [name]: value
+      });
+    }
+    if (error) setError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.name || !form.email || !form.password || !form.address) return;
+    setLoading(true);
+    setError('');
 
-    setSubmitting(true);
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      setLoading(false);
+      return;
+    }
 
-    // Split name into first/last (fallback if single word)
-    const [firstName, ...rest] = form.name.trim().split(' ');
-    const lastName = rest.join(' ') || '-';
-
-    const payload = {
-      firstName,
-      lastName,
-      email: form.email,
-      password: form.password,
-      role: 'customer',
-      address: { street: form.address }
-    };
-
-    const result = await register(payload);
-    setSubmitting(false);
-
-    if (result.success) {
-      // After registration, send user back to cart or shop
-      const from = location.state?.from;
-      if (from === 'cart') {
-        navigate('/shop');
-      } else {
-        navigate('/shop');
-      }
+    try {
+      const { confirmPassword, ...customerData } = formData;
+      const response = await api.post('/api/customers/register', customerData);
+      const { token, customer } = response.data;
+      
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify({ ...customer, role: 'customer' }));
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      
+      navigate('/customer');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Registration failed');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <Box sx={{ backgroundColor: '#f5f7fb', minHeight: '100vh', py: 6 }}>
-      <Container maxWidth="sm">
-        <Card sx={{ borderRadius: '16px', boxShadow: 3 }}>
-          <CardContent sx={{ p: 4 }}>
-            <Typography variant="h5" fontWeight={700} gutterBottom>
-              Customer Registration
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Create your account to complete the purchase.
-            </Typography>
+    <Box
+      sx={{
+        minHeight: '100vh',
+        backgroundImage: 'linear-gradient(rgba(255,255,255,0.2), rgba(255,255,255,0.2)), url("/Landing_image.jpg?v=1")',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        py: 4
+      }}
+    >
+      <Container component="main" maxWidth="md" sx={{ position: 'relative' }}>
+        {/* Back Arrow */}
+        <IconButton
+          onClick={() => navigate(-1)}
+          sx={{
+            position: 'absolute',
+            top: -60,
+            left: 0,
+            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+            '&:hover': {
+              backgroundColor: 'rgba(255, 255, 255, 1)',
+            },
+            zIndex: 1
+          }}
+        >
+          <ArrowBack />
+        </IconButton>
 
-            <Box component="form" onSubmit={handleSubmit} noValidate>
-              <Grid container spacing={2}>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Customer Name"
-                    name="name"
-                    value={form.name}
-                    onChange={handleChange}
-                    required
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Email"
-                    name="email"
-                    type="email"
-                    value={form.email}
-                    onChange={handleChange}
-                    required
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Password"
-                    name="password"
-                    type="password"
-                    value={form.password}
-                    onChange={handleChange}
-                    required
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Address"
-                    name="address"
-                    multiline
-                    minRows={3}
-                    value={form.address}
-                    onChange={handleChange}
-                    required
-                  />
-                </Grid>
+        <Paper 
+          elevation={6} 
+          sx={{ 
+            p: 4,
+            backgroundColor: 'rgba(255, 255, 255, 0.85)',
+            backdropFilter: 'blur(16px) saturate(140%)',
+            borderRadius: 4,
+            border: '1px solid rgba(255,255,255,0.6)',
+            boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
+            maxHeight: '90vh',
+            overflowY: 'auto'
+          }}
+        >
+          <Typography component="h1" variant="h4" align="center" gutterBottom>
+            Customer Registration
+          </Typography>
+          
+          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+          
+          <Box component="form" onSubmit={handleSubmit}>
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  id="firstName"
+                  label="First Name"
+                  name="firstName"
+                  autoComplete="given-name"
+                  value={formData.firstName}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Person />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
               </Grid>
-
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                disabled={submitting}
-                sx={{ mt: 3, borderRadius: '25px' }}
-              >
-                {submitting ? 'Registering...' : 'Register & Continue'}
-              </Button>
-
-              <Button
-                fullWidth
-                variant="text"
-                sx={{ mt: 1 }}
-                onClick={() => navigate('/shop')}
-              >
-                Cancel and go back to Shop
-              </Button>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  id="lastName"
+                  label="Last Name"
+                  name="lastName"
+                  autoComplete="family-name"
+                  value={formData.lastName}
+                  onChange={handleChange}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  id="email"
+                  label="Email Address"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Email />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  id="phone"
+                  label="Phone Number"
+                  name="phone"
+                  type="tel"
+                  autoComplete="tel"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Phone />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  name="password"
+                  label="Password"
+                  type={showPassword ? 'text' : 'password'}
+                  id="password"
+                  autoComplete="new-password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Lock />
+                      </InputAdornment>
+                    ),
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          aria-label="toggle password visibility"
+                          onClick={() => setShowPassword(!showPassword)}
+                          edge="end"
+                        >
+                          {showPassword ? <VisibilityOff /> : <Visibility />}
+                        </IconButton>
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  name="confirmPassword"
+                  label="Confirm Password"
+                  type="password"
+                  id="confirmPassword"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  select
+                  name="gender"
+                  label="Gender"
+                  id="gender"
+                  value={formData.gender}
+                  onChange={handleChange}
+                >
+                  <option value="">Select Gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </TextField>
+              </Grid>
+              
+              {/* Address Section */}
+              <Grid item xs={12}>
+                <Typography variant="h6" gutterBottom>
+                  Address Information
+                </Typography>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  name="address.street"
+                  label="Street Address"
+                  id="address.street"
+                  value={formData.address.street}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Home />
+                      </InputAdornment>
+                    ),
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  name="address.city"
+                  label="City"
+                  id="address.city"
+                  value={formData.address.city}
+                  onChange={handleChange}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  name="address.state"
+                  label="State"
+                  id="address.state"
+                  value={formData.address.state}
+                  onChange={handleChange}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  name="address.zipCode"
+                  label="ZIP Code"
+                  id="address.zipCode"
+                  value={formData.address.zipCode}
+                  onChange={handleChange}
+                />
+              </Grid>
+            </Grid>
+            
+            <Button
+              type="submit"
+              fullWidth
+              variant="contained"
+              sx={{ mt: 3, mb: 2 }}
+              disabled={loading}
+            >
+              {loading ? 'Creating Account...' : 'Create Account'}
+            </Button>
+            
+            <Box textAlign="center">
+              <Typography variant="body2">
+                Already have an account?{' '}
+                <Link to="/customer-login" style={{ textDecoration: 'none' }}>
+                  Sign in here
+                </Link>
+              </Typography>
             </Box>
-          </CardContent>
-        </Card>
+          </Box>
+        </Paper>
       </Container>
     </Box>
   );

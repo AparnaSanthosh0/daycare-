@@ -23,15 +23,14 @@ import {
   ShoppingCart as ShoppingCartIcon,
   Add,
   Favorite,
-  Share,
   Search,
-  Menu,
   AccountCircle,
   ArrowBack
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import SimpleCart from './SimpleCart';
+import api from '../../config/api';
 
 // Styled Components
 const StyledCard = styled(Card)(({ theme }) => ({
@@ -88,89 +87,58 @@ const FloatingCartButton = styled(Fab)(({ theme }) => ({
 const EcommerceDemo = () => {
   const navigate = useNavigate();
   const [cartOpen, setCartOpen] = useState(false);
-  const [cartItemCount, setCartItemCount] = useState(4);
   const [query, setQuery] = useState('');
+  const [cartItems, setCartItems] = useState([]);
+  const [wishlist, setWishlist] = useState(new Set());
+  const cartCount = useMemo(() => cartItems.reduce((sum, i) => sum + i.quantity, 0), [cartItems]);
 
-  // Sample products data (prices in INR and baby categories)
-  const products = [
-    {
-      id: 1,
-      name: 'Cotton Baby Onesie',
-      price: 399, // INR
-      originalPrice: 499,
-      image: 'https://images.unsplash.com/photo-1618354691329-0b2a5b9ebd8a?w=300&h=200&fit=crop',
-      category: 'Clothing',
-      rating: 4.7,
-      reviews: 112,
-      inStock: true,
-      isNew: true,
-      description: 'Soft breathable cotton onesie for newborns (0-3 months)'
-    }, 
-    {
-      id: 2,
-      name: 'Baby Feeding Bottle (BPA-Free)',
-      price: 299,
-      image: 'https://images.unsplash.com/photo-1530026405186-ed1f139313f8?w=300&h=200&fit=crop',
-      category: 'Feeding',
-      rating: 4.6,
-      reviews: 89,
-      inStock: true,
-      isBestseller: true,
-      description: 'Anti-colic design, easy to clean, safe materials'
-    },
-    {
-      id: 3,
-      name: 'Baby Lotion (200ml)',
-      price: 249,
-      image: 'https://images.unsplash.com/photo-1604881987925-6a6a2b4715b0?w=300&h=200&fit=crop',
-      category: 'Care',
-      rating: 4.7,
-      reviews: 156,
-      inStock: true,
-      description: 'Gentle moisturizing lotion for delicate baby skin'
-    },
-    {
-      id: 4,
-      name: 'Storybook Collection',
-      price: 299,
-      image: 'https://images.unsplash.com/photo-1481627834876-b7833e8f5570?w=300&h=200&fit=crop',
-      category: 'Books',
-      rating: 4.9,
-      reviews: 203,
-      inStock: true,
-      description: 'Set of 5 beautifully illustrated children\'s storybooks'
-    },
-    {
-      id: 5,
-      name: 'Baby Musical Rattle Set',
-      price: 349,
-      image: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=300&h=200&fit=crop',
-      category: 'Toys',
-      rating: 4.5,
-      reviews: 78,
-      inStock: true,
-      isNew: true,
-      description: 'Colorful rattles to stimulate senses and motor skills'
-    },
-    {
-      id: 6,
-      name: 'Baby Blanket (Fleece)',
-      price: 599,
-      originalPrice: 699,
-      image: 'https://images.unsplash.com/photo-1617957743090-4cc668a6cf2d?w=300&h=200&fit=crop',
-      category: 'Bedding',
-      rating: 4.8,
-      reviews: 92,
-      inStock: true,
-      isBestseller: true,
-      description: 'Warm, lightweight, and skin-friendly fleece blanket'
-    }
-  ];
+  // Load products from backend so vendor-added items appear in the shop
+  const [products, setProducts] = useState([]);
+
+  React.useEffect(() => {
+    const load = async () => {
+      try {
+        const { data } = await api.get('/api/products');
+        // Normalize fields expected by UI
+        const mapped = (data.products || []).map((p) => ({
+          id: p._id,
+          name: p.name,
+          price: p.price,
+          originalPrice: p.originalPrice || null,
+          image: p.image || '/logo192.svg',
+          category: p.category || 'General',
+          rating: p.rating || 4.5,
+          reviews: p.reviews || 0,
+          inStock: p.inStock !== false,
+          isNew: !!p.isNew,
+          isBestseller: !!p.isBestseller,
+          description: p.description || ''
+        }));
+        setProducts(mapped);
+      } catch (e) {
+        // Fallback to empty; keep demo functional
+        setProducts([]);
+      }
+    };
+    load();
+  }, []);
 
   const addToCart = (product) => {
-    setCartItemCount(prev => prev + 1);
-    // Here you would typically add the item to your cart state/context
-    console.log('Added to cart:', product.name);
+    setCartItems(prev => {
+      const existing = prev.find(i => i.id === product.id);
+      if (existing) {
+        return prev.map(i => i.id === product.id ? { ...i, quantity: i.quantity + 1 } : i);
+      }
+      return [...prev, { id: product.id, name: product.name, price: product.price, quantity: 1 }];
+    });
+  };
+
+  const toggleWishlist = (productId) => {
+    setWishlist(prev => {
+      const next = new Set(prev);
+      if (next.has(productId)) next.delete(productId); else next.add(productId);
+      return next;
+    });
   };
 
   // Filter products by search query (name/category/description)
@@ -219,7 +187,7 @@ const EcommerceDemo = () => {
           </IconButton>
           
           <IconButton color="inherit" onClick={() => setCartOpen(true)}>
-            <Badge badgeContent={cartItemCount} color="error">
+            <Badge badgeContent={cartCount} color="error">
               <ShoppingCartIcon />
             </Badge>
           </IconButton>
@@ -282,6 +250,7 @@ const EcommerceDemo = () => {
                   
                   {/* Favorite Button */}
                   <IconButton
+                    onClick={() => toggleWishlist(product.id)}
                     sx={{
                       position: 'absolute',
                       top: 12,
@@ -290,7 +259,7 @@ const EcommerceDemo = () => {
                       '&:hover': { backgroundColor: 'white' }
                     }}
                   >
-                    <Favorite sx={{ color: 'grey.400' }} />
+                    <Favorite sx={{ color: wishlist.has(product.id) ? 'error.main' : 'grey.400' }} />
                   </IconButton>
                 </Box>
                 
@@ -350,7 +319,7 @@ const EcommerceDemo = () => {
 
       {/* Floating Cart Button */}
       <FloatingCartButton onClick={() => setCartOpen(true)}>
-        <Badge badgeContent={cartItemCount} color="error">
+        <Badge badgeContent={cartCount} color="error">
           <ShoppingCartIcon />
         </Badge>
       </FloatingCartButton>

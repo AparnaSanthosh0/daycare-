@@ -25,6 +25,11 @@ const childSchema = new mongoose.Schema({
     ref: 'User',
     required: true
   }],
+  assignedStaff: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    default: null
+  },
   enrollmentDate: {
     type: Date,
     default: Date.now
@@ -76,7 +81,7 @@ const childSchema = new mongoose.Schema({
   },
   tuitionRate: {
     type: Number,
-    required: true
+    default: 0
   },
   isActive: {
     type: Boolean,
@@ -89,7 +94,13 @@ const childSchema = new mongoose.Schema({
   notes: {
     type: String,
     trim: true
-  }
+  },
+  gallery: [{
+    url: { type: String, required: true },
+    caption: { type: String, default: '' },
+    uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    uploadedAt: { type: Date, default: Date.now }
+  }]
 }, {
   timestamps: true
 });

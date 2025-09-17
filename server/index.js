@@ -11,28 +11,56 @@ const app = express();
 app.use(helmet());
 app.use(cors());
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100 // limit each IP to 100 requests per windowMs
-});
-app.use(limiter);
+// Rate limiting (configurable, disabled in development by default)
+const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 100);
+const RATE_LIMIT_WINDOW_MIN = Number(process.env.RATE_LIMIT_WINDOW_MIN || 15);
+const RATE_LIMIT_ENABLED = (process.env.RATE_LIMIT_ENABLED || '').toLowerCase() === 'true' || process.env.NODE_ENV === 'production';
+
+if (RATE_LIMIT_ENABLED) {
+  const limiter = rateLimit({
+    windowMs: RATE_LIMIT_WINDOW_MIN * 60 * 1000,
+    max: RATE_LIMIT_MAX,
+    standardHeaders: true,
+    legacyHeaders: false
+  });
+  app.use(limiter);
+} else {
+  console.warn('Rate limiting disabled (NODE_ENV !== production or RATE_LIMIT_ENABLED not true).');
+}
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/children', require('./routes/children'));
-app.use('/api/parents', require('./routes/parents'));
-app.use('/api/staff', require('./routes/staff'));
-app.use('/api/attendance', require('./routes/attendance'));
-app.use('/api/billing', require('./routes/billing'));
-app.use('/api/activities', require('./routes/activities'));
-app.use('/api/reports', require('./routes/reports'));
+// Routes (protect with DB readiness so requests fail fast if DB is down)
+const requireDb = (req, res, next) => {
+  // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
+  const state = mongoose.connection.readyState;
+  if (state !== 1) {
+    return res.status(503).json({ message: 'Database not connected' });
+  }
+  next();
+};
 
-// Serve uploaded certificates
+app.use('/api/auth', requireDb, require('./routes/auth'));
+app.use('/api/admin', requireDb, require('./routes/admin'));
+app.use('/api/children', requireDb, require('./routes/children'));
+app.use('/api/parents', requireDb, require('./routes/parents'));
+app.use('/api/staff', requireDb, require('./routes/staff'));
+app.use('/api/staff-ops', requireDb, require('./routes/staffOps'));
+app.use('/api/attendance', requireDb, require('./routes/attendance'));
+app.use('/api/billing', requireDb, require('./routes/billing'));
+app.use('/api/activities', requireDb, require('./routes/activities'));
+app.use('/api/reports', requireDb, require('./routes/reports'));
+// Inventory (Admin-only)
+app.use('/api/inventory', requireDb, require('./routes/inventory'));
+// Vendor (singleton)
+app.use('/api/vendor', requireDb, require('./routes/vendors'));
+// Products (public list, vendor/admin manage)
+app.use('/api/products', requireDb, require('./routes/products'));
+app.use('/api/customers', requireDb, require('./routes/customers'));
+
+// Serve uploaded files (certificates, child photos, profile images, etc.)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));
 
 // Health check endpoint

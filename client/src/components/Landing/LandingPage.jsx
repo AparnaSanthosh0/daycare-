@@ -7,7 +7,7 @@ import {
   Button,
   Grid,
   Card,
-  CardContent,
+  // CardContent,
   AppBar,
   Toolbar,
   IconButton,
@@ -15,7 +15,9 @@ import {
   useMediaQuery,
   Fade,
   Slide,
-  Zoom
+  // Zoom,
+  Menu,
+  MenuItem
 } from '@mui/material';
 import {
   ChildCare,
@@ -32,23 +34,29 @@ import {
   ShoppingCart
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
-import { ecommerceConfig, handleEcommerceNavigation } from '../../config/ecommerce';
+import { ecommerceConfig } from '../../config/ecommerce';
+import DiscoverySection from './DiscoverySection';
 
 // Styled Components
 const HeroSection = styled(Box)(({ theme }) => ({
   minHeight: '100vh',
   background: `
-    linear-gradient(135deg, rgba(0, 0, 0, 0.3) 0%, rgba(0, 0, 0, 0.4) 100%),
-    url('/Landing_image.jpg')
+    linear-gradient(135deg, rgba(20, 184, 166, 0.35) 0%, rgba(251, 113, 133, 0.35) 100%)
   `,
   backgroundSize: 'cover',
-  backgroundPosition: 'center center',
+  backgroundPosition: 'center 35%',
   backgroundRepeat: 'no-repeat',
   backgroundAttachment: 'fixed',
   display: 'flex',
   alignItems: 'center',
   position: 'relative',
   overflow: 'hidden',
+  animation: 'bg-zoom-pan 35s ease-in-out infinite',
+  '@keyframes bg-zoom-pan': {
+    '0%': { backgroundPosition: 'center 20%', backgroundSize: '115% 115%' },
+    '50%': { backgroundPosition: 'center 10%', backgroundSize: '110% 110%' },
+    '100%': { backgroundPosition: 'center 20%', backgroundSize: '115% 115%' }
+  },
   '&::before': {
     content: '""',
     position: 'absolute',
@@ -67,7 +75,7 @@ const HeroSection = styled(Box)(({ theme }) => ({
     right: 0,
     bottom: 0,
     background: `
-      radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.1) 100%)
+      radial-gradient(circle at center, transparent 0%, rgba(0, 0, 0, 0.15) 100%)
     `,
     zIndex: 2,
   },
@@ -83,21 +91,9 @@ const HeroSection = styled(Box)(({ theme }) => ({
   }
 }));
 
-const FeatureCard = styled(Card)(({ theme }) => ({
-  height: '100%',
-  transition: 'all 0.3s ease-in-out',
-  cursor: 'pointer',
-  '&:hover': {
-    transform: 'translateY(-10px)',
-    boxShadow: theme.shadows[10],
-  }
-}));
 
-const StatsCard = styled(Box)(({ theme }) => ({
-  textAlign: 'center',
-  color: 'white',
-  padding: theme.spacing(3),
-}));
+
+// Removed unused StatsCard
 
 const FloatingIcon = styled(Box)(({ theme }) => ({
   width: 80,
@@ -123,6 +119,39 @@ const LandingPage = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [scrolled, setScrolled] = React.useState(false);
+  const [jobsAnchor, setJobsAnchor] = React.useState(null);
+  const openJobs = Boolean(jobsAnchor);
+  
+  // Hidden admin login trigger (5 taps on brand within 3s)
+  const [adminTap, setAdminTap] = React.useState(0);
+  const tapTimeout = React.useRef(null);
+  const handleSecretTap = () => {
+    if (tapTimeout.current) clearTimeout(tapTimeout.current);
+    setAdminTap((c) => c + 1);
+    tapTimeout.current = setTimeout(() => setAdminTap(0), 3000);
+  };
+  React.useEffect(() => {
+    if (adminTap >= 5) {
+      navigate('/admin-login');
+      setAdminTap(0);
+    }
+  }, [adminTap, navigate]);
+
+  // Unified nav button style
+  const navButtonSx = {
+    color: scrolled ? 'text.primary' : 'white',
+    fontWeight: 600,
+    textTransform: 'none',
+    borderRadius: '20px',
+    px: 2,
+    border: scrolled ? '1px solid rgba(25, 118, 210, 0.3)' : '1px solid rgba(255, 255, 255, 0.3)',
+    '&:hover': {
+      backgroundColor: scrolled ? 'rgba(25, 118, 210, 0.1)' : 'rgba(255, 255, 255, 0.1)',
+      borderColor: scrolled ? 'rgba(25, 118, 210, 0.6)' : 'rgba(255, 255, 255, 0.6)',
+      transform: 'translateY(-2px)'
+    },
+    transition: 'all 0.3s ease-in-out'
+  };
 
   useEffect(() => {
     const handleScroll = () => {
@@ -140,51 +169,9 @@ const LandingPage = () => {
     navigate('/shop');
   };
 
-  const features = [
-    {
-      icon: <ChildCare />,
-      title: 'Child Management',
-      description: 'Complete profiles, medical records, allergies, and developmental milestones tracking for every child.',
-      delay: 100
-    },
-    {
-      icon: <People />,
-      title: 'Parent Portal',
-      description: 'Real-time updates, photo sharing, and seamless communication between parents and caregivers.',
-      delay: 200
-    },
-    {
-      icon: <AccessTime />,
-      title: 'Attendance Tracking',
-      description: 'Digital check-in/out system with automated notifications and detailed attendance reports.',
-      delay: 300
-    },
-    {
-      icon: <Payment />,
-      title: 'Billing & Payments',
-      description: 'Automated invoicing, payment processing, and financial reporting to streamline your revenue.',
-      delay: 400
-    },
-    {
-      icon: <Group />,
-      title: 'Staff Management',
-      description: 'Employee scheduling, performance tracking, and role-based access control.',
-      delay: 500
-    },
-    {
-      icon: <Assessment />,
-      title: 'Analytics & Reports',
-      description: 'Comprehensive insights into your daycare operations with customizable reports and dashboards.',
-      delay: 600
-    }
-  ];
+  // Removed unused `features` array to satisfy ESLint no-unused-vars. Re-introduce when rendering a features grid.
 
-  const stats = [
-    { number: '500+', label: 'Daycare Centers' },
-    { number: '10,000+', label: 'Happy Children' },
-    { number: '25,000+', label: 'Satisfied Parents' },
-    { number: '99.9%', label: 'Uptime' }
-  ];
+  // Removed unused stats array
 
   const benefits = [
     {
@@ -206,6 +193,23 @@ const LandingPage = () => {
 
   return (
     <Box>
+      {/* Decorative floating shapes */}
+      <Box sx={{
+        position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1,
+        '& .float': {
+          position: 'absolute', borderRadius: '50%', opacity: 0.15,
+          filter: 'blur(1px)', animation: 'floatY 12s ease-in-out infinite'
+        },
+        '@keyframes floatY': {
+          '0%, 100%': { transform: 'translateY(0px)' },
+          '50%': { transform: 'translateY(-15px)' }
+        }
+      }}>
+        <Box className="float" sx={{ width: 120, height: 120, background: '#90caf9', top: '15%', left: '8%', animationDelay: '0s' }} />
+        <Box className="float" sx={{ width: 80, height: 80, background: '#f48fb1', top: '40%', right: '10%', animationDelay: '2s' }} />
+        <Box className="float" sx={{ width: 100, height: 100, background: '#a5d6a7', bottom: '18%', left: '15%', animationDelay: '1s' }} />
+      </Box>
+
       {/* Navigation */}
       <AppBar 
         position="fixed" 
@@ -221,12 +225,15 @@ const LandingPage = () => {
           <Typography 
             variant="h5" 
             component="div" 
+            onClick={handleSecretTap}
             sx={{ 
               flexGrow: 1, 
               fontWeight: 700,
               fontFamily: 'Poppins, sans-serif',
-              color: scrolled ? 'primary.main' : 'white'
+              color: scrolled ? 'primary.main' : 'white',
+              cursor: 'default'
             }}
+            title=""
           >
             TinyTots
           </Typography>
@@ -235,8 +242,8 @@ const LandingPage = () => {
             <Box sx={{ display: 'flex', gap: 2, mr: 3 }}>
               <Button 
                 color="inherit" 
-                sx={{ color: scrolled ? 'text.primary' : 'white' }}
-                onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
+                sx={navButtonSx}
+                onClick={() => document.getElementById('discovery')?.scrollIntoView({ behavior: 'smooth' })}
               >
                 Features
               </Button>
@@ -247,28 +254,29 @@ const LandingPage = () => {
                   color="inherit" 
                   startIcon={<ShoppingCart />}
                   onClick={handleEcommerceClick}
-                  sx={{ 
-                    color: scrolled ? 'text.primary' : 'white',
-                    fontWeight: 600,
-                    textTransform: 'none',
-                    borderRadius: '20px',
-                    px: 2,
-                    border: scrolled ? '1px solid rgba(25, 118, 210, 0.3)' : '1px solid rgba(255, 255, 255, 0.3)',
-                    '&:hover': {
-                      backgroundColor: scrolled ? 'rgba(25, 118, 210, 0.1)' : 'rgba(255, 255, 255, 0.1)',
-                      borderColor: scrolled ? 'rgba(25, 118, 210, 0.6)' : 'rgba(255, 255, 255, 0.6)',
-                      transform: 'translateY(-2px)',
-                    },
-                    transition: 'all 0.3s ease-in-out'
-                  }}
+                  sx={navButtonSx}
                 >
-                  🛒 Shop
+                  Shop
                 </Button>
               )}
               
               <Button 
                 color="inherit" 
-                sx={{ color: scrolled ? 'text.primary' : 'white' }}
+                sx={navButtonSx}
+                onClick={(e) => setJobsAnchor(e.currentTarget)}
+              >
+                Search Jobs
+              </Button>
+              {/* On click go to dedicated Jobs page */}
+              <Menu anchorEl={jobsAnchor} open={openJobs} onClose={() => setJobsAnchor(null)}
+                MenuListProps={{ 'aria-labelledby': 'jobs-button' }}
+              >
+                <MenuItem onClick={() => { setJobsAnchor(null); navigate('/jobs'); }}>Open Jobs</MenuItem>
+              </Menu>
+
+              <Button 
+                color="inherit" 
+                sx={navButtonSx}
                 onClick={() => document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' })}
               >
                 About
@@ -292,37 +300,24 @@ const LandingPage = () => {
                 }}
                 title="Visit Our Shop"
               >
-                <ShoppingCart />
+                <ShoppingCart fontSize="small" />
               </IconButton>
             )}
             
             <Button 
+              color="inherit"
               variant="outlined" 
               onClick={() => navigate('/login')}
-              sx={{ 
-                color: scrolled ? 'primary.main' : 'white',
-                borderColor: scrolled ? 'primary.main' : 'white',
-                '&:hover': {
-                  borderColor: scrolled ? 'primary.dark' : 'rgba(255,255,255,0.8)',
-                  backgroundColor: scrolled ? 'primary.main' : 'rgba(255,255,255,0.1)',
-                  color: scrolled ? 'white' : 'white'
-                }
-              }}
+              sx={navButtonSx}
             >
               Login
             </Button>
+            {/* Vendor Register moved under Jobs page */}
             <Button 
-              variant="contained" 
-              onClick={() => navigate('/register')}
-              sx={{ 
-                backgroundColor: scrolled ? 'primary.main' : 'white',
-                color: scrolled ? 'white' : 'primary.main',
-                '&:hover': {
-                  backgroundColor: scrolled ? 'primary.dark' : 'rgba(255,255,255,0.9)',
-                  transform: 'translateY(-2px)',
-                  boxShadow: 4
-                }
-              }}
+              color="inherit"
+              variant="outlined" 
+              onClick={() => navigate('/register/parent')}
+              sx={navButtonSx}
             >
               Get Started
             </Button>
@@ -341,6 +336,59 @@ const LandingPage = () => {
 
       {/* Hero Section */}
       <HeroSection>
+        {/* Background slideshow - y.jpg, ss.jpg, o.jpg */}
+        <Box aria-hidden sx={{ position: 'absolute', inset: 0, zIndex: 0, pointerEvents: 'none' }}>
+          {/* Slide 1 */}
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage: "url('/landing/y.jpg?v=19')",
+              backgroundSize: 'cover',
+              backgroundPosition: 'center 50%',
+              backgroundRepeat: 'no-repeat',
+              opacity: 1,
+              animation: 'heroFade 12s ease-in-out infinite',
+              '@keyframes heroFade': {
+                '0%': { opacity: 1 },
+                '28%': { opacity: 1 },
+                '33%': { opacity: 0 },
+                '95%': { opacity: 0 },
+                '100%': { opacity: 1 }
+              }
+            }}
+          />
+          {/* Slide 2: replaced with logo.jpg */}
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage: "url('/logo.jpg')",
+              backgroundSize: 'cover',
+              backgroundPosition: 'center 38%',
+              backgroundRepeat: 'no-repeat',
+              filter: 'contrast(1.06) brightness(1.02)',
+              opacity: 0,
+              animation: 'heroFade 12s ease-in-out infinite',
+              animationDelay: '4s'
+            }}
+          />
+          {/* Slide 3: cd.jpg (moved from 2nd) */}
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage: "url('/landing/cd.jpg?v=19')",
+              backgroundSize: 'cover',
+              backgroundPosition: 'center 38%',
+              backgroundRepeat: 'no-repeat',
+              filter: 'contrast(1.06) brightness(1.02)',
+              opacity: 0,
+              animation: 'heroFade 12s ease-in-out infinite',
+              animationDelay: '8s'
+            }}
+          />
+        </Box>
         <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 10 }}>
           <Fade in timeout={1000}>
             <Box textAlign="center" color="white">
@@ -380,7 +428,7 @@ const LandingPage = () => {
                 <Button 
                   variant="contained" 
                   size="large"
-                  onClick={() => navigate('/register')}
+                  onClick={() => navigate('/register/parent')}
                   endIcon={<ArrowForward />}
                   sx={{ 
                     backgroundColor: 'white',
@@ -400,124 +448,111 @@ const LandingPage = () => {
                 >
                   Start Free Trial
                 </Button>
-                <Button 
-                  variant="outlined" 
-                  size="large"
-                  onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}
-                  sx={{ 
-                    borderColor: 'white',
-                    color: 'white',
-                    px: 4,
-                    py: 1.5,
-                    fontSize: '1.1rem',
-                    fontWeight: 600,
-                    borderRadius: '50px',
-                    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.2)',
-                    '&:hover': {
-                      backgroundColor: 'rgba(255,255,255,0.1)',
-                      borderColor: 'white',
-                      transform: 'translateY(-3px)',
-                      boxShadow: '0 12px 40px rgba(0, 0, 0, 0.3)',
-                    }
-                  }}
-                >
-                  Learn More
-                </Button>
+                {/* Secondary CTA removed per request */}
               </Box>
             </Box>
           </Fade>
         </Container>
       </HeroSection>
 
-      {/* Features Section */}
-      <Box id="features" sx={{ py: 8, backgroundColor: 'grey.50' }}>
+      {/* Discovery Callout (Inspired by abts.png) */}
+      <DiscoverySection />
+
+      {/* Features Section removed in favor of DiscoverySection (two-column hero with CTA to /approach) */}
+
+      {/* Programs Section (like reference, without Summer Program) */}
+      <Box sx={{ py: 10, backgroundColor: 'grey.50' }}>
         <Container maxWidth="lg">
-          <Slide direction="up" in timeout={800}>
-            <Box textAlign="center" mb={6}>
-              <Typography 
-                variant="h3" 
-                component="h2" 
-                gutterBottom
-                sx={{ 
-                  fontWeight: 700,
-                  fontFamily: 'Poppins, sans-serif',
-                  color: 'text.primary',
-                  fontSize: { xs: '2rem', md: '2.5rem' }
-                }}
-              >
-                Everything You Need to Manage Your Daycare
-              </Typography>
-              <Typography 
-                variant="h6" 
-                color="text.secondary"
-                sx={{ maxWidth: '600px', mx: 'auto' }}
-              >
-                Comprehensive tools designed specifically for daycare centers, preschools, and childcare facilities.
-              </Typography>
-            </Box>
-          </Slide>
-          
-          <Grid container spacing={4}>
-            {features.map((feature, index) => (
-              <Grid item xs={12} md={6} lg={4} key={index}>
-                <Zoom in timeout={800 + feature.delay}>
-                  <FeatureCard>
-                    <CardContent sx={{ p: 4, textAlign: 'center' }}>
-                      <FloatingIcon>
-                        {feature.icon}
-                      </FloatingIcon>
-                      <Typography 
-                        variant="h5" 
-                        component="h3" 
-                        gutterBottom
-                        sx={{ 
-                          fontWeight: 600,
-                          fontFamily: 'Poppins, sans-serif',
-                          color: 'text.primary'
-                        }}
-                      >
-                        {feature.title}
-                      </Typography>
-                      <Typography variant="body1" color="text.secondary">
-                        {feature.description}
-                      </Typography>
-                    </CardContent>
-                  </FeatureCard>
-                </Zoom>
+          <Box textAlign="center" mb={6}>
+            <Typography 
+              variant="h3" 
+              component="h2" 
+              gutterBottom
+              sx={{ fontWeight: 700, fontFamily: 'Poppins, sans-serif', color: 'text.primary' }}
+            >
+              Our Early Education Programs Offer More Than Daycare
+            </Typography>
+            <Box sx={{ width: 120, height: 6, backgroundColor: 'primary.main', borderRadius: 3, mx: 'auto', opacity: 0.25 }} />
+          </Box>
+
+          {(() => {
+            const programs = [
+              {
+                title: 'Infants',
+                description: 'An exceptional place for your baby to thrive and grow',
+                img: '/landing/adh.jpg?v=19'
+              },
+              {
+                title: 'Toddler/Twos',
+                description: 'An engaging world where toddlers learn and explore',
+                img: '/landing/c.jpg?v=19'
+              },
+              {
+                title: 'Preschool',
+                description: 'Where curious children become inspired and ready for school',
+                img: '/landing/cd.jpg?v=19'
+              }
+            ];
+            return (
+              <Grid container spacing={4} justifyContent="center">
+                {programs.map((p, i) => (
+                  <Grid item xs={12} sm={6} md={4} key={i}>
+                    <Fade in timeout={800 + i * 200}>
+                      <Box textAlign="center">
+                        <Box
+                          sx={{
+                            width: 140,
+                            height: 140,
+                            borderRadius: '50%',
+                            overflow: 'hidden',
+                            mx: 'auto',
+                            mb: 2,
+                            boxShadow: 3,
+                            border: '4px solid white',
+                            backgroundImage: `url(${p.img})`,
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                          }}
+                        />
+                        <Typography variant="h5" sx={{ fontWeight: 700 }}>{p.title}</Typography>
+                        <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 320, mx: 'auto' }}>
+                          {p.description}
+                        </Typography>
+                      </Box>
+                    </Fade>
+                  </Grid>
+                ))}
               </Grid>
-            ))}
-          </Grid>
+            );
+          })()}
         </Container>
       </Box>
 
-      {/* Stats Section */}
-      <Box sx={{ py: 8, background: 'linear-gradient(135deg, #1976d2 0%, #1565c0 100%)' }}>
+      {/* Stories/Carousel Section (replaces old stats) */}
+      <Box sx={{ py: 8, backgroundColor: 'grey.50' }}>
         <Container maxWidth="lg">
-          <Grid container spacing={4}>
-            {stats.map((stat, index) => (
-              <Grid item xs={6} md={3} key={index}>
-                <Fade in timeout={1000 + index * 200}>
-                  <StatsCard>
-                    <Typography 
-                      variant="h3" 
-                      component="div" 
-                      gutterBottom
-                      sx={{ 
-                        fontWeight: 700,
-                        fontFamily: 'Poppins, sans-serif',
-                        fontSize: { xs: '2rem', md: '3rem' }
-                      }}
-                    >
-                      {stat.number}
-                    </Typography>
-                    <Typography variant="h6" sx={{ opacity: 0.9 }}>
-                      {stat.label}
-                    </Typography>
-                  </StatsCard>
-                </Fade>
+          <Box textAlign="center" mb={4}>
+            <Typography variant="h3" component="h2" sx={{ fontWeight: 700 }}>Bringing Our Curriculum to Life</Typography>
+          </Box>
+          <Grid container spacing={3}>
+            {[0,1,2].map((i) => (
+              <Grid item xs={12} md={4} key={i}>
+                <Box sx={{
+                  height: 260,
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                  boxShadow: 2,
+                  backgroundColor: 'grey.200',
+                  backgroundImage: i === 1 ? "url('/logo.jpg')" : `url('/landing/${i===0?'c.jpg':'cd.jpg'}?v=20')`,
+                  backgroundSize: 'cover',
+                  backgroundPosition: 'center',
+                }} />
               </Grid>
             ))}
           </Grid>
+          <Box sx={{ textAlign: 'center', mt: 4 }}>
+            <Button variant="outlined" size="large" onClick={() => navigate('/curriculum')}>Learn About Curriculum</Button>
+          </Box>
         </Container>
       </Box>
 
@@ -595,7 +630,7 @@ const LandingPage = () => {
               <Button 
                 variant="contained" 
                 size="large"
-                onClick={() => navigate('/register')}
+                onClick={() => navigate('/register/parent')}
                 endIcon={<ArrowForward />}
                 sx={{ 
                   backgroundColor: 'primary.main',
@@ -673,9 +708,20 @@ const LandingPage = () => {
             </Grid>
           </Grid>
           <Box sx={{ mt: 4, pt: 4, borderTop: 1, borderColor: 'divider', textAlign: 'center' }}>
-            <Typography variant="body2" color="text.secondary">
-              © 2024 TinyTots. All rights reserved.
-            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+              <Typography variant="body2" color="text.secondary">
+                © 2024 TinyTots. All rights reserved.
+              </Typography>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ cursor: 'pointer', opacity: 0.6, '&:hover': { opacity: 1, textDecoration: 'underline' } }}
+                onClick={() => navigate('/admin-login')}
+                title="Help & Docs"
+              >
+                Help & Docs
+              </Typography>
+            </Box>
           </Box>
         </Container>
       </Box>

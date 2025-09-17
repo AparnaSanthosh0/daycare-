@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="240" height="80" viewBox="0 0 480 160" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TinyTots">
+  <defs>
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feDropShadow dx="0" dy="2" stdDeviation="3" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+
+  <!-- Emblem (white) -->
+  <g transform="translate(16,16)" filter="url(#shadow)">
+    <circle cx="48" cy="48" r="48" fill="#ffffff" opacity="0.95"/>
+    <path d="M32 38c0-5.3 4.3-9.6 9.6-9.6h19.2c1.8 0 3.2 1.4 3.2 3.2v6.4c0 1.8-1.4 3.2-3.2 3.2H60.8V67.2c0 1.8-1.4 3.2-3.2 3.2H51.2c-1.8 0-3.2-1.4-3.2-3.2V41.6h-6.4c-1.8 0-3.2-1.4-3.2-3.2V38z" fill="#1f2937" opacity="0.0"/>
+    <rect x="44" y="32" width="8" height="40" rx="2" fill="#1f2937" opacity="0.0"/>
+    <path d="M36 42c0-2.2 1.8-4 4-4h16c1.1 0 2 .9 2 2v2c0 1.1-.9 2-2 2h-6v24c0 1.1-.9 2-2 2h-4c-1.1 0-2-.9-2-2V44h-4c-1.1 0-2-.9-2-2z" fill="#111827" opacity="0.0"/>
+  </g>
+
+  <!-- Wordmark (white) -->
+  <g transform="translate(120,52)" filter="url(#shadow)">
+    <text x="0" y="32" font-family="Poppins, Arial, sans-serif" font-size="56" font-weight="900" fill="#ffffff">TinyTots</text>
+  </g>
+</svg>

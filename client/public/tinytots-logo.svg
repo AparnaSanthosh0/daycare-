@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="180" height="48" viewBox="0 0 360 96" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="TinyTots logo">
+  <!-- Playful emblem: stylized T inside rounded shape with stars/dots -->
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#667eea"/>
+      <stop offset="100%" stop-color="#764ba2"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#42a5f5"/>
+      <stop offset="100%" stop-color="#26c6da"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Emblem -->
+  <g transform="translate(6,6)">
+    <circle cx="30" cy="30" r="30" fill="url(#g1)"/>
+    <path d="M18 22c0-3.3 2.7-6 6-6h12c1.1 0 2 .9 2 2v4c0 1.1-.9 2-2 2h-6v18c0 1.1-.9 2-2 2h-4c-1.1 0-2-.9-2-2V24h-4c-1.1 0-2-.9-2-2v0z" fill="white"/>
+    <!-- playful dots -->
+    <circle cx="48" cy="14" r="3" fill="#fff" opacity="0.8"/>
+    <circle cx="14" cy="46" r="2.5" fill="#b3e5fc"/>
+    <circle cx="40" cy="44" r="2" fill="#e1bee7"/>
+  </g>
+
+  <!-- Wordmark -->
+  <g transform="translate(84,18)">
+    <!-- Tiny -->
+    <text x="0" y="20" font-family="Poppins, Arial, sans-serif" font-size="28" font-weight="800" fill="url(#g2)">Tiny</text>
+    <!-- Tots -->
+    <text x="92" y="20" font-family="Poppins, Arial, sans-serif" font-size="28" font-weight="800" fill="#334155">Tots</text>
+    <!-- tagline -->
+    <text x="0" y="44" font-family="Poppins, Arial, sans-serif" font-size="12" font-weight="500" fill="#64748b">Smart Solutions for DayCare</text>
+  </g>
+</svg>

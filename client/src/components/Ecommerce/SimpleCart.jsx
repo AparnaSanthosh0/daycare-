@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import React, { useState } from 'react';
 import {
   Box,
@@ -7,8 +8,6 @@ import {
   Button,
   IconButton,
   Divider,
-  Avatar,
-  Chip,
   Badge,
   Dialog,
   DialogTitle,

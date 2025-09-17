@@ -1,5 +1,6 @@
+/* eslint-disable no-unused-vars */
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -15,18 +16,33 @@ import {
 } from '@mui/material';
 import { Visibility, VisibilityOff, Person, Email, Lock, Phone, Event, Work, School, CloudUpload } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
+import { prefillWithGoogle } from '../../utils/googlePrefill';
 
 // Parent registration styled to match the Child Admission form look
-const Register = () => {
+const Register = ({ fixedRole }) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { register } = useAuth();
   
+  const initialRole = (() => {
+    // Fixed role via route prop overrides everything
+    // Then location.state.preselectRole if provided
+    // Default to 'parent'
+    // eslint-disable-next-line no-undef
+    if (typeof fixedRole !== 'undefined' && fixedRole) return fixedRole;
+    const st = location?.state;
+    if (st && st.preselectRole === 'staff') return 'staff';
+    if (st && st.preselectRole === 'parent') return 'parent';
+    return 'parent';
+  })();
+
   const [formData, setFormData] = useState({
     // Parent / Staff basic details
     firstName: '',
     lastName: '',
     email: '',
     phone: '',
+    username: '',
 
     // Staff-only details
     yearsOfExperience: '',
@@ -36,6 +52,8 @@ const Register = () => {
     // Child admission details (for parents)
     childName: '',
     childDob: '',
+    childGender: 'male',
+    program: 'preschool',
     medicalInfo: '',
     emergencyContactName: '',
     emergencyContactPhone: '',
@@ -43,12 +61,16 @@ const Register = () => {
     // Account
     password: '',
     confirmPassword: '',
-    role: 'parent'
+    role: initialRole, 
+
+    // Email preference
+    notifyByEmail: false
   });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   const handleChange = (e) => {
     const { name, value, files } = e.target;
@@ -71,19 +93,50 @@ const Register = () => {
       return;
     }
 
-    if (formData.password.length < 6) {
-      setError('Password must be at least 6 characters');
+    // Strong password client-side check
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(formData.password)) {
+      setError('Password must be 8+ chars, include upper & lower case, number, and special character');
       setLoading(false);
       return;
     }
 
-    // Staff-specific validations
-    if (formData.role === 'staff') {
-      if (!formData.yearsOfExperience) {
-        setError('Years of Experience is required for staff');
+    // Phone validation (optional but if provided must be 10 digits)
+    if (formData.phone && !/^\d{10}$/.test(formData.phone)) {
+      setError('Phone number must be exactly 10 digits');
+      setLoading(false);
+      return;
+    }
+
+    // Parent-specific child validations
+    if (formData.role !== 'staff') {
+      if (!formData.childName || !formData.childDob) {
+        setError("Child name and date of birth are required for admission");
         setLoading(false);
         return;
       }
+      const dob = new Date(formData.childDob);
+      if (isNaN(dob.getTime())) {
+        setError('Invalid child date of birth');
+        setLoading(false);
+        return;
+      }
+      const today = new Date();
+      const minDob = new Date(today.getFullYear() - 7, today.getMonth(), today.getDate());
+      const maxDob = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+      if (!(dob >= minDob && dob <= maxDob)) {
+        setError('Child age must be between 1 and 7 years');
+        setLoading(false);
+        return;
+      }
+      if (formData.emergencyContactPhone && !/^\d{10}$/.test(formData.emergencyContactPhone)) {
+        setError('Emergency contact phone must be 10 digits');
+        setLoading(false);
+        return;
+      }
+    }
+
+    // Staff-specific validations (removed requirement for years of experience for child admission)
+    if (formData.role === 'staff') {
       if (!formData.qualification) {
         setError('Qualification is required for staff');
         setLoading(false);
@@ -110,22 +163,43 @@ const Register = () => {
         if (key === 'certificateFile') {
           if (value) payload.append('certificate', value);
         } else if (key !== 'confirmPassword') {
+          // Do not send empty yearsOfExperience
+          if (key === 'yearsOfExperience' && (value === '' || value === null || value === undefined)) return;
           payload.append(key, value ?? '');
         }
       });
     } else {
-      const { confirmPassword, certificateFile, ...rest } = formData;
+      const { confirmPassword, certificateFile, yearsOfExperience, ...rest } = formData;
+      // Drop empty yearsOfExperience from JSON payload too
+      if (rest.role === 'staff' && (yearsOfExperience === '' || yearsOfExperience === null || yearsOfExperience === undefined)) {
+        // nothing to add
+      } else if (yearsOfExperience !== undefined) {
+        rest.yearsOfExperience = yearsOfExperience;
+      }
       payload = rest;
     }
 
+    // Ensure notifyByEmail is included for backend optional email
+    if (payload instanceof FormData) {
+      payload.set('notifyByEmail', String(!!formData.notifyByEmail));
+    } else {
+      payload.notifyByEmail = !!formData.notifyByEmail;
+    }
+
     const result = await register(payload);
-    
-    if (result.success) {
+
+    if (result.success && result.pending) {
+      setSuccessMsg(result.message || (formData.role === 'staff' 
+        ? 'Staff registration submitted. Awaiting admin approval.'
+        : 'Admission request submitted. Awaiting admin approval.')
+      );
+      // Stay on the page; do not navigate
+    } else if (result.success) {
       navigate('/dashboard');
     } else {
-      setError(result.message);
+      setError(result.message || 'Registration failed');
     }
-    
+
     setLoading(false);
   };
 
@@ -139,29 +213,49 @@ const Register = () => {
         justifyContent: 'center',
         py: 4,
         px: 2,
-        backgroundImage: 'linear-gradient(rgba(255,255,255,0.72), rgba(255,255,255,0.72)), url(/Landing_image.jpg)',
-        backgroundSize: 'cover',
-        backgroundPosition: 'center',
-        backgroundAttachment: 'fixed'
+        position: 'relative',
+        overflow: 'hidden'
       }}
     >
-      <Container component="main" maxWidth="md" sx={{ px: { xs: 0, sm: 2 } }}>
+      {/* Back to landing */}
+      <IconButton onClick={() => navigate('/')} sx={{ position: 'fixed', top: 16, left: 16, zIndex: 10, color: 'white', backgroundColor: 'rgba(0,0,0,0.35)' }}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19 12H5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          <path d="M12 19L5 12L12 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </IconButton>
+
+      {/* Static background image - children with their teacher playing */}
+      <Box aria-hidden sx={{ position: 'absolute', inset: 0, zIndex: 0,
+        backgroundImage: "linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.15)), url('https://images.unsplash.com/photo-1588072432836-e10032774350?q=80&w=1920&auto=format&fit=crop')",
+        backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.95)'
+      }} />
+
+      <Container component="main" maxWidth="md" sx={{ px: { xs: 0, sm: 2 }, position: 'relative', zIndex: 1 }}>
         <Paper
-          elevation={3}
+          elevation={0}
           sx={{
             p: { xs: 3, sm: 5 },
             borderRadius: 3,
             width: '100%',
+            backdropFilter: 'blur(8px)', backgroundColor: 'rgba(245,240,255,0.5)',
+            border: '1px solid rgba(255,255,255,0.6)', boxShadow: '0 10px 30px rgba(0,0,0,0.12)'
           }}
         >
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Typography component="h1" variant="h5" sx={{ color: 'text.secondary', mb: 0.5 }}>
-              {formData.role === 'staff' ? 'Staff Registration' : 'Admission Registration'}
+              {formData.role === 'staff' ? 'Staff Registration' : 'Parent Registration'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Your registration will be reviewed by our admin team
             </Typography>
           </Box>
+
+          {successMsg && (
+            <Alert severity="success" sx={{ width: '100%', mb: 2 }}>
+              {successMsg}
+            </Alert>
+          )}
 
           {error && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
@@ -171,21 +265,58 @@ const Register = () => {
 
           <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
             <Grid container spacing={2}>
-              {/* Role selector */}
+              {/* Role selector (hidden when fixed role) */}
+              {(!fixedRole) && (
+                <Grid item xs={12}>
+                  <TextField
+                    select
+                    fullWidth
+                    name="role"
+                    label="Registering As"
+                    value={formData.role}
+                    onChange={handleChange}
+                    helperText="Choose your role"
+                  >
+                    <MenuItem value="parent">Parent</MenuItem>
+                    <MenuItem value="staff">Staff</MenuItem>
+                  </TextField>
+                </Grid>
+              )}
+
+              {/* Prefill with Google */}
               <Grid item xs={12}>
-                <TextField
-                  select
-                  fullWidth
-                  name="role"
-                  label="Registering As"
-                  value={formData.role}
-                  onChange={handleChange}
-                  helperText="Choose your role"
+                <Button
+                  variant="outlined"
+                  onClick={async () => {
+                    const res = await prefillWithGoogle();
+                    if (res.success) {
+                      const display = res.profile.displayName || '';
+                      const [first, ...rest] = display.split(' ');
+                      const last = rest.join(' ');
+                      setFormData((prev) => ({
+                        ...prev,
+                        email: res.profile.email || prev.email,
+                        firstName: first || prev.firstName,
+                        lastName: last || prev.lastName,
+                      }));
+                    }
+                  }}
                 >
-                  <MenuItem value="parent">Parent</MenuItem>
-                  <MenuItem value="staff">Staff</MenuItem>
-                  <MenuItem value="vendor">Vendor</MenuItem>
-                </TextField>
+                  Use Google to prefill name & email
+                </Button>
+              </Grid>
+
+              {/* Email preference */}
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <input
+                    id="notifyByEmail"
+                    type="checkbox"
+                    checked={!!formData.notifyByEmail}
+                    onChange={(e) => setFormData(prev => ({ ...prev, notifyByEmail: e.target.checked }))}
+                  />
+                  <label htmlFor="notifyByEmail">Send me a confirmation email after I submit</label>
+                </Box>
               </Grid>
 
               {/* Details */}
@@ -248,7 +379,7 @@ const Register = () => {
                 <TextField
                   fullWidth
                   name="phone"
-                  label="Phone Number"
+                  label="Phone Number (10 digits)"
                   value={formData.phone}
                   onChange={handleChange}
                   InputProps={{
@@ -261,28 +392,21 @@ const Register = () => {
                   sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                 />
               </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  name="username"
+                  label="Username (optional)"
+                  value={formData.username}
+                  onChange={handleChange}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              </Grid>
 
               {/* Staff-only fields */}
               {formData.role === 'staff' && (
                 <>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      required
-                      fullWidth
-                      name="yearsOfExperience"
-                      label="Years of Experience"
-                      value={formData.yearsOfExperience}
-                      onChange={handleChange}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Work />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
-                  </Grid>
+                  {/* Years of Experience removed as per requirement */}
                   <Grid item xs={12} sm={6}>
                     <TextField
                       required
@@ -373,6 +497,34 @@ const Register = () => {
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     />
                   </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      select
+                      fullWidth
+                      name="childGender"
+                      label="Child's Gender"
+                      value={formData.childGender}
+                      onChange={handleChange}
+                    >
+                      <MenuItem value="male">Male</MenuItem>
+                      <MenuItem value="female">Female</MenuItem>
+                    </TextField>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      select
+                      fullWidth
+                      name="program"
+                      label="Program"
+                      value={formData.program}
+                      onChange={handleChange}
+                    >
+                      <MenuItem value="infant">Infant</MenuItem>
+                      <MenuItem value="toddler">Toddler</MenuItem>
+                      <MenuItem value="preschool">Preschool</MenuItem>
+                      <MenuItem value="prekindergarten">Pre-Kindergarten</MenuItem>
+                    </TextField>
+                  </Grid>
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
@@ -422,6 +574,8 @@ const Register = () => {
                   </Grid>
                 </>
               )}
+
+
 
               {/* Account security */}
               <Grid item xs={12} sm={6}>
@@ -488,13 +642,7 @@ const Register = () => {
               {loading ? 'Creating Account...' : 'Create Account'}
             </Button>
             
-            <Box sx={{ textAlign: 'center' }}>
-              <Link to="/login" style={{ textDecoration: 'none' }}>
-                <Typography variant="body2" color="primary">
-                  Already have an account? Sign In
-                </Typography>
-              </Link>
-            </Box>
+
           </Box>
         </Paper>
       </Container>

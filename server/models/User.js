@@ -12,6 +12,12 @@ const userSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  username: {
+    type: String,
+    unique: true,
+    sparse: true,
+    trim: true
+  },
   email: {
     type: String,
     required: true,
@@ -41,7 +47,7 @@ const userSchema = new mongoose.Schema({
   },
   isActive: {
     type: Boolean,
-    default: true
+    default: false // default to false; admin must approve
   },
   profileImage: {
     type: String,
@@ -52,12 +58,44 @@ const userSchema = new mongoose.Schema({
     phone: String,
     relationship: String
   },
+  // Notification preferences
+  notifications: {
+    email: { type: Boolean, default: true },
+    sms: { type: Boolean, default: false },
+    whatsapp: { type: Boolean, default: false }
+  },
+  // Optional communication history for admins to track outreach
+  communications: [{
+    date: { type: Date, default: Date.now },
+    channel: { type: String, enum: ['email', 'phone', 'in-person', 'other'], default: 'other' },
+    subject: { type: String, trim: true },
+    notes: { type: String, trim: true },
+    by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }
+  }],
+  // Optional payment info reference (non-sensitive)
+  payment: {
+    method: { type: String, enum: ['card', 'bank', 'cash', 'other'], default: 'other' },
+    last4: { type: String, trim: true },
+    billingEmail: { type: String, trim: true }
+  },
   // Staff-specific profile data (only used when role = 'staff')
   staff: {
     yearsOfExperience: { type: Number, min: 0 },
     qualification: { type: String, trim: true },
     certificateUrl: { type: String, default: null }
-  }
+  },
+  // Verification & security
+  emailVerified: { type: Boolean, default: false },
+  phoneVerified: { type: Boolean, default: false },
+  whatsappVerified: { type: Boolean, default: false },
+  emailVerificationToken: { type: String, default: null },
+  emailVerificationExpires: { type: Date, default: null },
+  resetPasswordToken: { type: String, default: null },
+  resetPasswordExpires: { type: Date, default: null },
+  phoneVerificationCode: { type: String, default: null },
+  phoneVerificationExpires: { type: Date, default: null },
+  whatsappVerificationCode: { type: String, default: null },
+  whatsappVerificationExpires: { type: Date, default: null }
 }, {
   timestamps: true
 });

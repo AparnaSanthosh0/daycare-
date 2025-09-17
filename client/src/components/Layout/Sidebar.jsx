@@ -21,26 +21,100 @@ import {
   Payment,
   LocalActivity,
   Assessment,
-  Person
+  Email,
+  Person,
+  SupervisorAccount,
+  ManageAccounts,
+  Inventory2
 } from '@mui/icons-material';
+import { useAuth } from '../../contexts/AuthContext';
 
 const drawerWidth = 240;
 
-const menuItems = [
-  { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
-  { text: 'Children', icon: <ChildCare />, path: '/children' },
-  { text: 'Parents', icon: <People />, path: '/parents' },
-  { text: 'Staff', icon: <Group />, path: '/staff' },
-  { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
-  { text: 'Billing', icon: <Payment />, path: '/billing' },
-  { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
-  { text: 'Reports', icon: <Assessment />, path: '/reports' },
-  { text: 'Profile', icon: <Person />, path: '/profile' },
-];
+const getMenuItems = (userRole) => {
+  if (userRole === 'admin') {
+    return [
+      { text: 'Admin Home', icon: <SupervisorAccount />, path: '/admin' },
+      { text: 'Users', icon: <ManageAccounts />, path: '/admin/users' },
+      { text: 'Staff', icon: <Group />, path: '/staff' },
+      { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
+      { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
+      { text: 'Billing', icon: <Payment />, path: '/billing' },
+      { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
+      { text: 'Visitor Management', icon: <People />, path: '/visitors' },
+      { text: 'Emergency Response', icon: <Assessment />, path: '/emergency' },
+      { text: 'Transport & Pickup', icon: <Group />, path: '/transport' },
+      { text: 'Communication', icon: <Email />, path: '/communication' },
+      { text: 'Reports', icon: <Assessment />, path: '/reports' },
+      { text: 'Inventory', icon: <Inventory2 />, path: '/admin/inventory' },
+      { text: 'Customers', icon: <People />, path: '/admin/customers' },
+      { text: 'Profile', icon: <Person />, path: '/profile' },
+    ];
+  }
+  if (userRole === 'vendor') {
+    return [
+      { text: 'Supplier & Vendor Management', icon: <LocalActivity />, path: '/vendor?tab=0' },
+      { text: 'Performance & Contract', icon: <Assessment />, path: '/vendor?tab=1' },
+      { text: 'Invoices & Payments', icon: <Payment />, path: '/vendor?tab=2' },
+      { text: 'Returns & Refunds', icon: <Assessment />, path: '/vendor?tab=3' },
+      { text: 'Support & Ticketing', icon: <People />, path: '/vendor?tab=4' },
+      { text: 'Reviews Moderation', icon: <Assessment />, path: '/vendor?tab=5' },
+      { text: 'Gift Cards & Vouchers', icon: <Dashboard />, path: '/vendor?tab=6' },
+      { text: 'Products', icon: <ChildCare />, path: '/vendor?tab=7' },
+      { text: 'Profile', icon: <Person />, path: '/vendor' },
+    ];
+  }
+  if (userRole === 'staff') {
+    return [
+      { text: 'Staff Console', icon: <Group />, path: '/staff' },
+      { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
+      { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
+      { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
+      { text: 'Visitor Management', icon: <People />, path: '/visitors' },
+      { text: 'Emergency Response', icon: <Assessment />, path: '/emergency' },
+      { text: 'Transport & Pickup', icon: <Group />, path: '/transport' },
+      { text: 'Communication', icon: <Email />, path: '/communication' },
+      { text: 'Reports', icon: <Assessment />, path: '/reports' },
+      { text: 'Profile', icon: <Person />, path: '/profile' },
+    ];
+  }
+  if (userRole === 'parent') {
+    return [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Staff', icon: <People />, path: '/parent/staff' },
+      { text: 'Reports', icon: <Assessment />, path: '/parent/reports' },
+      { text: 'Admissions', icon: <Assessment />, path: '/parent/admissions' },
+      { text: 'Notifications', icon: <Assessment />, path: '/parent/notifications' },
+      { text: 'Messaging', icon: <Email />, path: '/parent/messaging' },
+      { text: 'Billing & Payments', icon: <Payment />, path: '/parent/billing' },
+      { text: 'Feedback', icon: <Assessment />, path: '/parent/feedback' },
+      { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
+      { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
+      { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
+      { text: 'Profile', icon: <Person />, path: '/profile' },
+    ];
+  }
+  // Default app navigation
+  return [
+    { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+    { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
+    { text: 'Meal Planning', icon: <LocalActivity />, path: '/staff' },
+    { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
+    // Parent-focused modules as standalone pages
+    { text: 'Notifications', icon: <Assessment />, path: '/parent/notifications' },
+    { text: 'Messaging', icon: <Email />, path: '/parent/messaging' },
+    { text: 'Billing', icon: <Payment />, path: '/parent/billing' },
+    { text: 'Feedback', icon: <Assessment />, path: '/parent/feedback' },
+    { text: 'Profile', icon: <Person />, path: '/profile' },
+  ];
+};
 
 const Sidebar = ({ mobileOpen, onDrawerToggle }) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  
+  const menuItems = getMenuItems(user?.role);
 
   const drawer = (
     <div>
@@ -54,7 +128,7 @@ const Sidebar = ({ mobileOpen, onDrawerToggle }) => {
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding>
             <ListItemButton
-              selected={location.pathname === item.path}
+              selected={(location.pathname + location.search) === item.path}
               onClick={() => navigate(item.path)}
               sx={{
                 '&.Mui-selected': {
@@ -68,7 +142,7 @@ const Sidebar = ({ mobileOpen, onDrawerToggle }) => {
             >
               <ListItemIcon
                 sx={{
-                  color: location.pathname === item.path ? 'white' : 'inherit',
+                  color: (location.pathname + location.search) === item.path ? 'white' : 'inherit',
                 }}
               >
                 {item.icon}

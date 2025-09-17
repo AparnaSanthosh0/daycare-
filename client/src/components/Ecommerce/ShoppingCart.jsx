@@ -25,20 +25,13 @@ import {
   Favorite,
   FavoriteBorder,
   Close,
-  ArrowBack,
   Payment,
   CheckCircle
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 
 // Styled Components
-const CartContainer = styled(Box)(({ theme }) => ({
-  maxWidth: '1200px',
-  margin: '0 auto',
-  padding: theme.spacing(3),
-  backgroundColor: '#f8fafc',
-  minHeight: '100vh'
-}));
+
 
 const CartCard = styled(Card)(({ theme }) => ({
   marginBottom: theme.spacing(2),

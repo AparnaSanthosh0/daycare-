@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Grid,
   Card,
@@ -14,9 +15,10 @@ import {
   Group,
   TrendingUp
 } from '@mui/icons-material';
+import { useAuth } from '../../contexts/AuthContext';
 
 const StatCard = ({ title, value, icon, color }) => (
-  <Card sx={{ height: '100%' }}>
+  <Card sx={{ height: '100%', transition: 'transform 120ms ease, box-shadow 120ms ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: 6 } }}>
     <CardContent>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Box>
@@ -36,6 +38,16 @@ const StatCard = ({ title, value, icon, color }) => (
 );
 
 const Dashboard = () => {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Redirect admin users to admin dashboard
+    if (user?.role === 'admin') {
+      navigate('/admin', { replace: true });
+    }
+  }, [user, navigate]);
+
   // Mock data - replace with real data from API
   const stats = [
     { title: 'Total Children', value: '45', icon: <ChildCare />, color: '#1976d2' },
