@@ -129,74 +129,47 @@ const VendorCustomerManagement = () => {
       {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card sx={{ bgcolor: 'primary.main', color: 'white' }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Total Customers
-              </Typography>
-              <Typography variant="h4" color="primary">
-                {stats.totalCustomers || 0}
-              </Typography>
+              <Typography variant="h4">{stats.totalCustomers || 0}</Typography>
+              <Typography variant="body2">Total Customers</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card sx={{ bgcolor: 'success.main', color: 'white' }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Active Customers
-              </Typography>
-              <Typography variant="h4" color="success.main">
-                {stats.activeCustomers || 0}
-              </Typography>
+              <Typography variant="h4">{stats.activeCustomers || 0}</Typography>
+              <Typography variant="body2">Active Customers</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card sx={{ bgcolor: 'info.main', color: 'white' }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                New This Month
-              </Typography>
-              <Typography variant="h4" color="info.main">
-                {stats.newCustomersThisMonth || 0}
-              </Typography>
+              <Typography variant="h4">{stats.totalOrders || 0}</Typography>
+              <Typography variant="body2">Total Orders</Typography>
             </CardContent>
           </Card>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Card>
+          <Card sx={{ bgcolor: 'warning.main', color: 'white' }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Top Customer Value
-              </Typography>
-              <Typography variant="h4" color="warning.main">
-                {formatCurrency(stats.topCustomers?.[0]?.totalSpent)}
-              </Typography>
+              <Typography variant="h4">{formatCurrency(stats.totalRevenue || 0)}</Typography>
+              <Typography variant="body2">Total Revenue</Typography>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
-      <Card>
+      {/* Search and Filter Controls */}
+      <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">
-              All Customers ({customers.length})
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button variant="outlined" onClick={fetchCustomers} disabled={loading}>
-                <Refresh />
-              </Button>
-            </Box>
-          </Box>
-
-          {/* Search and Filter Controls */}
-          <Grid container spacing={2} sx={{ mb: 2 }}>
-            <Grid item xs={12} sm={6}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={6} md={4}>
               <TextField
                 fullWidth
-                placeholder="Search customers by name, email, or phone"
+                placeholder="Search customers..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 InputProps={{
@@ -208,15 +181,14 @@ const VendorCustomerManagement = () => {
                 }}
               />
             </Grid>
-            <Grid item xs={12} sm={3}>
+            <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Sort By</InputLabel>
                 <Select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  label="Sort By"
                 >
-                  <MenuItem value="createdAt">Date Joined</MenuItem>
+                  <MenuItem value="createdAt">Join Date</MenuItem>
                   <MenuItem value="firstName">First Name</MenuItem>
                   <MenuItem value="lastName">Last Name</MenuItem>
                   <MenuItem value="totalSpent">Total Spent</MenuItem>
@@ -224,32 +196,51 @@ const VendorCustomerManagement = () => {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid item xs={12} sm={3}>
+            <Grid item xs={12} sm={6} md={3}>
               <FormControl fullWidth>
                 <InputLabel>Order</InputLabel>
                 <Select
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value)}
-                  label="Order"
                 >
                   <MenuItem value="desc">Descending</MenuItem>
                   <MenuItem value="asc">Ascending</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
+            <Grid item xs={12} sm={6} md={2}>
+              <Button
+                variant="outlined"
+                startIcon={<Refresh />}
+                onClick={fetchCustomers}
+                disabled={loading}
+                fullWidth
+              >
+                Refresh
+              </Button>
+            </Grid>
           </Grid>
+        </CardContent>
+      </Card>
+
+      {/* Customer Table */}
+      <Card>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">
+              Customer Details ({customers.length})
+            </Typography>
+          </Box>
 
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Phone</TableCell>
-                  <TableCell>Total Orders</TableCell>
-                  <TableCell>Total Spent</TableCell>
-                  <TableCell>Status</TableCell>
-                  <TableCell>Joined</TableCell>
+                  <TableCell>Customer</TableCell>
+                  <TableCell>Contact Info</TableCell>
+                  <TableCell>Purchase History</TableCell>
+                  <TableCell>Account Status</TableCell>
+                  <TableCell>Join Date</TableCell>
                   <TableCell>Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -258,32 +249,82 @@ const VendorCustomerManagement = () => {
                   <TableRow key={customer._id}>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Avatar sx={{ bgcolor: 'primary.main', width: 32, height: 32 }}>
+                        <Avatar sx={{ bgcolor: 'primary.main', width: 40, height: 40 }}>
                           {customer.firstName?.[0]}{customer.lastName?.[0]}
                         </Avatar>
-                        {customer.firstName} {customer.lastName}
+                        <Box>
+                          <Typography variant="subtitle2" fontWeight="bold">
+                            {customer.firstName} {customer.lastName}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            ID: {customer._id?.slice(-8)}
+                          </Typography>
+                        </Box>
                       </Box>
                     </TableCell>
-                    <TableCell>{customer.email}</TableCell>
-                    <TableCell>{customer.phone}</TableCell>
-                    <TableCell>{customer.totalOrders}</TableCell>
-                    <TableCell>{formatCurrency(customer.totalSpent)}</TableCell>
                     <TableCell>
-                      <Chip
-                        label={customer.isActive ? 'Active' : 'Inactive'}
-                        color={getStatusColor(customer.isActive)}
-                        size="small"
-                      />
+                      <Box>
+                        <Typography variant="body2">
+                          <strong>Email:</strong> {customer.email}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Phone:</strong> {customer.phone || 'N/A'}
+                        </Typography>
+                        {customer.address && (
+                          <Typography variant="body2">
+                            <strong>Address:</strong> {customer.address.street}, {customer.address.city}
+                          </Typography>
+                        )}
+                      </Box>
                     </TableCell>
-                    <TableCell>{formatDate(customer.createdAt)}</TableCell>
                     <TableCell>
-                      <IconButton
-                        size="small"
-                        onClick={() => viewCustomerDetails(customer._id)}
-                        title="View Details"
-                      >
-                        <Visibility />
-                      </IconButton>
+                      <Box>
+                        <Typography variant="body2">
+                          <strong>Orders:</strong> {customer.totalOrders || 0}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Total Spent:</strong> {formatCurrency(customer.totalSpent || 0)}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Avg Order:</strong> {formatCurrency((customer.totalSpent || 0) / (customer.totalOrders || 1))}
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+                        <Chip
+                          label={customer.isActive ? 'Active' : 'Inactive'}
+                          color={getStatusColor(customer.isActive)}
+                          size="small"
+                        />
+                        {customer.parentId && (
+                          <Chip
+                            label="Linked to Parent"
+                            color="info"
+                            size="small"
+                            variant="outlined"
+                          />
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2">
+                        {formatDate(customer.createdAt)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {Math.floor((new Date() - new Date(customer.createdAt)) / (1000 * 60 * 60 * 24))} days ago
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <IconButton
+                          onClick={() => viewCustomerDetails(customer._id)}
+                          color="primary"
+                          size="small"
+                        >
+                          <Visibility />
+                        </IconButton>
+                      </Box>
                     </TableCell>
                   </TableRow>
                 ))}

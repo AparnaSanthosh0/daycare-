@@ -43,6 +43,7 @@ import VendorRegister from './pages/Vendor/VendorRegister';
 import VendorDashboard from './pages/Vendor/VendorDashboard';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import UserManagement from './pages/Admin/UserManagement';
+import StaffConsole from './pages/Admin/StaffConsole';
 import AdminOrders from './pages/Admin/AdminOrders';
 import VendorOrders from './pages/Vendor/VendorOrders';
 import Families from './pages/Families/Families';
@@ -322,6 +323,10 @@ function App() {
           <Route 
             path="/admin/users" 
             element={user?.role === 'admin' ? <Layout><UserManagement /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
+          />
+          <Route 
+            path="/admin/staff-console" 
+            element={user?.role === 'admin' ? <Layout><StaffConsole /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
           />
           <Route 
             path="/admin/inventory" 

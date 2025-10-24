@@ -14,7 +14,7 @@ import {
   Alert
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { ExpandMore } from '@mui/icons-material';
+import { ExpandMore, Refresh, PersonAdd, SupervisorAccount } from '@mui/icons-material';
 import api from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -53,9 +53,39 @@ export default function Staff() {
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Staff Dashboard
-      </Typography>
+      {/* Header with Action Buttons */}
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
+          Staff Dashboard
+        </Typography>
+        <Box display="flex" gap={2}>
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={fetchAssignedChildren}
+            disabled={loading}
+            sx={{ borderColor: 'primary.main', color: 'primary.main' }}
+          >
+            Refresh
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<PersonAdd />}
+            onClick={() => {/* Navigate to assignment page or open dialog */}}
+            sx={{ bgcolor: 'primary.main' }}
+          >
+            Assign Child to Staff
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<SupervisorAccount />}
+            onClick={() => {/* Navigate to staff details or open dialog */}}
+            sx={{ bgcolor: 'primary.main' }}
+          >
+            View All Staff Details
+          </Button>
+        </Box>
+      </Box>
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>

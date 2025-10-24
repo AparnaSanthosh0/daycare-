@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import {
   Grid,
   Card,
@@ -43,7 +44,13 @@ import {
   Visibility,
   PersonAdd,
   Refresh,
-  ExpandMore
+  ExpandMore,
+  Receipt,
+  Payment,
+  Calculate,
+  Assessment,
+  Add,
+  Edit
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
@@ -94,11 +101,21 @@ const StatCard = ({ title, value, icon, color, onClick }) => (
 
 const AdminDashboard = () => {
   const { user } = useAuth();
+  const location = useLocation();
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [success, setSuccess] = useState('');
   const [tabValue, setTabValue] = useState(0);
+
+  // Handle URL parameters for tab selection
+  useEffect(() => {
+    const urlParams = new URLSearchParams(location.search);
+    const tab = urlParams.get('tab');
+    if (tab === 'staff') {
+      setTabValue(3); // Staff Management tab
+    }
+  }, [location.search]);
   const [search, setSearch] = useState('');
   
   // Data states
@@ -165,6 +182,33 @@ const AdminDashboard = () => {
   const [reason, setReason] = useState('');
   const [viewDialog, setViewDialog] = useState({ open: false, data: null, type: '' });
   const [editAssignmentDialog, setEditAssignmentDialog] = useState({ open: false, staff: null, children: [] });
+  
+  // Billing and Payment states
+  const [invoiceDialog, setInvoiceDialog] = useState({ open: false, parent: null, child: null });
+  const [paymentDialog, setPaymentDialog] = useState({ open: false, invoice: null });
+  const [billingStats, setBillingStats] = useState({
+    totalRevenue: 0,
+    paidInvoices: 0,
+    pendingPayments: 0,
+    overdueAmount: 0
+  });
+  const [invoices, setInvoices] = useState([]);
+  const [payments, setPayments] = useState([]);
+  const [invoiceForm, setInvoiceForm] = useState({
+    parentId: '',
+    childId: '',
+    amount: '',
+    dueDate: '',
+    description: '',
+    items: []
+  });
+  const [paymentForm, setPaymentForm] = useState({
+    invoiceId: '',
+    amount: '',
+    paymentMethod: 'cash',
+    paymentDate: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
 
   useEffect(() => {
     if (user?.role === 'admin') {
@@ -249,6 +293,78 @@ const AdminDashboard = () => {
     } catch (e) {
       console.error('Update vendor error:', e);
       setError(e?.response?.data?.message || 'Failed to update vendor');
+    }
+  };
+
+  // Billing functions
+  const generateInvoice = async () => {
+    try {
+      const response = await api.post('/api/billing/invoices', invoiceForm);
+      setInvoices([...invoices, response.data]);
+      setInvoiceDialog({ open: false, parent: null, child: null });
+      setInvoiceForm({
+        parentId: '',
+        childId: '',
+        amount: '',
+        dueDate: '',
+        description: '',
+        items: []
+      });
+      fetchBillingStats();
+    } catch (error) {
+      console.error('Generate invoice error:', error);
+      setError('Failed to generate invoice');
+    }
+  };
+
+  const recordPayment = async () => {
+    try {
+      const response = await api.post('/api/billing/payments', paymentForm);
+      setPayments([...payments, response.data]);
+      setPaymentDialog({ open: false, invoice: null });
+      setPaymentForm({
+        invoiceId: '',
+        amount: '',
+        paymentMethod: 'cash',
+        paymentDate: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+      fetchBillingStats();
+    } catch (error) {
+      console.error('Record payment error:', error);
+      setError('Failed to record payment');
+    }
+  };
+
+  const calculateLateFees = async () => {
+    try {
+      await api.post('/api/billing/calculate-late-fees');
+      fetchBillingStats();
+      setSuccess('Late fees calculated successfully');
+    } catch (error) {
+      console.error('Calculate late fees error:', error);
+      setError('Failed to calculate late fees');
+    }
+  };
+
+  const generateFinancialReport = async () => {
+    try {
+      const response = await api.get('/api/billing/reports/financial');
+      // Handle report generation (download or display)
+      console.log('Financial report:', response.data);
+      setSuccess('Financial report generated successfully');
+    } catch (error) {
+      console.error('Generate report error:', error);
+      setError('Failed to generate financial report');
+    }
+  };
+
+  const fetchBillingStats = async () => {
+    try {
+      const response = await api.get('/api/billing/stats');
+      setBillingStats(response.data);
+    } catch (error) {
+      console.error('Fetch billing stats error:', error);
     }
   };
 
@@ -447,7 +563,7 @@ const AdminDashboard = () => {
       fetchDashboardData();
       
       // Show success message
-      setSuccessMsg(`Child profile created successfully for ${payload.firstName} ${payload.lastName}`);
+      setSuccess(`Child profile created successfully for ${payload.firstName} ${payload.lastName}`);
     } catch (error) {
       console.error('Error creating child:', error);
       const errorMessage = error?.response?.data?.message || error?.response?.data?.errors?.[0]?.msg || 'Failed to create child profile';
@@ -676,9 +792,9 @@ const AdminDashboard = () => {
         </Alert>
       )}
 
-      {successMsg && (
-        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccessMsg('')}>
-          {successMsg}
+      {success && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccess('')}>
+          {success}
         </Alert>
       )}
       
@@ -828,6 +944,7 @@ const AdminDashboard = () => {
           />
           <Tab label="Staff Console" />
           <Tab label="Customers" />
+          <Tab label="Billing & Payments" />
           <Tab label="All Users" />
         </Tabs>
 
@@ -839,14 +956,29 @@ const AdminDashboard = () => {
             <Box>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                 <Typography variant="h6">Staff Management & Assignments</Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button variant="outlined" onClick={fetchStaffAssignments} disabled={loadingAssignments}>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button 
+                    variant="outlined" 
+                    onClick={fetchStaffAssignments} 
+                    disabled={loadingAssignments}
+                    sx={{ borderColor: 'primary.main', color: 'primary.main' }}
+                  >
                     Refresh
                   </Button>
-                  <Button variant="contained" startIcon={<PersonAdd />} onClick={() => setAssignmentDialog({ open: true, child: null, selectedStaffId: '', selectedChildId: '' })}>
+                  <Button 
+                    variant="contained" 
+                    startIcon={<PersonAdd />} 
+                    onClick={() => setAssignmentDialog({ open: true, child: null, selectedStaffId: '', selectedChildId: '' })}
+                    sx={{ bgcolor: 'primary.main' }}
+                  >
                     Assign Child to Staff
                   </Button>
-                  <Button variant="contained" startIcon={<Group />} onClick={() => setTabValue(4)}>
+                  <Button 
+                    variant="contained" 
+                    startIcon={<SupervisorAccount />} 
+                    onClick={() => setTabValue(4)}
+                    sx={{ bgcolor: 'primary.main' }}
+                  >
                     View All Staff Details
                   </Button>
                 </Box>
@@ -901,6 +1033,18 @@ const AdminDashboard = () => {
                                 <Grid item xs={12} sm={6}>
                                   <Typography variant="body2"><strong>Qualification:</strong> {staffAssignment.staff.staff?.qualification || 'N/A'}</Typography>
                                 </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <Typography variant="body2"><strong>Department:</strong> {staffAssignment.staff.staff?.department || 'N/A'}</Typography>
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <Typography variant="body2"><strong>Specialization:</strong> {staffAssignment.staff.staff?.specialization || 'N/A'}</Typography>
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <Typography variant="body2"><strong>Hire Date:</strong> {staffAssignment.staff.staff?.hireDate ? new Date(staffAssignment.staff.staff.hireDate).toLocaleDateString() : 'N/A'}</Typography>
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <Typography variant="body2"><strong>Status:</strong> {staffAssignment.staff.isActive ? 'Active' : 'Inactive'}</Typography>
+                                </Grid>
                               </Grid>
                               <Typography variant="subtitle1" gutterBottom>Assigned Children</Typography>
                               {staffAssignment.children.length === 0 ? (
@@ -918,11 +1062,21 @@ const AdminDashboard = () => {
                                           <Typography variant="body2"><strong>Gender:</strong> {child.gender}</Typography>
                                           <Typography variant="body2"><strong>Program:</strong> {child.program}</Typography>
                                           <Typography variant="body2"><strong>Status:</strong> {child.isActive ? 'Active' : 'Inactive'}</Typography>
+                                          <Typography variant="body2"><strong>Date of Birth:</strong> {child.dateOfBirth ? new Date(child.dateOfBirth).toLocaleDateString() : 'N/A'}</Typography>
+                                          {child.allergies && child.allergies.length > 0 && (
+                                            <Typography variant="body2" color="error"><strong>Allergies:</strong> {child.allergies.join(', ')}</Typography>
+                                          )}
                                           {child.medicalConditions && child.medicalConditions.length > 0 && (
-                                            <Typography variant="body2"><strong>Medical Conditions:</strong> {child.medicalConditions.map(m => m.condition || m).join(', ')}</Typography>
+                                            <Typography variant="body2" color="warning.main"><strong>Medical Conditions:</strong> {child.medicalConditions.map(m => m.condition || m).join(', ')}</Typography>
                                           )}
                                           {child.emergencyContacts && child.emergencyContacts.length > 0 && (
                                             <Typography variant="body2"><strong>Emergency Contact:</strong> {child.emergencyContacts[0]?.name} ({child.emergencyContacts[0]?.phone})</Typography>
+                                          )}
+                                          {child.authorizedPickup && child.authorizedPickup.length > 0 && (
+                                            <Typography variant="body2"><strong>Authorized Pickup:</strong> {child.authorizedPickup[0]?.name} ({child.authorizedPickup[0]?.phone})</Typography>
+                                          )}
+                                          {child.schedule && Object.keys(child.schedule).length > 0 && (
+                                            <Typography variant="body2"><strong>Schedule:</strong> {Object.entries(child.schedule).map(([day, time]) => `${day}: ${time}`).join(', ')}</Typography>
                                           )}
                                           <Box sx={{ mt: 2 }}>
                                             <Button size="small" variant="outlined" color="error" onClick={() => handleUnassignStaff(child._id)}>
@@ -1188,23 +1342,92 @@ const AdminDashboard = () => {
                   Register New Customer
                 </Button>
               </Box>
+              
+              {/* Customer Statistics */}
+              <Grid container spacing={3} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'primary.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">{customers.length}</Typography>
+                      <Typography variant="body2">Total Customers</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'success.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">{customers.filter(c => c.isActive).length}</Typography>
+                      <Typography variant="body2">Active Customers</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'info.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">{customers.filter(c => c.parentId).length}</Typography>
+                      <Typography variant="body2">Linked to Parents</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'warning.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">{customers.filter(c => !c.parentId).length}</Typography>
+                      <Typography variant="body2">E-commerce Only</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
               <Grid container spacing={2}>
                 {customers.map((customer) => (
                   <Grid item xs={12} sm={6} md={4} key={customer._id}>
-                    <Card variant="outlined">
+                    <Card variant="outlined" sx={{ height: '100%' }}>
                       <CardContent>
-                        <Typography variant="h6" gutterBottom>
-                          {customer.firstName} {customer.lastName}
-                        </Typography>
-                        <Typography variant="body2">
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                          <Typography variant="h6" gutterBottom>
+                            {customer.firstName} {customer.lastName}
+                          </Typography>
+                          <Chip 
+                            label={customer.isActive ? 'Active' : 'Inactive'} 
+                            color={customer.isActive ? 'success' : 'error'} 
+                            size="small" 
+                          />
+                        </Box>
+                        
+                        <Typography variant="body2" sx={{ mb: 1 }}>
                           <strong>Email:</strong> {customer.email}
                         </Typography>
-                        <Typography variant="body2">
+                        <Typography variant="body2" sx={{ mb: 1 }}>
                           <strong>Phone:</strong> {customer.phone || 'N/A'}
                         </Typography>
-                        <Typography variant="body2">
-                          <strong>Parent:</strong> {customer.parentId ? 'Linked to Parent' : 'New Customer'}
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          <strong>Account Type:</strong> {customer.parentId ? 'Linked to Parent' : 'E-commerce Only'}
                         </Typography>
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          <strong>Joined:</strong> {new Date(customer.createdAt).toLocaleDateString()}
+                        </Typography>
+                        
+                        {customer.address && (
+                          <Typography variant="body2" sx={{ mb: 1 }}>
+                            <strong>Address:</strong> {customer.address.street}, {customer.address.city}
+                          </Typography>
+                        )}
+                        
+                        {customer.preferredProducts && customer.preferredProducts.length > 0 && (
+                          <Typography variant="body2" sx={{ mb: 1 }}>
+                            <strong>Preferred Products:</strong> {customer.preferredProducts.length} items
+                          </Typography>
+                        )}
+                        
+                        <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                          <Button size="small" variant="outlined">
+                            View Details
+                          </Button>
+                          <Button size="small" variant="outlined">
+                            Edit
+                          </Button>
+                        </Box>
                       </CardContent>
                     </Card>
                   </Grid>
@@ -1215,6 +1438,297 @@ const AdminDashboard = () => {
                   </Grid>
                 )}
               </Grid>
+            </Box>
+          )}
+          {tabValue === 6 && (
+            <Box>
+              <Typography variant="h6" gutterBottom>
+                Billing & Payment Management
+              </Typography>
+              
+              {/* Billing Statistics */}
+              <Grid container spacing={3} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'primary.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">${billingStats.totalRevenue.toFixed(2)}</Typography>
+                      <Typography variant="body2">Total Revenue</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'success.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">${billingStats.paidInvoices.toFixed(2)}</Typography>
+                      <Typography variant="body2">Paid Invoices</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'warning.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">${billingStats.pendingPayments.toFixed(2)}</Typography>
+                      <Typography variant="body2">Pending Payments</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'error.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">${billingStats.overdueAmount.toFixed(2)}</Typography>
+                      <Typography variant="body2">Overdue Amount</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              {/* Billing Actions */}
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Button 
+                    variant="contained" 
+                    fullWidth 
+                    startIcon={<Receipt />}
+                    onClick={() => setInvoiceDialog({ open: true, parent: null, child: null })}
+                  >
+                    Generate Invoice
+                  </Button>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Button 
+                    variant="outlined" 
+                    fullWidth 
+                    startIcon={<Payment />}
+                    onClick={() => setPaymentDialog({ open: true, invoice: null })}
+                  >
+                    Record Payment
+                  </Button>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Button 
+                    variant="outlined" 
+                    fullWidth 
+                    startIcon={<Calculate />}
+                    onClick={calculateLateFees}
+                  >
+                    Calculate Late Fees
+                  </Button>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Button 
+                    variant="outlined" 
+                    fullWidth 
+                    startIcon={<Assessment />}
+                    onClick={generateFinancialReport}
+                  >
+                    Financial Reports
+                  </Button>
+                </Grid>
+              </Grid>
+
+              {/* Recent Invoices */}
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Recent Invoices
+                  </Typography>
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Invoice #</TableCell>
+                          <TableCell>Parent/Child</TableCell>
+                          <TableCell>Amount</TableCell>
+                          <TableCell>Due Date</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Actions</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {invoices.length > 0 ? (
+                          invoices.map((invoice) => (
+                            <TableRow key={invoice._id}>
+                              <TableCell>#{invoice.invoiceNumber}</TableCell>
+                              <TableCell>
+                                {invoice.parent?.firstName} {invoice.parent?.lastName}
+                                {invoice.child && ` - ${invoice.child.firstName}`}
+                              </TableCell>
+                              <TableCell>${invoice.amount.toFixed(2)}</TableCell>
+                              <TableCell>{new Date(invoice.dueDate).toLocaleDateString()}</TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={invoice.status}
+                                  color={invoice.status === 'paid' ? 'success' : invoice.status === 'overdue' ? 'error' : 'warning'}
+                                  size="small"
+                                />
+                              </TableCell>
+                              <TableCell>
+                                <Button size="small" variant="outlined">
+                                  View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={6} align="center">
+                              <Typography variant="body2" color="text.secondary">
+                                No invoices generated yet
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+
+              {/* Payment History */}
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Payment History
+                  </Typography>
+                  <TableContainer>
+                    <Table>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Payment ID</TableCell>
+                          <TableCell>Parent/Child</TableCell>
+                          <TableCell>Amount</TableCell>
+                          <TableCell>Payment Date</TableCell>
+                          <TableCell>Method</TableCell>
+                          <TableCell>Status</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {payments.length > 0 ? (
+                          payments.map((payment) => (
+                            <TableRow key={payment._id}>
+                              <TableCell>#{payment.paymentNumber}</TableCell>
+                              <TableCell>
+                                {payment.invoice?.parent?.firstName} {payment.invoice?.parent?.lastName}
+                                {payment.invoice?.child && ` - ${payment.invoice.child.firstName}`}
+                              </TableCell>
+                              <TableCell>${payment.amount.toFixed(2)}</TableCell>
+                              <TableCell>{new Date(payment.paymentDate).toLocaleDateString()}</TableCell>
+                              <TableCell>{payment.paymentMethod}</TableCell>
+                              <TableCell>
+                                <Chip
+                                  label={payment.status}
+                                  color={payment.status === 'completed' ? 'success' : 'warning'}
+                                  size="small"
+                                />
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell colSpan={6} align="center">
+                              <Typography variant="body2" color="text.secondary">
+                                No payment history available
+                              </Typography>
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </CardContent>
+              </Card>
+
+              {/* Tuition Management */}
+              <Card sx={{ mb: 3 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Tuition Management
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <Button 
+                        variant="outlined" 
+                        fullWidth 
+                        startIcon={<Add />}
+                        onClick={() => {/* Set tuition rates */}}
+                      >
+                        Set Tuition Rates
+                      </Button>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <Button 
+                        variant="outlined" 
+                        fullWidth 
+                        startIcon={<Edit />}
+                        onClick={() => {/* Update rates */}}
+                      >
+                        Update Rates
+                      </Button>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <Button 
+                        variant="outlined" 
+                        fullWidth 
+                        startIcon={<Visibility />}
+                        onClick={() => {/* View rates */}}
+                      >
+                        View Current Rates
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
+
+              {/* Financial Reports */}
+              <Card>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>
+                    Financial Reports
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Button 
+                        variant="outlined" 
+                        fullWidth 
+                        startIcon={<Assessment />}
+                        onClick={() => {/* Monthly report */}}
+                      >
+                        Monthly Report
+                      </Button>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Button 
+                        variant="outlined" 
+                        fullWidth 
+                        startIcon={<Assessment />}
+                        onClick={() => {/* Quarterly report */}}
+                      >
+                        Quarterly Report
+                      </Button>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Button 
+                        variant="outlined" 
+                        fullWidth 
+                        startIcon={<Assessment />}
+                        onClick={() => {/* Annual report */}}
+                      >
+                        Annual Report
+                      </Button>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={3}>
+                      <Button 
+                        variant="outlined" 
+                        fullWidth 
+                        startIcon={<Assessment />}
+                        onClick={() => {/* Custom report */}}
+                      >
+                        Custom Report
+                      </Button>
+                    </Grid>
+                  </Grid>
+                </CardContent>
+              </Card>
             </Box>
           )}
         </Box>
@@ -1849,6 +2363,157 @@ const AdminDashboard = () => {
         <DialogActions>
           <Button onClick={() => setEditAssignmentDialog({ open: false, staff: null, children: [] })}>
             Close
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Invoice Generation Dialog */}
+      <Dialog open={invoiceDialog.open} onClose={() => setInvoiceDialog({ open: false, parent: null, child: null })} maxWidth="md" fullWidth>
+        <DialogTitle>Generate Invoice</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Parent</InputLabel>
+                <Select
+                  value={invoiceForm.parentId}
+                  onChange={(e) => setInvoiceForm({ ...invoiceForm, parentId: e.target.value })}
+                >
+                  {parentsList.map((parent) => (
+                    <MenuItem key={parent._id} value={parent._id}>
+                      {parent.firstName} {parent.lastName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Child</InputLabel>
+                <Select
+                  value={invoiceForm.childId}
+                  onChange={(e) => setInvoiceForm({ ...invoiceForm, childId: e.target.value })}
+                >
+                  {allChildren.map((child) => (
+                    <MenuItem key={child._id} value={child._id}>
+                      {child.firstName} {child.lastName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Amount"
+                type="number"
+                value={invoiceForm.amount}
+                onChange={(e) => setInvoiceForm({ ...invoiceForm, amount: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Due Date"
+                type="date"
+                value={invoiceForm.dueDate}
+                onChange={(e) => setInvoiceForm({ ...invoiceForm, dueDate: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Description"
+                multiline
+                rows={3}
+                value={invoiceForm.description}
+                onChange={(e) => setInvoiceForm({ ...invoiceForm, description: e.target.value })}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setInvoiceDialog({ open: false, parent: null, child: null })}>
+            Cancel
+          </Button>
+          <Button onClick={generateInvoice} variant="contained">
+            Generate Invoice
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Payment Recording Dialog */}
+      <Dialog open={paymentDialog.open} onClose={() => setPaymentDialog({ open: false, invoice: null })} maxWidth="md" fullWidth>
+        <DialogTitle>Record Payment</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Invoice</InputLabel>
+                <Select
+                  value={paymentForm.invoiceId}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, invoiceId: e.target.value })}
+                >
+                  {invoices.filter(inv => inv.status !== 'paid').map((invoice) => (
+                    <MenuItem key={invoice._id} value={invoice._id}>
+                      #{invoice.invoiceNumber} - ${invoice.amount}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Amount"
+                type="number"
+                value={paymentForm.amount}
+                onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Payment Method</InputLabel>
+                <Select
+                  value={paymentForm.paymentMethod}
+                  onChange={(e) => setPaymentForm({ ...paymentForm, paymentMethod: e.target.value })}
+                >
+                  <MenuItem value="cash">Cash</MenuItem>
+                  <MenuItem value="check">Check</MenuItem>
+                  <MenuItem value="credit_card">Credit Card</MenuItem>
+                  <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Payment Date"
+                type="date"
+                value={paymentForm.paymentDate}
+                onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Notes"
+                multiline
+                rows={3}
+                value={paymentForm.notes}
+                onChange={(e) => setPaymentForm({ ...paymentForm, notes: e.target.value })}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentDialog({ open: false, invoice: null })}>
+            Cancel
+          </Button>
+          <Button onClick={recordPayment} variant="contained">
+            Record Payment
           </Button>
         </DialogActions>
       </Dialog>

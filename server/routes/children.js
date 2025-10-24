@@ -637,4 +637,26 @@ router.post('/', auth, authorize('admin'), async (req, res) => {
   }
 });
 
+// Get children assigned to a specific staff member
+router.get('/staff/:staffId', auth, authorize('admin', 'staff'), async (req, res) => {
+  try {
+    const { staffId } = req.params;
+    
+    // Staff can only view their own assigned children
+    if (req.user.role === 'staff' && req.user.userId !== staffId) {
+      return res.status(403).json({ message: 'Forbidden' });
+    }
+
+    const children = await Child.find({ assignedStaff: staffId, isActive: true })
+      .populate('parents', 'firstName lastName email phone')
+      .select('firstName lastName dateOfBirth gender program age allergies medicalConditions emergencyContacts authorizedPickup schedule tuitionRate')
+      .sort({ firstName: 1 });
+
+    res.json({ children });
+  } catch (error) {
+    console.error('Get staff children error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

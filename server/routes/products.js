@@ -155,6 +155,7 @@ router.post(
     const vendor = await Vendor.findOne({ status: 'approved' });
     if (!vendor) return res.status(400).json({ message: 'No approved vendor configured' });
 
+    const stockQty = req.body.stockQty ?? 0;
     const payload = {
       name: req.body.name,
       price: req.body.price,
@@ -166,7 +167,15 @@ router.post(
       imageFocalX: req.body.imageFocalX ?? 50,
       imageFocalY: req.body.imageFocalY ?? 50,
       inStock: req.body.inStock !== undefined ? !!req.body.inStock : true,
-      stockQty: req.body.stockQty ?? 0,
+      stockQty: stockQty,
+      originalStockQty: stockQty, // Track original stock set by vendor
+      vendorStockUpdates: [{
+        updatedAt: new Date(),
+        previousStock: 0,
+        newStock: stockQty,
+        updatedBy: vendor._id,
+        reason: 'Initial stock upload'
+      }],
       isNew: !!req.body.isNew,
       isBestseller: !!req.body.isBestseller,
       isActive: req.body.isActive !== undefined ? !!req.body.isActive : true,
@@ -232,6 +241,67 @@ router.delete(
     const product = await Product.findByIdAndDelete(req.params.id);
     if (!product) return res.status(404).json({ message: 'Product not found' });
     res.json({ message: 'Product deleted' });
+  }
+);
+
+// Vendor: Update product stock
+router.patch('/:id/stock', 
+  auth,
+  authorize('vendor', 'admin'),
+  [
+    body('stockQty').isInt({ min: 0 }).withMessage('Stock quantity must be >= 0'),
+    body('reason').optional().isString()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+      const { stockQty, reason = 'Stock update' } = req.body;
+      const product = await Product.findById(req.params.id);
+      
+      if (!product) {
+        return res.status(404).json({ message: 'Product not found' });
+      }
+
+      // Check if vendor owns this product or user is admin
+      if (req.user.role !== 'admin' && product.vendor.toString() !== req.user.vendorId) {
+        return res.status(403).json({ message: 'Access denied' });
+      }
+
+      const previousStock = product.stockQty;
+      
+      // Update stock and track the change
+      product.stockQty = stockQty;
+      product.inStock = stockQty > 0;
+      
+      // Add stock update to history
+      product.vendorStockUpdates.push({
+        updatedAt: new Date(),
+        previousStock: previousStock,
+        newStock: stockQty,
+        updatedBy: req.user.vendorId || product.vendor,
+        reason: reason
+      });
+
+      await product.save();
+      await product.populate('vendor', 'name email phone');
+
+      res.json({
+        message: 'Stock updated successfully',
+        product: {
+          _id: product._id,
+          name: product.name,
+          stockQty: product.stockQty,
+          originalStockQty: product.originalStockQty,
+          inStock: product.inStock,
+          vendorStockUpdates: product.vendorStockUpdates.slice(-5) // Last 5 updates
+        }
+      });
+    } catch (error) {
+      console.error('Error updating stock:', error);
+      res.status(500).json({ message: 'Error updating stock', error: error.message });
+    }
   }
 );
 

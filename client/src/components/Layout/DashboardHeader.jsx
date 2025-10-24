@@ -52,7 +52,7 @@ const DashboardHeader = () => {
         backgroundColor: 'transparent',
         boxShadow: 'none',
         zIndex: 1100,
-        top: { xs: 0, md: -16 } // Move header up more for better visibility
+        top: { xs: 0, md: -20 } // Move header further up to eliminate conflicts with headings
       }}
     >
       <Box sx={{ height: 6, backgroundColor: '#4b314d', width: '100%' }} />

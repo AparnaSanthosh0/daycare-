@@ -113,6 +113,42 @@ router.post('/', auth, async (req, res) => {
       $inc: { totalOrders: 1, totalSpent: total }
     });
 
+    // Auto-generate invoice for paid orders
+    if (finalPaymentStatus === 'paid') {
+      try {
+        const Invoice = require('../models/Invoice');
+        const invoice = new Invoice({
+          order: order._id,
+          customer: customerId,
+          items: orderItems.map(item => ({
+            product: item.product,
+            quantity: item.quantity,
+            price: item.price,
+            name: item.name,
+            vendor: item.vendor
+          })),
+          subtotal: order.subtotal,
+          shipping: order.shipping,
+          tax: order.tax,
+          total: order.total,
+          billingAddress: order.billingAddress,
+          shippingAddress: order.shippingAddress,
+          paymentMethod: order.paymentMethod,
+          paymentStatus: order.paymentStatus,
+          status: 'paid',
+          paidAt: new Date(),
+          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          notes: 'Thank you for your purchase!',
+          terms: 'Payment due within 30 days of invoice date.'
+        });
+        await invoice.save();
+        console.log(`✅ Invoice generated for order ${order._id}`);
+      } catch (invoiceError) {
+        console.error('Error generating invoice:', invoiceError);
+        // Don't fail the order if invoice generation fails
+      }
+    }
+
     // If payment is successful, notify admin and vendors immediately
     if (finalPaymentStatus === 'paid') {
       try {

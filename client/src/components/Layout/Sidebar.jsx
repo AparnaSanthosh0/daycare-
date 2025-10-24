@@ -37,7 +37,7 @@ const getMenuItems = (userRole) => {
     return [
       { text: 'Admin Home', icon: <SupervisorAccount />, path: '/admin' },
       { text: 'Users', icon: <ManageAccounts />, path: '/admin/users' },
-      { text: 'Staff', icon: <Group />, path: '/staff' },
+      { text: 'Staff Console', icon: <SupervisorAccount />, path: '/admin/staff-console' },
       { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
       { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
       { text: 'Billing', icon: <Payment />, path: '/billing' },
@@ -69,7 +69,7 @@ const getMenuItems = (userRole) => {
   }
   if (userRole === 'staff') {
     return [
-      { text: 'Staff Console', icon: <Group />, path: '/staff' },
+      { text: 'Staff Dashboard', icon: <Group />, path: '/staff' },
       { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
       { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
       { text: 'Activities', icon: <LocalActivity />, path: '/activities' },

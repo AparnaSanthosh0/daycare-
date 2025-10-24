@@ -20,7 +20,7 @@ const Layout = ({ children }) => {
         sx={{
           flexGrow: 1,
           p: 3,
-          pt: { xs: 6, sm: 6 }, // Further reduced padding-top for higher header
+          pt: { xs: 12, sm: 12 }, // Further increased padding-top to ensure headings are fully visible
           width: { sm: `calc(100% - 240px)` },
           minHeight: '100vh',
           position: 'relative',

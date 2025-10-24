@@ -17,6 +17,14 @@ const productSchema = new mongoose.Schema(
     reviews: { type: Number, default: 0, min: 0 },
     inStock: { type: Boolean, default: true },
     stockQty: { type: Number, default: 0, min: 0 },
+    originalStockQty: { type: Number, default: 0, min: 0 }, // Original stock set by vendor during upload
+    vendorStockUpdates: [{ // Track vendor stock updates
+      updatedAt: { type: Date, default: Date.now },
+      previousStock: { type: Number, min: 0 },
+      newStock: { type: Number, min: 0 },
+      updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' },
+      reason: { type: String, default: 'Stock update' }
+    }],
     isNew: { type: Boolean, default: false },
     isBestseller: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },

@@ -12,6 +12,132 @@ const router = express.Router();
 // Admin-only Inventory & Warehouse Management
 router.use(auth, authorize('admin'));
 
+// Get vendor stock updates and e-commerce product stock
+router.get('/vendor-stock', async (req, res) => {
+  try {
+    const Product = require('../models/Product');
+    const Vendor = require('../models/Vendor');
+    const StockMovement = require('../models/StockMovement');
+    
+    // Get all products with vendor information and stock movements
+    const products = await Product.find()
+      .populate('vendor', 'name email phone')
+      .sort({ updatedAt: -1 });
+
+    // Get recent stock movements from vendors
+    const recentMovements = await StockMovement.find()
+      .populate('product', 'name image')
+      .populate('performedBy', 'firstName lastName email')
+      .sort({ createdAt: -1 })
+      .limit(50);
+
+    // Get stock summary by vendor
+    const vendorStockSummary = await Product.aggregate([
+      {
+        $match: { vendor: { $exists: true } }
+      },
+      {
+        $group: {
+          _id: '$vendor',
+          totalProducts: { $sum: 1 },
+          inStockProducts: {
+            $sum: { $cond: [{ $eq: ['$inStock', true] }, 1, 0] }
+          },
+          outOfStockProducts: {
+            $sum: { $cond: [{ $eq: ['$inStock', false] }, 1, 0] }
+          },
+          averagePrice: { $avg: '$price' },
+          totalValue: { $sum: { $multiply: ['$price', '$stock'] } }
+        }
+      },
+      {
+        $lookup: {
+          from: 'vendors',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'vendorInfo'
+        }
+      },
+      {
+        $unwind: '$vendorInfo'
+      },
+      {
+        $project: {
+          vendorName: '$vendorInfo.name',
+          vendorEmail: '$vendorInfo.email',
+          totalProducts: 1,
+          inStockProducts: 1,
+          outOfStockProducts: 1,
+          averagePrice: 1,
+          totalValue: 1,
+          stockHealth: {
+            $cond: [
+              { $eq: ['$outOfStockProducts', 0] },
+              'excellent',
+              {
+                $cond: [
+                  { $lt: ['$outOfStockProducts', { $divide: ['$totalProducts', 4] }] },
+                  'good',
+                  'needs_attention'
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]);
+
+    // Get detailed product stock with vendor info
+    const detailedProducts = await Product.find()
+      .populate('vendor', 'name email phone')
+      .sort({ updatedAt: -1 });
+
+    res.json({
+      products: products.map(p => ({
+        _id: p._id,
+        name: p.name,
+        price: p.price,
+        stock: p.stock,
+        inStock: p.inStock,
+        vendor: p.vendor,
+        category: p.category,
+        updatedAt: p.updatedAt
+      })),
+      detailedProducts: detailedProducts.map(p => ({
+        _id: p._id,
+        name: p.name,
+        description: p.description,
+        price: p.price,
+        stock: p.stockQty,
+        originalStock: p.originalStockQty,
+        inStock: p.inStock,
+        category: p.category,
+        image: p.image,
+        vendor: p.vendor,
+        createdAt: p.createdAt,
+        updatedAt: p.updatedAt,
+        lastStockUpdate: p.updatedAt,
+        stockStatus: p.stockQty > 0 ? (p.stockQty < 10 ? 'low' : 'good') : 'out',
+        vendorStockUpdates: p.vendorStockUpdates || [],
+        stockChange: p.originalStockQty - p.stockQty, // Positive means stock decreased
+        stockChangePercentage: p.originalStockQty > 0 ? 
+          Math.round(((p.stockQty - p.originalStockQty) / p.originalStockQty) * 100) : 0
+      })),
+      recentMovements,
+      vendorStockSummary,
+      summary: {
+        totalProducts: products.length,
+        inStockProducts: products.filter(p => p.inStock).length,
+        outOfStockProducts: products.filter(p => !p.inStock).length,
+        totalVendors: vendorStockSummary.length
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching vendor stock:', error);
+    res.status(500).json({ message: 'Error fetching vendor stock data', error: error.message });
+  }
+});
+
 // Warehouses
 router.get('/warehouses', async (req, res) => {
   const list = await Warehouse.find({}).sort({ createdAt: -1 });

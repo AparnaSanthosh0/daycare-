@@ -70,6 +70,8 @@ app.use('/api/purchase-orders', requireDb, require('./routes/purchaseOrders'));
 app.use('/api/payments', requireDb, require('./routes/payments'));
 // Orders (customer → admin → vendor flow)
 app.use('/api/orders', requireDb, require('./routes/orders'));
+// Invoices (auto-generated for paid orders)
+app.use('/api/invoices', requireDb, require('./routes/invoices'));
 // Reviews (customer feedback to vendors and admin)
 app.use('/api/reviews', requireDb, require('./routes/reviews'));
 
