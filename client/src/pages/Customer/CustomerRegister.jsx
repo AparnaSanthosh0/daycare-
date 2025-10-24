@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -12,74 +12,67 @@ import {
   InputAdornment,
   IconButton
 } from '@mui/material';
-import { Visibility, VisibilityOff, Person, Lock, Email, Phone, Home, ArrowBack } from '@mui/icons-material';
+import { Person, ArrowBack, PhoneIphone } from '@mui/icons-material';
 import api from '../../config/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 const CustomerRegister = () => {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    phone: '',
-    password: '',
-    confirmPassword: '',
-    gender: '',
-    address: {
-      street: '',
-      city: '',
-      state: '',
-      zipCode: '',
-      country: 'US'
-    }
-  });
-  const [showPassword, setShowPassword] = useState(false);
+  const { refreshUser } = useAuth();
+  const [step, setStep] = useState('enter'); // 'enter' | 'verify'
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [otp, setOtp] = useState('');
+  const [resendIn, setResendIn] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [previewUrl, setPreviewUrl] = useState('');
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    if (name.startsWith('address.')) {
-      const field = name.split('.')[1];
-      setFormData({
-        ...formData,
-        address: {
-          ...formData.address,
-          [field]: value
-        }
-      });
-    } else {
-      setFormData({
-        ...formData,
-        [name]: value
-      });
+  useEffect(() => {
+    if (!resendIn) return;
+    const id = setInterval(() => setResendIn((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => clearInterval(id);
+  }, [resendIn]);
+
+  const requestOtp = async (e) => {
+    e?.preventDefault();
+    setError('');
+    setPreviewUrl('');
+    if (!fullName.trim()) return setError('Please enter your full name');
+    if (!email) return setError('Please enter your email');
+    if (!phone) return setError('Please enter your mobile number');
+    setLoading(true);
+    try {
+      const res = await api.post('/api/customers/otp/send', { email, phone });
+      setPreviewUrl(res.data?.previewUrl || '');
+      setStep('verify');
+      setResendIn(30);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to send OTP');
+      setPreviewUrl('');
+    } finally {
+      setLoading(false);
     }
-    if (error) setError('');
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
+  const verifyOtp = async (e) => {
+    e?.preventDefault();
     setError('');
-
-    if (formData.password !== formData.confirmPassword) {
-      setError('Passwords do not match');
-      setLoading(false);
-      return;
-    }
-
+    if (!otp) return setError('Enter the OTP sent to your email/mobile');
+    setLoading(true);
     try {
-      const { confirmPassword, ...customerData } = formData;
-      const response = await api.post('/api/customers/register', customerData);
-      const { token, customer } = response.data;
-      
+      const [firstName, ...rest] = fullName.trim().split(/\s+/);
+      const lastName = rest.join(' ');
+      const res = await api.post('/api/customers/otp/verify', { email, code: otp, phone, firstName, lastName });
+      const { token } = res.data || {};
+      if (!token) throw new Error('Missing token');
       localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({ ...customer, role: 'customer' }));
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
-      navigate('/customer');
+      await refreshUser();
+      navigate('/shop');
     } catch (err) {
-      setError(err.response?.data?.message || 'Registration failed');
+      setError(err.response?.data?.message || 'Invalid OTP');
     } finally {
       setLoading(false);
     }
@@ -108,245 +101,93 @@ const CustomerRegister = () => {
             top: -60,
             left: 0,
             backgroundColor: 'rgba(255, 255, 255, 0.9)',
-            '&:hover': {
-              backgroundColor: 'rgba(255, 255, 255, 1)',
-            },
+            '&:hover': { backgroundColor: 'rgba(255, 255, 255, 1)' },
             zIndex: 1
           }}
         >
           <ArrowBack />
         </IconButton>
-
-        <Paper 
-          elevation={6} 
-          sx={{ 
-            p: 4,
-            backgroundColor: 'rgba(255, 255, 255, 0.85)',
-            backdropFilter: 'blur(16px) saturate(140%)',
-            borderRadius: 4,
-            border: '1px solid rgba(255,255,255,0.6)',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.2)',
-            maxHeight: '90vh',
-            overflowY: 'auto'
-          }}
-        >
-          <Typography component="h1" variant="h4" align="center" gutterBottom>
-            Customer Registration
-          </Typography>
-          
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          
-          <Box component="form" onSubmit={handleSubmit}>
-            <Grid container spacing={2}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  id="firstName"
-                  label="First Name"
-                  name="firstName"
-                  autoComplete="given-name"
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Person />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  id="lastName"
-                  label="Last Name"
-                  name="lastName"
-                  autoComplete="family-name"
-                  value={formData.lastName}
-                  onChange={handleChange}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  id="email"
-                  label="Email Address"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Email />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  id="phone"
-                  label="Phone Number"
-                  name="phone"
-                  type="tel"
-                  autoComplete="tel"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Phone />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  name="password"
-                  label="Password"
-                  type={showPassword ? 'text' : 'password'}
-                  id="password"
-                  autoComplete="new-password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Lock />
-                      </InputAdornment>
-                    ),
-                    endAdornment: (
-                      <InputAdornment position="end">
-                        <IconButton
-                          aria-label="toggle password visibility"
-                          onClick={() => setShowPassword(!showPassword)}
-                          edge="end"
-                        >
-                          {showPassword ? <VisibilityOff /> : <Visibility />}
-                        </IconButton>
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  name="confirmPassword"
-                  label="Confirm Password"
-                  type="password"
-                  id="confirmPassword"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  select
-                  name="gender"
-                  label="Gender"
-                  id="gender"
-                  value={formData.gender}
-                  onChange={handleChange}
-                >
-                  <option value="">Select Gender</option>
-                  <option value="male">Male</option>
-                  <option value="female">Female</option>
-                  <option value="other">Other</option>
-                </TextField>
-              </Grid>
-              
-              {/* Address Section */}
-              <Grid item xs={12}>
-                <Typography variant="h6" gutterBottom>
-                  Address Information
-                </Typography>
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  name="address.street"
-                  label="Street Address"
-                  id="address.street"
-                  value={formData.address.street}
-                  onChange={handleChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Home />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  name="address.city"
-                  label="City"
-                  id="address.city"
-                  value={formData.address.city}
-                  onChange={handleChange}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  name="address.state"
-                  label="State"
-                  id="address.state"
-                  value={formData.address.state}
-                  onChange={handleChange}
-                />
-              </Grid>
-              <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  name="address.zipCode"
-                  label="ZIP Code"
-                  id="address.zipCode"
-                  value={formData.address.zipCode}
-                  onChange={handleChange}
-                />
-              </Grid>
-            </Grid>
-            
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? 'Creating Account...' : 'Create Account'}
-            </Button>
-            
-            <Box textAlign="center">
-              <Typography variant="body2">
-                Already have an account?{' '}
-                <Link to="/customer-login" style={{ textDecoration: 'none' }}>
-                  Sign in here
-                </Link>
+        <Paper elevation={6} sx={{ p: 0, overflow: 'hidden', borderRadius: 4 }}>
+          <Grid container>
+            <Grid item xs={12} md={5} sx={{ bgcolor: '#2e7d32', color: 'white', p: 4, display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: { md: 420 } }}>
+              <Typography variant="h4" fontWeight={800} gutterBottom>
+                Join TinyTots!
               </Typography>
-            </Box>
-          </Box>
+              <Typography variant="body1" sx={{ opacity: 0.95 }}>
+                Create your account to start shopping and get personalized recommendations.
+              </Typography>
+            </Grid>
+            <Grid item xs={12} md={7} sx={{ p: 4, backgroundColor: 'rgba(255, 255, 255, 0.9)' }}>
+              {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+              {step === 'enter' && (
+                <Box component="form" onSubmit={requestOtp}>
+                  <TextField
+                    fullWidth
+                    required
+                    label="Full Name"
+                    value={fullName}
+                    onChange={(e) => { setFullName(e.target.value); if (error) setError(''); }}
+                  />
+                  <TextField
+                    fullWidth
+                    required
+                    label="Email Id"
+                    value={email}
+                    onChange={(e) => { setEmail(e.target.value); if (error) setError(''); }}
+                    InputProps={{ startAdornment: (<InputAdornment position="start"><Person /></InputAdornment>) }}
+                  />
+                  <TextField
+                    fullWidth
+                    sx={{ mt: 2 }}
+                    required
+                    label="Your Mobile No."
+                    value={phone}
+                    onChange={(e) => { const v = e.target.value.replace(/[^\d+]/g, ''); setPhone(v); if (error) setError(''); }}
+                    InputProps={{ startAdornment: (<InputAdornment position="start"><PhoneIphone /></InputAdornment>) }}
+                  />
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                    OTP will be sent on this mobile no for verification
+                  </Typography>
+                  <Button type="submit" fullWidth variant="contained" color="success" sx={{ mt: 2 }} disabled={loading}>
+                    {loading ? 'Sending OTP…' : 'GET OTP'}
+                  </Button>
+                  <Button fullWidth variant="text" sx={{ mt: 1 }} onClick={() => navigate('/customer-login')}>
+                    Existing user? Log in
+                  </Button>
+                </Box>
+              )}
+              {step === 'verify' && (
+                <Box component="form" onSubmit={verifyOtp}>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    OTP sent to {email || phone}. Enter the 6-digit code below.
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    autoFocus
+                    label="Enter OTP"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    inputProps={{ inputMode: 'numeric', pattern: '[0-9]*', maxLength: 6 }}
+                  />
+                  <Button type="submit" fullWidth variant="contained" color="success" sx={{ mt: 3 }} disabled={loading}>
+                    {loading ? 'Verifying…' : 'Create Account'}
+                  </Button>
+                  <Button fullWidth variant="text" sx={{ mt: 1 }} disabled={resendIn > 0 || loading} onClick={requestOtp}>
+                    {resendIn > 0 ? `Resend in ${resendIn}s` : 'Resend OTP'}
+                  </Button>
+                  <Button fullWidth variant="text" sx={{ mt: 1 }} onClick={() => { setStep('enter'); setOtp(''); }}>
+                    Use different details
+                  </Button>
+                  {!!previewUrl && (
+                    <Button fullWidth variant="text" sx={{ mt: 1 }} onClick={() => window.open(previewUrl, '_blank')}>Open email preview</Button>
+                  )}
+                </Box>
+              )}
+            </Grid>
+          </Grid>
         </Paper>
       </Container>
     </Box>
   );
 };
-
 export default CustomerRegister;

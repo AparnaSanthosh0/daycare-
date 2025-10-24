@@ -1,7 +1,10 @@
 import axios from 'axios';
 
 // API Configuration
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// Force the API URL to be http://localhost:5000 for development
+const API_BASE_URL = 'http://localhost:5000';
+
+console.log('🔧 API_BASE_URL configured as:', API_BASE_URL);
 
 // Create axios instance with base configuration
 const api = axios.create({
@@ -41,9 +44,14 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid
+      // Token expired or invalid - only redirect if not already on login page
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      delete api.defaults.headers.common['Authorization'];
+      
+      // Only redirect if not already on login page to avoid loops
+      if (window.location.pathname !== '/login' && window.location.pathname !== '/admin-login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }

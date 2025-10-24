@@ -1,452 +1,401 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
   Typography,
   Grid,
   Card,
   CardContent,
+  CardMedia,
   Button,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
-  Chip,
   IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
   TextField,
-  Alert
+  Alert,
+  Chip,
+  Divider,
+  FormGroup,
+  FormControlLabel,
+  Checkbox,
+  Slider,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
+  Rating,
+  Pagination,
+  Stack
 } from '@mui/material';
 import {
   ShoppingCart,
-  Receipt,
-  Person,
-  Add,
-  Remove,
-  Delete,
-  Edit
+  Favorite,
+  FavoriteBorder,
 } from '@mui/icons-material';
-import api from '../../config/api';
+import api, { API_BASE_URL } from '../../config/api';
+
+// Replace the previous dashboard with a storefront experience after login
+// Inspired by FirstCry/Myntra style: left filters + right product grid + sort + pagination
+
+const DEFAULT_LIMIT = 12;
+const MAX_PRICE_DEFAULT = 5000;
+
+function formatCurrency(value) {
+  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(value); } catch { return `$${Number(value || 0).toFixed(2)}`; }
+}
+
+function getImageUrl(path) {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path; // already absolute
+  if (path.startsWith('/uploads')) return `${API_BASE_URL}${path}`; // serve from API host
+  return path; // fallback (e.g., CDN or public asset)
+}
 
 const CustomerDashboard = () => {
-  const [customer, setCustomer] = useState(null);
-  const [orders, setOrders] = useState([]);
+  // Data
   const [products, setProducts] = useState([]);
-  const [cart, setCart] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [shippingAddress, setShippingAddress] = useState({
-    street: '',
-    city: '',
-    state: '',
-    zipCode: '',
-    country: 'US'
+  const [categories, setCategories] = useState([]);
+  const [wishlist, setWishlist] = useState(new Set());
+
+  // Server-side paging
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [limit] = useState(DEFAULT_LIMIT);
+  const [sort, setSort] = useState('newest');
+
+  // Filters UI state
+  const [filters, setFilters] = useState({
+    q: '',
+    category: '',
+    inStock: true,
+    sizes: [],
+    price: [0, MAX_PRICE_DEFAULT],
   });
 
+  // UI helpers
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [pincode, setPincode] = useState('');
+  const [pinChecked, setPinChecked] = useState(false);
+
+  // Derive available sizes from current result (simple and effective for now)
+  const availableSizes = useMemo(() => {
+    const set = new Set();
+    products.forEach(p => (Array.isArray(p.sizes) ? p.sizes : []).forEach(s => set.add(String(s))));
+    return Array.from(set).sort();
+  }, [products]);
+
+  // Initial bootstrap
   useEffect(() => {
-    loadCustomerData();
-    loadProducts();
+    // Load wishlist from localStorage
+    try {
+      const saved = localStorage.getItem('customer_wishlist');
+      if (saved) setWishlist(new Set(JSON.parse(saved)));
+    } catch {}
+
+    loadCategories();
   }, []);
 
-  const loadCustomerData = async () => {
+  useEffect(() => {
+    loadProducts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit, sort]);
+
+  const loadCategories = async () => {
     try {
-      const [profileRes, ordersRes] = await Promise.all([
-        api.get('/api/customers/profile'),
-        api.get('/api/customers/orders')
-      ]);
-      setCustomer(profileRes.data);
-      setOrders(ordersRes.data);
-      setShippingAddress(profileRes.data.address || shippingAddress);
-    } catch (err) {
-      setError('Failed to load customer data');
+      const res = await api.get('/api/products/categories/list');
+      setCategories(res.data?.categories || []);
+    } catch (e) {
+      // Non-fatal
     }
+  };
+
+  const buildParams = () => {
+    const params = {
+      page,
+      limit,
+      sort,
+    };
+    if (filters.q) params.q = filters.q;
+    if (filters.category) params.category = filters.category;
+    if (filters.inStock !== undefined) params.inStock = filters.inStock;
+    if (filters.sizes?.length) params.sizes = filters.sizes.join(',');
+    if (Array.isArray(filters.price)) {
+      params.minPrice = filters.price[0];
+      params.maxPrice = filters.price[1];
+    }
+    return params;
   };
 
   const loadProducts = async () => {
-    try {
-      const response = await api.get('/api/products');
-      setProducts(response.data);
-    } catch (err) {
-      setError('Failed to load products');
-    }
-  };
-
-  const addToCart = (product) => {
-    const existingItem = cart.find(item => item.product === product._id);
-    if (existingItem) {
-      setCart(cart.map(item =>
-        item.product === product._id
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      ));
-    } else {
-      setCart([...cart, {
-        product: product._id,
-        quantity: 1,
-        price: product.price,
-        name: product.name,
-        image: product.image
-      }]);
-    }
-  };
-
-  const updateCartQuantity = (productId, quantity) => {
-    if (quantity <= 0) {
-      setCart(cart.filter(item => item.product !== productId));
-    } else {
-      setCart(cart.map(item =>
-        item.product === productId
-          ? { ...item, quantity }
-          : item
-      ));
-    }
-  };
-
-  const removeFromCart = (productId) => {
-    setCart(cart.filter(item => item.product !== productId));
-  };
-
-  const getCartTotal = () => {
-    return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
-  };
-
-  const handleCheckout = async () => {
-    if (cart.length === 0) return;
-    
     setLoading(true);
+    setError('');
     try {
-      const orderData = {
-        items: cart,
-        shippingAddress,
-        billingAddress: shippingAddress,
-        paymentMethod: 'card'
-      };
-      
-      await api.post('/api/customers/orders', orderData);
-      setCart([]);
-      setCheckoutOpen(false);
-      loadCustomerData(); // Refresh orders
-      setError('');
-    } catch (err) {
-      setError(err.response?.data?.message || 'Checkout failed');
+      const res = await api.get('/api/products', { params: buildParams() });
+      setProducts(res.data?.products || []);
+      setTotal(res.data?.total || 0);
+      // Adjust slider max price dynamically (optional)
+      const maxSeen = Math.max(
+        MAX_PRICE_DEFAULT,
+        ...((res.data?.products || []).map(p => p.price || 0))
+      );
+      setFilters(prev => ({ ...prev, price: [prev.price[0], Math.ceil(maxSeen)] }));
+    } catch (e) {
+      setError(e.response?.data?.message || 'Failed to load products');
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusColor = (status) => {
-    const colors = {
-      pending: 'warning',
-      confirmed: 'info',
-      processing: 'primary',
-      shipped: 'secondary',
-      delivered: 'success',
-      cancelled: 'error',
-      refunded: 'default'
-    };
-    return colors[status] || 'default';
+  // Handlers
+  const applyFilters = () => {
+    setPage(1);
+    loadProducts();
   };
 
+  const clearFilters = () => {
+    setFilters({ q: '', category: '', inStock: true, sizes: [], price: [0, MAX_PRICE_DEFAULT] });
+    setPage(1);
+    setSort('newest');
+    setTimeout(loadProducts, 0);
+  };
+
+  const toggleSize = (size) => {
+    setFilters(prev => {
+      const set = new Set(prev.sizes);
+      set.has(size) ? set.delete(size) : set.add(size);
+      return { ...prev, sizes: Array.from(set) };
+    });
+  };
+
+  const toggleWishlist = (productId) => {
+    setWishlist(prev => {
+      const next = new Set(prev);
+      next.has(productId) ? next.delete(productId) : next.add(productId);
+      try { localStorage.setItem('customer_wishlist', JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  };
+
+  const addToCart = (product) => {
+    // For now, just a notification-like effect. Integrate your cart store as needed.
+    alert(`${product.name} added to cart`);
+  };
+
+  const pageCount = Math.max(1, Math.ceil(total / limit));
+
   return (
-    <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>
-        Customer Dashboard
-      </Typography>
+    <Box sx={{ p: 2 }}>
+      {/* Top toolbar */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mb: 2 }}>
+        <TextField
+          label="Search"
+          size="small"
+          value={filters.q}
+          onChange={(e) => setFilters({ ...filters, q: e.target.value })}
+          onKeyDown={(e) => { if (e.key === 'Enter') applyFilters(); }}
+        />
+
+        <FormControl size="small" sx={{ minWidth: 180 }}>
+          <InputLabel id="sort-label">Sort by</InputLabel>
+          <Select
+            labelId="sort-label"
+            label="Sort by"
+            value={sort}
+            onChange={(e) => setSort(e.target.value)}
+          >
+            <MenuItem value="newest">Newest</MenuItem>
+            <MenuItem value="price_asc">Price: Low to High</MenuItem>
+            <MenuItem value="price_desc">Price: High to Low</MenuItem>
+            <MenuItem value="rating_desc">Rating: High to Low</MenuItem>
+            <MenuItem value="rating_asc">Rating: Low to High</MenuItem>
+          </Select>
+        </FormControl>
+
+        <Chip color="success" label="Prices inclusive of all taxes" variant="outlined" />
+
+        <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 1 }}>
+          <TextField
+            label="Check delivery PIN"
+            size="small"
+            value={pincode}
+            onChange={(e) => setPincode(e.target.value)}
+            inputProps={{ maxLength: 10 }}
+          />
+          <Button variant="outlined" size="small" onClick={() => setPinChecked(true)}>Check</Button>
+          {pinChecked && (
+            <Chip size="small" color="primary" label={`Delivering to ${pincode || 'your area'}`} />
+          )}
+        </Box>
+      </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Grid container spacing={3}>
-        {/* Customer Info */}
-        <Grid item xs={12} md={4}>
-          <Card>
+      <Grid container spacing={2}>
+        {/* Left sidebar: Filters */}
+        <Grid item xs={12} md={3} lg={2.8}>
+          <Card variant="outlined">
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                <Person sx={{ mr: 1, verticalAlign: 'middle' }} />
-                Profile
-              </Typography>
-              {customer && (
-                <Box>
-                  <Typography variant="body1">
-                    <strong>Name:</strong> {customer.firstName} {customer.lastName}
-                  </Typography>
-                  <Typography variant="body1">
-                    <strong>Email:</strong> {customer.email}
-                  </Typography>
-                  <Typography variant="body1">
-                    <strong>Phone:</strong> {customer.phone}
-                  </Typography>
-                  <Typography variant="body1">
-                    <strong>Total Orders:</strong> {customer.totalOrders}
-                  </Typography>
-                  <Typography variant="body1">
-                    <strong>Total Spent:</strong> ${customer.totalSpent?.toFixed(2) || '0.00'}
-                  </Typography>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="subtitle1" fontWeight={700}>Filter By</Typography>
+                <Button size="small" onClick={clearFilters}>Clear All</Button>
+              </Box>
+
+              <Divider sx={{ my: 1.5 }} />
+
+              <Typography variant="subtitle2" gutterBottom>Category</Typography>
+              <FormControl size="small" fullWidth>
+                <Select
+                  displayEmpty
+                  value={filters.category}
+                  onChange={(e) => setFilters({ ...filters, category: e.target.value })}
+                >
+                  <MenuItem value=""><em>All Categories</em></MenuItem>
+                  {categories.map(cat => (
+                    <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <Divider sx={{ my: 1.5 }} />
+
+              <Typography variant="subtitle2" gutterBottom>Availability</Typography>
+              <FormGroup>
+                <FormControlLabel
+                  control={<Checkbox checked={!!filters.inStock} onChange={(e) => setFilters({ ...filters, inStock: e.target.checked })} />}
+                  label="In Stock"
+                />
+              </FormGroup>
+
+              <Divider sx={{ my: 1.5 }} />
+
+              <Typography variant="subtitle2" gutterBottom>Price</Typography>
+              <Box sx={{ px: 1 }}>
+                <Slider
+                  value={filters.price}
+                  min={0}
+                  max={Math.max(MAX_PRICE_DEFAULT, filters.price?.[1] || MAX_PRICE_DEFAULT)}
+                  onChange={(_, newValue) => setFilters({ ...filters, price: newValue })}
+                  valueLabelDisplay="auto"
+                />
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="caption">{formatCurrency(filters.price[0])}</Typography>
+                  <Typography variant="caption">{formatCurrency(filters.price[1])}</Typography>
                 </Box>
+              </Box>
+
+              {availableSizes.length > 0 && (
+                <>
+                  <Divider sx={{ my: 1.5 }} />
+                  <Typography variant="subtitle2" gutterBottom>Size</Typography>
+                  <FormGroup>
+                    {availableSizes.map(size => (
+                      <FormControlLabel
+                        key={size}
+                        control={<Checkbox checked={filters.sizes.includes(size)} onChange={() => toggleSize(size)} />}
+                        label={size}
+                      />
+                    ))}
+                  </FormGroup>
+                </>
               )}
+
+              <Box sx={{ mt: 2 }}>
+                <Button fullWidth variant="contained" onClick={applyFilters} disabled={loading}>Apply Filters</Button>
+              </Box>
             </CardContent>
           </Card>
         </Grid>
 
-        {/* Shopping Cart */}
-        <Grid item xs={12} md={8}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                <ShoppingCart sx={{ mr: 1, verticalAlign: 'middle' }} />
-                Shopping Cart ({cart.length} items)
-              </Typography>
-              
-              {cart.length === 0 ? (
-                <Typography color="text.secondary">Your cart is empty</Typography>
-              ) : (
-                <TableContainer>
-                  <Table size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Product</TableCell>
-                        <TableCell>Price</TableCell>
-                        <TableCell>Quantity</TableCell>
-                        <TableCell>Total</TableCell>
-                        <TableCell>Action</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {cart.map((item) => (
-                        <TableRow key={item.product}>
-                          <TableCell>{item.name}</TableCell>
-                          <TableCell>${item.price.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                              <IconButton
-                                size="small"
-                                onClick={() => updateCartQuantity(item.product, item.quantity - 1)}
-                              >
-                                <Remove />
-                              </IconButton>
-                              <Typography sx={{ mx: 1 }}>{item.quantity}</Typography>
-                              <IconButton
-                                size="small"
-                                onClick={() => updateCartQuantity(item.product, item.quantity + 1)}
-                              >
-                                <Add />
-                              </IconButton>
-                            </Box>
-                          </TableCell>
-                          <TableCell>${(item.price * item.quantity).toFixed(2)}</TableCell>
-                          <TableCell>
-                            <IconButton
-                              size="small"
-                              color="error"
-                              onClick={() => removeFromCart(item.product)}
-                            >
-                              <Delete />
-                            </IconButton>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-              
-              {cart.length > 0 && (
-                <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Typography variant="h6">
-                    Total: ${getCartTotal().toFixed(2)}
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    onClick={() => setCheckoutOpen(true)}
-                    disabled={loading}
-                  >
-                    Checkout
-                  </Button>
-                </Box>
-              )}
-            </CardContent>
-          </Card>
-        </Grid>
+        {/* Right: Products grid */}
+        <Grid item xs={12} md={9} lg={9.2}>
+          <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+            {loading ? 'Loading products…' : `${total} items`}
+          </Typography>
 
-        {/* Products */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Available Products
-              </Typography>
-              <Grid container spacing={2}>
-                {products.map((product) => (
-                  <Grid item xs={12} sm={6} md={4} key={product._id}>
-                    <Card variant="outlined">
-                      <CardContent>
-                        <Typography variant="h6" gutterBottom>
-                          {product.name}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" gutterBottom>
-                          {product.description}
-                        </Typography>
-                        <Typography variant="h6" color="primary">
-                          ${product.price}
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          Stock: {product.stock}
-                        </Typography>
+          <Grid container spacing={2}>
+            {products.map((product) => {
+              // Prefer real DB images: first '/uploads' or absolute URL from image/images
+              const candidates = [product.image, ...(Array.isArray(product.images) ? product.images : [])];
+              const pickedReal = candidates.find(p => p && (/^https?:\/\//i.test(p) || p.startsWith('/uploads')));
+              const primaryImage = pickedReal || candidates.find(Boolean) || null;
+              const imgSrc = getImageUrl(primaryImage);
+              return (
+                <Grid item xs={12} sm={6} md={4} lg={3} key={product._id}>
+                  <Card variant="outlined" sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                    {imgSrc && (
+                      <CardMedia
+                        component="img"
+                        image={imgSrc}
+                        alt={product.name}
+                        sx={{ height: 180, objectFit: product.imageFit || 'cover', objectPosition: `${product.imageFocalX || 50}% ${product.imageFocalY || 50}%` }}
+                      />
+                    )}
+                    <CardContent sx={{ flexGrow: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        {product.isBestseller && <Chip size="small" color="warning" label="Bestseller" />}
+                        {product.isNew && <Chip size="small" color="success" label="New" />}
+                      </Box>
+
+                      <Typography variant="subtitle1" fontWeight={700} gutterBottom noWrap title={product.name}>
+                        {product.name}
+                      </Typography>
+
+                      {product.rating > 0 && (
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                          <Rating name="read-only" value={product.rating} precision={0.5} readOnly size="small" />
+                          <Typography variant="caption" color="text.secondary">({product.reviews || 0})</Typography>
+                        </Box>
+                      )}
+
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }} noWrap>
+                        {product.description}
+                      </Typography>
+
+                      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1, mb: 1 }}>
+                        <Typography variant="h6" color="primary">{formatCurrency(product.price)}</Typography>
+                        {product.originalPrice && product.originalPrice > product.price && (
+                          <Typography variant="body2" color="text.secondary" sx={{ textDecoration: 'line-through' }}>
+                            {formatCurrency(product.originalPrice)}
+                          </Typography>
+                        )}
+                      </Box>
+
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         <Button
                           variant="contained"
                           size="small"
-                          sx={{ mt: 1 }}
+                          startIcon={<ShoppingCart />}
                           onClick={() => addToCart(product)}
-                          disabled={product.stock <= 0}
+                          disabled={!product.inStock || (product.stockQty ?? 0) <= 0}
                         >
                           Add to Cart
                         </Button>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-              </Grid>
-            </CardContent>
-          </Card>
-        </Grid>
+                        <IconButton aria-label="wishlist" onClick={() => toggleWishlist(product._id)}>
+                          {wishlist.has(product._id) ? <Favorite color="error" /> : <FavoriteBorder />}
+                        </IconButton>
+                      </Box>
 
-        {/* Order History */}
-        <Grid item xs={12}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                <Receipt sx={{ mr: 1, verticalAlign: 'middle' }} />
-                Order History
-              </Typography>
-              
-              {orders.length === 0 ? (
-                <Typography color="text.secondary">No orders yet</Typography>
-              ) : (
-                <TableContainer>
-                  <Table>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell>Order #</TableCell>
-                        <TableCell>Date</TableCell>
-                        <TableCell>Items</TableCell>
-                        <TableCell>Total</TableCell>
-                        <TableCell>Status</TableCell>
-                        <TableCell>Payment</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {orders.map((order) => (
-                        <TableRow key={order._id}>
-                          <TableCell>{order.orderNumber}</TableCell>
-                          <TableCell>
-                            {new Date(order.createdAt).toLocaleDateString()}
-                          </TableCell>
-                          <TableCell>{order.items.length} items</TableCell>
-                          <TableCell>${order.total.toFixed(2)}</TableCell>
-                          <TableCell>
-                            <Chip
-                              label={order.status}
-                              color={getStatusColor(order.status)}
-                              size="small"
-                            />
-                          </TableCell>
-                          <TableCell>
-                            <Chip
-                              label={order.paymentStatus}
-                              color={getStatusColor(order.paymentStatus)}
-                              size="small"
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-            </CardContent>
-          </Card>
+                      {!product.inStock && (
+                        <Typography variant="caption" color="error.main">Out of stock</Typography>
+                      )}
+                    </CardContent>
+                  </Card>
+                </Grid>
+              );
+            })}
+          </Grid>
+
+          {/* Pagination */}
+          {pageCount > 1 && (
+            <Stack direction="row" justifyContent="center" sx={{ mt: 2 }}>
+              <Pagination
+                count={pageCount}
+                page={page}
+                onChange={(_, p) => setPage(p)}
+                color="primary"
+              />
+            </Stack>
+          )}
         </Grid>
       </Grid>
-
-      {/* Checkout Dialog */}
-      <Dialog open={checkoutOpen} onClose={() => setCheckoutOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Checkout</DialogTitle>
-        <DialogContent>
-          <Typography variant="h6" gutterBottom>
-            Order Summary
-          </Typography>
-          {cart.map((item) => (
-            <Box key={item.product} sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography>{item.name} x {item.quantity}</Typography>
-              <Typography>${(item.price * item.quantity).toFixed(2)}</Typography>
-            </Box>
-          ))}
-          <Typography variant="h6" sx={{ mt: 2 }}>
-            Total: ${getCartTotal().toFixed(2)}
-          </Typography>
-          
-          <Typography variant="h6" sx={{ mt: 3, mb: 2 }}>
-            Shipping Address
-          </Typography>
-          <Grid container spacing={2}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Street Address"
-                value={shippingAddress.street}
-                onChange={(e) => setShippingAddress({...shippingAddress, street: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="City"
-                value={shippingAddress.city}
-                onChange={(e) => setShippingAddress({...shippingAddress, city: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="State"
-                value={shippingAddress.state}
-                onChange={(e) => setShippingAddress({...shippingAddress, state: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="ZIP Code"
-                value={shippingAddress.zipCode}
-                onChange={(e) => setShippingAddress({...shippingAddress, zipCode: e.target.value})}
-              />
-            </Grid>
-            <Grid item xs={6}>
-              <TextField
-                fullWidth
-                label="Country"
-                value={shippingAddress.country}
-                onChange={(e) => setShippingAddress({...shippingAddress, country: e.target.value})}
-              />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCheckoutOpen(false)}>Cancel</Button>
-          <Button
-            variant="contained"
-            onClick={handleCheckout}
-            disabled={loading}
-          >
-            {loading ? 'Processing...' : 'Place Order'}
-          </Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };

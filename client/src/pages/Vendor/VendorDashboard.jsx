@@ -37,7 +37,7 @@ function TabPanel({ children, value, index }) {
 
 // New Vendor Dashboard with modules
 const VendorDashboard = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
   const [vendor, setVendor] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState(null); // when null, show only profile header
@@ -114,7 +114,7 @@ const VendorDashboard = () => {
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Stack direction="row" spacing={2} alignItems="center">
           <Avatar
-            src={user?.profileImage ? (user.profileImage.startsWith('http') ? user.profileImage : `${API_BASE_URL}${user.profileImage}`) : undefined}
+            src={user?.profileImage ? `${user.profileImage.startsWith('http') ? user.profileImage : `${API_BASE_URL}${user.profileImage}`}?v=${encodeURIComponent(user?.updatedAt || '')}` : undefined}
             alt={vendor?.companyName || 'Vendor'}
             sx={{ width: 64, height: 64 }}
           />
@@ -244,8 +244,8 @@ const VendorDashboard = () => {
                         const form = new FormData();
                         form.append('image', file);
                         await api.post('/api/auth/profile/image', form);
+                        await refreshUser?.();
                         toast.success('Profile image updated');
-                        navigate(0);
                       };
                       input.click();
                     } catch (err) {
@@ -258,13 +258,13 @@ const VendorDashboard = () => {
                     <Button fullWidth variant="contained" onClick={() => navigate('/vendor?tab=0')}>Manage POs & Deliveries</Button>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
+                    <Button fullWidth variant="outlined" onClick={() => navigate('/vendor/customers')}>Customer Management</Button>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
                     <Button fullWidth variant="outlined" onClick={() => navigate('/vendor?tab=2')}>View Invoices</Button>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Button fullWidth variant="outlined" onClick={() => navigate('/vendor?tab=4')}>Open Tickets</Button>
-                  </Grid>
-                  <Grid item xs={12} sm={6} md={3}>
-                    <Button fullWidth variant="outlined" onClick={() => navigate('/vendor?tab=7')}>Add Products</Button>
                   </Grid>
                 </Grid>
               </Paper>

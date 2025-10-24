@@ -5,6 +5,7 @@ const multer = require('multer');
 const { body, validationResult } = require('express-validator');
 const bcrypt = require('bcryptjs');
 const Vendor = require('../models/Vendor');
+const User = require('../models/User');
 const OtpToken = require('../models/OtpToken');
 const auth = require('../middleware/auth');
 const { authorize } = require('../middleware/auth');
@@ -106,6 +107,9 @@ router.post(
     body('email').isEmail().withMessage('Valid business email is required'),
     body('phone').matches(/^\d{10}$/).withMessage('Phone must be exactly 10 digits'),
     body('businessLicenseNumber').trim().notEmpty().withMessage('Business license number is required'),
+    body('password')
+      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/)
+      .withMessage('Password must be 8+ chars with upper, lower, number and special character'),
   ],
   async (req, res) => {
     try {
@@ -157,6 +161,30 @@ router.post(
       }
 
       const vendor = await Vendor.create(payload);
+
+      // Create user account for vendor
+      try {
+        const user = new User({
+          firstName: req.body.vendorName,
+          lastName: req.body.companyName || 'Vendor',
+          email: String(req.body.email).toLowerCase(),
+          password: req.body.password,
+          role: 'vendor',
+          phone: req.body.phone,
+          address: address,
+          isActive: false // Will be activated when vendor is approved
+        });
+        await user.save();
+        
+        // Link vendor to user
+        vendor.user = user._id;
+        await vendor.save();
+        
+        console.log(`✅ Created user account for vendor: ${user.email}`);
+      } catch (userError) {
+        console.error('Failed to create user account for vendor:', userError);
+        // Don't fail the vendor registration if user creation fails
+      }
 
       // Send acknowledgement email/SMS (best-effort, dev fallbacks will log to console)
       try {

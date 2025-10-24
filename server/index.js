@@ -7,8 +7,13 @@ require('dotenv').config();
 
 const app = express();
 
-// Security middleware
-app.use(helmet());
+// Trust proxy so req.protocol uses X-Forwarded-Proto when behind proxies (e.g., HTTPS at CDN)
+app.set('trust proxy', 1);
+
+// Security middleware (allow cross-origin resource loading for images/assets)
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}));
 app.use(cors());
 
 // Rate limiting (configurable, disabled in development by default)
@@ -59,6 +64,14 @@ app.use('/api/vendor', requireDb, require('./routes/vendors'));
 // Products (public list, vendor/admin manage)
 app.use('/api/products', requireDb, require('./routes/products'));
 app.use('/api/customers', requireDb, require('./routes/customers'));
+// Purchase Orders (Admin-only)
+app.use('/api/purchase-orders', requireDb, require('./routes/purchaseOrders'));
+// Payments (Razorpay integration)
+app.use('/api/payments', requireDb, require('./routes/payments'));
+// Orders (customer → admin → vendor flow)
+app.use('/api/orders', requireDb, require('./routes/orders'));
+// Reviews (customer feedback to vendors and admin)
+app.use('/api/reviews', requireDb, require('./routes/reviews'));
 
 // Serve uploaded files (certificates, child photos, profile images, etc.)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));
@@ -116,8 +129,13 @@ mongoose.connect(MONGODB_URI)
     console.log('1. Install MongoDB Community Server: https://www.mongodb.com/try/download/community');
     console.log('2. Use MongoDB Atlas (cloud): https://www.mongodb.com/atlas');
     console.log('3. Update MONGODB_URI in .env file');
+    console.log('\n🔧 Quick Atlas Setup:');
+    console.log('1. Create account at https://www.mongodb.com/atlas');
+    console.log('2. Create free cluster');
+    console.log('3. Get connection string (mongodb+srv://...)');
+    console.log('4. Update MONGODB_URI in .env file');
     console.log('\n⚠️  Starting server without database connection...');
-    
+
     // Start server anyway for development
     app.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT} (without database)`);

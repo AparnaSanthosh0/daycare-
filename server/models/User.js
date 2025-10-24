@@ -96,6 +96,9 @@ const userSchema = new mongoose.Schema({
   phoneVerificationExpires: { type: Date, default: null },
   whatsappVerificationCode: { type: String, default: null },
   whatsappVerificationExpires: { type: Date, default: null }
+  ,
+  // Allow temporary login after password reset even if inactive
+  passwordResetWindowExpires: { type: Date, default: null }
 }, {
   timestamps: true
 });

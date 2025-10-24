@@ -1,13 +1,11 @@
 import React, { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Box,
   Container,
   Typography,
   Button,
   Grid,
-  Card,
-  // CardContent,
   AppBar,
   Toolbar,
   IconButton,
@@ -15,17 +13,10 @@ import {
   useMediaQuery,
   Fade,
   Slide,
-  // Zoom,
   Menu,
   MenuItem
 } from '@mui/material';
 import {
-  ChildCare,
-  People,
-  AccessTime,
-  Payment,
-  Group,
-  Assessment,
   Menu as MenuIcon,
   ArrowForward,
   Security,
@@ -116,6 +107,7 @@ const FloatingIcon = styled(Box)(({ theme }) => ({
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [scrolled, setScrolled] = React.useState(false);
@@ -165,8 +157,7 @@ const LandingPage = () => {
 
   // Ecommerce handler
   const handleEcommerceClick = () => {
-    // Navigate internally to our shop route for reliability
-    navigate('/shop');
+    navigate('/shop', { state: { from: location.pathname } });
   };
 
   // Removed unused `features` array to satisfy ESLint no-unused-vars. Re-introduce when rendering a features grid.
@@ -221,7 +212,13 @@ const LandingPage = () => {
           color: scrolled ? 'text.primary' : 'white'
         }}
       >
-        <Toolbar>
+        <Toolbar
+          sx={{
+            flexWrap: { xs: 'wrap', md: 'nowrap' },
+            gap: { xs: 1.5, md: 3 },
+            alignItems: 'center'
+          }}
+        >
           <Typography 
             variant="h5" 
             component="div" 

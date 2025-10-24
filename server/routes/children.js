@@ -7,6 +7,7 @@ const Activity = require('../models/Activity');
 const Milestone = require('../models/Milestone');
 const auth = require('../middleware/auth');
 const { authorize } = require('../middleware/auth');
+const mongoose = require('mongoose');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -32,6 +33,49 @@ async function canAccessChild(req, childId) {
   return isParent ? { ok: true, child } : { ok: false, status: 403, message: 'Not authorized' };
 }
 
+// Get all children (admin only)
+router.get('/', auth, authorize('admin'), async (req, res) => {
+  try {
+    const children = await Child.find({})
+      .populate('assignedStaff', 'firstName lastName email phone role')
+      .populate('parents', 'firstName lastName email')
+      .select('-__v');
+    res.json(children);
+  } catch (error) {
+    console.error('Get all children error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get available staff for assignment (admin only)
+router.get('/available-staff', auth, authorize('admin'), async (req, res) => {
+  try {
+    const staff = await User.find({
+      role: 'staff',
+      isActive: true
+    })
+    .select('firstName lastName email phone staff.yearsOfExperience staff.qualification')
+    .sort({ firstName: 1 });
+
+    // Count current assignments for each staff member
+    const staffWithCounts = await Promise.all(staff.map(async (member) => {
+      const count = await Child.countDocuments({
+        assignedStaff: member._id,
+        isActive: true
+      });
+      return {
+        ...member.toObject(),
+        assignedChildrenCount: count
+      };
+    }));
+
+    res.json(staffWithCounts);
+  } catch (error) {
+    console.error('Get available staff error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get child by id (parent can view their child; admin can view any)
 router.get('/:id', auth, async (req, res) => {
   try {
@@ -47,8 +91,6 @@ router.get('/:id', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
-
-// Update child: allow parents to edit medical/emergency/authorizedPickup; admin can edit anything
 router.put('/:id', auth, async (req, res) => {
   try {
     const access = await canAccessChild(req, req.params.id);
@@ -186,16 +228,14 @@ router.get('/:id/attendance', auth, async (req, res) => {
     const todayEnd = new Date(todayStart.getTime());
     todayEnd.setHours(23, 59, 59, 999);
 
-    const Attendance = require('../models/Attendance');
-
-    // Today's record
+    // Today's record - show all attendance records for children, not just staff-created ones
     const todayRecord = await Attendance.findOne({
       entityType: 'child',
       entityId: childId,
       date: { $gte: todayStart, $lte: todayEnd }
     });
 
-    // Last 30 days history
+    // Last 30 days history - show all attendance records for children, not just staff-created ones
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const history = await Attendance.find({
       entityType: 'child',
@@ -203,12 +243,25 @@ router.get('/:id/attendance', auth, async (req, res) => {
       date: { $gte: thirtyDaysAgo, $lte: todayEnd }
     }).sort({ date: -1 });
 
+    // Calculate weekly summary
+    const weekStart = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const weekRecords = history.filter(r => r.date >= weekStart);
+    const presentDays = weekRecords.filter(r => r.status === 'present').length;
+    const absentDays = weekRecords.filter(r => r.status === 'absent').length;
+    const totalWeekDays = presentDays + absentDays;
+    const attendanceRate = totalWeekDays > 0 ? Math.round((presentDays / totalWeekDays) * 100) : 0;
+
     res.json({
       today: todayRecord ? {
         status: todayRecord.status,
         checkIn: todayRecord.checkInAt,
         checkOut: todayRecord.checkOutAt
       } : { status: 'absent', checkIn: null, checkOut: null },
+      week: {
+        present: presentDays,
+        absent: absentDays,
+        rate: attendanceRate
+      },
       history
     });
   } catch (error) {
@@ -348,14 +401,168 @@ router.get('/:id/reports', auth, async (req, res) => {
   }
 });
 
-// Get all children (placeholder kept for admin screen)
-router.get('/', auth, async (req, res) => {
+// Assign staff to child (admin only)
+router.put('/:id/assign-staff', auth, authorize('admin'), async (req, res) => {
   try {
-    if (req.user.role !== 'admin') return res.json({ message: 'Children routes working', children: [] });
-    const children = await Child.find().select('-__v').sort({ createdAt: -1 });
-    res.json(children);
+    const { staffId } = req.body;
+    if (!staffId) {
+      return res.status(400).json({ message: 'Staff ID is required' });
+    }
+
+    // Verify staff exists and is active staff member
+    const staff = await User.findOne({ _id: staffId, role: 'staff', isActive: true });
+    if (!staff) {
+      return res.status(400).json({ message: 'Invalid or inactive staff member' });
+    }
+
+    const child = await Child.findByIdAndUpdate(
+      req.params.id,
+      { assignedStaff: staffId },
+      { new: true }
+    ).populate('assignedStaff', 'firstName lastName email');
+
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found' });
+    }
+
+    res.json({ message: 'Staff assigned successfully', child });
   } catch (error) {
-    console.error('Get children error:', error);
+    console.error('Assign staff error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Unassign staff from child (admin only)
+router.put('/:id/unassign-staff', auth, authorize('admin'), async (req, res) => {
+  try {
+    const child = await Child.findByIdAndUpdate(
+      req.params.id,
+      { assignedStaff: null },
+      { new: true }
+    ).populate('assignedStaff', 'firstName lastName email');
+
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found' });
+    }
+
+    res.json({ message: 'Staff unassigned successfully', child });
+  } catch (error) {
+    console.error('Unassign staff error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Delete specific staff assignment (admin only)
+router.delete('/:childId/unassign-staff/:staffId', auth, authorize('admin'), async (req, res) => {
+  try {
+    const { childId, staffId } = req.params;
+
+    const child = await Child.findById(childId);
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found' });
+    }
+
+    if (child.assignedStaff?.toString() !== staffId) {
+      return res.status(400).json({ message: 'This child is not assigned to the specified staff member' });
+    }
+
+    child.assignedStaff = null;
+    await child.save();
+
+    res.json({ message: 'Staff assignment removed successfully' });
+  } catch (error) {
+    console.error('Delete staff assignment error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get children assigned to a specific staff member
+router.get('/staff/:staffId', auth, async (req, res) => {
+  try {
+    const { staffId } = req.params;
+
+    // Validate staffId
+    if (!staffId || staffId === 'undefined' || !mongoose.Types.ObjectId.isValid(staffId)) {
+      return res.status(400).json({ message: 'Invalid staff ID' });
+    }
+
+    // Verify the requesting user can access this (staff can only see their own assignments, admin can see all)
+    if (req.user.role === 'staff' && req.user._id !== staffId) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Verify staff exists
+    const staff = await User.findOne({ _id: staffId, role: 'staff' });
+    if (!staff) {
+      return res.status(404).json({ message: 'Staff member not found' });
+    }
+
+    const children = await Child.find({
+      assignedStaff: staffId,
+      isActive: true
+    })
+    .populate('parents', 'firstName lastName email')
+    .populate('assignedStaff', 'firstName lastName email')
+    .select('firstName lastName dateOfBirth gender program age allergies medicalConditions emergencyContacts')
+    .sort({ firstName: 1 });
+
+    res.json({ staff, children });
+  } catch (error) {
+    console.error('Get staff children error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get all staff assignments (admin only) - with age-based grouping
+router.get('/assignments/staff', auth, authorize('admin'), async (req, res) => {
+  try {
+    const assignments = await Child.find({ isActive: true })
+      .populate('assignedStaff', 'firstName lastName email qualification staff.yearsOfExperience')
+      .populate('parents', 'firstName lastName email')
+      .select('firstName lastName dateOfBirth gender program age assignedStaff')
+      .sort({ assignedStaff: 1, firstName: 1 });
+
+    // Group by staff and age categories
+    const staffAssignments = {};
+    const ageGroups = {
+      'infant': { min: 0, max: 1, children: [] },
+      'toddler': { min: 1, max: 3, children: [] },
+      'preschool': { min: 3, max: 5, children: [] },
+      'prekindergarten': { min: 4, max: 6, children: [] }
+    };
+
+    assignments.forEach(child => {
+      // Group by staff
+      if (child.assignedStaff) {
+        const staffId = child.assignedStaff._id.toString();
+        if (!staffAssignments[staffId]) {
+          staffAssignments[staffId] = {
+            staff: child.assignedStaff,
+            children: [],
+            totalChildren: 0
+          };
+        }
+        staffAssignments[staffId].children.push(child);
+        staffAssignments[staffId].totalChildren++;
+      }
+
+      // Group by age
+      const age = child.age || 0;
+      for (const [program, range] of Object.entries(ageGroups)) {
+        if (age >= range.min && age <= range.max) {
+          ageGroups[program].children.push(child);
+          break;
+        }
+      }
+    });
+
+    res.json({
+      staffAssignments: Object.values(staffAssignments),
+      ageGroups,
+      totalAssignments: assignments.length
+    });
+  } catch (error) {
+    console.error('Get staff assignments error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

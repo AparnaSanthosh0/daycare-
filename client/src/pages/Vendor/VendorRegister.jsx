@@ -8,7 +8,9 @@ import {
   Button,
   IconButton,
   Alert,
+  InputAdornment,
 } from '@mui/material';
+import { Visibility, VisibilityOff } from '@mui/icons-material';
 import api from '../../config/api';
 import { prefillWithGoogle } from '../../utils/googlePrefill';
 
@@ -21,6 +23,8 @@ const VendorRegister = () => {
     businessLicenseNumber: '',
     notes: '',
     address: { street: '', city: '', state: '' },
+    password: '',
+    confirmPassword: '',
   });
   const [licenseFile, setLicenseFile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -28,6 +32,8 @@ const VendorRegister = () => {
   const [success, setSuccess] = useState('');
   const [status, setStatus] = useState('');
   const [notice, setNotice] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -61,6 +67,21 @@ const VendorRegister = () => {
     e.preventDefault();
     setError('');
     setSuccess('');
+    
+    // Password validation
+    if (!form.password) {
+      setError('Password is required.');
+      return;
+    }
+    if (form.password !== form.confirmPassword) {
+      setError('Passwords do not match.');
+      return;
+    }
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(form.password)) {
+      setError('Password must be 8+ chars, include upper & lower case, number, and special character.');
+      return;
+    }
+    
     if (!licenseFile) {
       setError('License document is required (PDF/JPG/PNG).');
       return;
@@ -78,6 +99,7 @@ const VendorRegister = () => {
       fd.append('address[street]', form.address.street);
       fd.append('address[city]', form.address.city);
       fd.append('address[state]', form.address.state);
+      fd.append('password', form.password);
       fd.append('license', licenseFile);
 
       const { data } = await api.post('/api/vendor', fd, {
@@ -184,6 +206,57 @@ const VendorRegister = () => {
             </Grid>
             <Grid item xs={12} sm={6}>
               <TextField label="Business License Number" name="businessLicenseNumber" value={form.businessLicenseNumber} onChange={onChange} fullWidth required />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" color="text.secondary" sx={{ mt: 2, mb: 1 }}>Account Security</Typography>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                type={showPassword ? 'text' : 'password'}
+                label="Password"
+                name="password"
+                value={form.password}
+                onChange={onChange}
+                fullWidth
+                required
+                helperText="8+ chars, upper & lower case, number, special character"
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowPassword(!showPassword)}
+                        edge="end"
+                      >
+                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                type={showConfirmPassword ? 'text' : 'password'}
+                label="Confirm Password"
+                name="confirmPassword"
+                value={form.confirmPassword}
+                onChange={onChange}
+                fullWidth
+                required
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        edge="end"
+                      >
+                        {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
             </Grid>
 
             <Grid item xs={12}>

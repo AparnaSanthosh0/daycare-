@@ -17,13 +17,13 @@ echo Starting TinyTots servers...
 echo.
 
 echo [1/2] Starting Backend Server (Port 5001)...
-start "TinyTots Backend" cmd /k "cd /d %~dp0server && echo Starting backend server on port 5001... && npm run dev"
+start "TinyTots Backend" cmd /k "set ENABLE_GOOGLE_AUTH=true && cd /d %~dp0server && echo Starting backend server on port 5001... && npm run dev"
 
 echo Waiting for backend to initialize...
 timeout /t 8 /nobreak >nul
 
 echo [2/2] Starting Frontend Server (Port 3000)...
-start "TinyTots Frontend" cmd /k "cd /d %~dp0client && echo Starting frontend server... && npm start"
+start "TinyTots Frontend" cmd /k "set REACT_APP_API_URL=http://localhost:5001 && cd /d %~dp0client && echo Starting frontend server... && npm start"
 
 echo.
 echo ========================================

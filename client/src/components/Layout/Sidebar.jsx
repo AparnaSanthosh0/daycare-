@@ -25,7 +25,8 @@ import {
   Person,
   SupervisorAccount,
   ManageAccounts,
-  Inventory2
+  Inventory2,
+  ShoppingCart
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -47,6 +48,7 @@ const getMenuItems = (userRole) => {
       { text: 'Communication', icon: <Email />, path: '/communication' },
       { text: 'Reports', icon: <Assessment />, path: '/reports' },
       { text: 'Inventory', icon: <Inventory2 />, path: '/admin/inventory' },
+      { text: 'Order Management', icon: <ShoppingCart />, path: '/admin/orders' },
       { text: 'Customers', icon: <People />, path: '/admin/customers' },
       { text: 'Profile', icon: <Person />, path: '/profile' },
     ];
@@ -61,6 +63,7 @@ const getMenuItems = (userRole) => {
       { text: 'Reviews Moderation', icon: <Assessment />, path: '/vendor?tab=5' },
       { text: 'Gift Cards & Vouchers', icon: <Dashboard />, path: '/vendor?tab=6' },
       { text: 'Products', icon: <ChildCare />, path: '/vendor?tab=7' },
+      { text: 'Order Management', icon: <ShoppingCart />, path: '/vendor/orders' },
       { text: 'Profile', icon: <Person />, path: '/vendor' },
     ];
   }

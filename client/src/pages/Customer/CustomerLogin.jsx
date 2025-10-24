@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Container,
   Paper,
@@ -9,48 +9,141 @@ import {
   Box,
   Alert,
   InputAdornment,
-  IconButton
+  IconButton,
+  Grid,
+  Link
 } from '@mui/material';
-import { Visibility, VisibilityOff, Person, Lock, ArrowBack } from '@mui/icons-material';
+import { Person, Lock, ArrowBack, Visibility, VisibilityOff } from '@mui/icons-material';
 import api from '../../config/api';
+import { useAuth } from '../../contexts/AuthContext';
+
+// Load Google script and notify when ready
+function useGooglePlatformScript() {
+  useEffect(() => {
+    const id = 'google-platform-script';
+    const existing = document.getElementById(id);
+    if (existing) {
+      // If script tag exists attach load handler if google isn't ready yet
+      if (window.google) {
+        window.dispatchEvent(new Event('google-loaded'));
+      } else {
+        existing.addEventListener('load', () => {
+          window.dispatchEvent(new Event('google-loaded'));
+        });
+      }
+      return;
+    }
+    const script = document.createElement('script');
+    script.id = id;
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      window.dispatchEvent(new Event('google-loaded'));
+    };
+    document.body.appendChild(script);
+  }, []);
+}
 
 const CustomerLogin = () => {
   const navigate = useNavigate();
-  const [formData, setFormData] = useState({
+  const { refreshUser } = useAuth();
+  const location = useLocation();
+  const redirectTo = (location.state && location.state.redirectTo) || '/shop';
+  useGooglePlatformScript();
+  const googleDivRef = React.useRef(null);
+
+  // Login form state
+  const [form, setForm] = useState({
     email: '',
     password: ''
   });
-  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Initialize Google button after script loads
+  useEffect(() => {
+    const clientId = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+    if (!clientId) return;
+
+    function init() {
+      if (!window.google || !googleDivRef.current) return;
+      window.google.accounts.id.initialize({
+        client_id: clientId,
+        callback: async (response) => {
+          try {
+            const res = await api.post('/api/customers/google-login', { idToken: response.credential });
+            // If backend indicates new Google user, redirect to registration
+            if (res.data?.requiresOtp) {
+              const { email: em, firstName: fn, lastName: ln } = res.data;
+              navigate('/customer-register', { 
+                state: { 
+                  email: em, 
+                  firstName: fn, 
+                  lastName: ln,
+                  redirectTo 
+                } 
+              });
+              return;
+            }
+            const { token } = res.data || {};
+            if (!token) throw new Error('Missing token');
+            localStorage.setItem('token', token);
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            await refreshUser();
+            navigate(redirectTo);
+          } catch (err) {
+            setError(err.response?.data?.message || 'Google sign-in failed');
+          }
+        },
+      });
+      window.google.accounts.id.renderButton(googleDivRef.current, { theme: 'outline', size: 'large', shape: 'pill', width: 320 });
+    }
+
+    // Try init immediately; also wait for explicit load event to guarantee readiness
+    init();
+    const onLoaded = () => init();
+    window.addEventListener('google-loaded', onLoaded);
+    return () => {
+      window.removeEventListener('google-loaded', onLoaded);
+    };
+  }, [navigate, refreshUser, redirectTo]);
 
   const handleChange = (e) => {
-    setFormData({
-      ...formData,
-      [e.target.name]: e.target.value
-    });
+    const { name, value } = e.target;
+    setForm(prev => ({ ...prev, [name]: value }));
     if (error) setError('');
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setError('');
+    
+    if (!form.email || !form.password) {
+      setError('Please enter both email and password');
+      return;
+    }
 
+    setLoading(true);
     try {
-      const response = await api.post('/api/customers/login', formData);
-      const { token, customer } = response.data;
+      const res = await api.post('/api/customers/login', form);
+      const { token } = res.data || {};
+      if (!token) throw new Error('Missing token');
       
       localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({ ...customer, role: 'customer' }));
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
-      navigate('/customer');
+      await refreshUser();
+      navigate(redirectTo);
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTogglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
   };
 
   return (
@@ -67,7 +160,7 @@ const CustomerLogin = () => {
         py: 4
       }}
     >
-      <Container component="main" maxWidth="sm" sx={{ position: 'relative' }}>
+      <Container component="main" maxWidth="md" sx={{ position: 'relative' }}>
         {/* Back Arrow */}
         <IconButton
           onClick={() => navigate(-1)}
@@ -85,94 +178,98 @@ const CustomerLogin = () => {
           <ArrowBack />
         </IconButton>
 
-        <Paper 
-          elevation={6} 
-          sx={{ 
-            p: 4,
-            backgroundColor: 'rgba(255, 255, 255, 0.85)',
-            backdropFilter: 'blur(16px) saturate(140%)',
-            borderRadius: 4,
-            border: '1px solid rgba(255,255,255,0.6)',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.2)'
-          }}
-        >
-          <Typography component="h1" variant="h4" align="center" gutterBottom>
-            Customer Login
-          </Typography>
-          
-          {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          
-          <Box component="form" onSubmit={handleSubmit}>
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              id="email"
-              label="Email Address"
-              name="email"
-              autoComplete="email"
-              autoFocus
-              value={formData.email}
-              onChange={handleChange}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Person />
-                  </InputAdornment>
-                ),
-              }}
-            />
-            
-            <TextField
-              margin="normal"
-              required
-              fullWidth
-              name="password"
-              label="Password"
-              type={showPassword ? 'text' : 'password'}
-              id="password"
-              autoComplete="current-password"
-              value={formData.password}
-              onChange={handleChange}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Lock />
-                  </InputAdornment>
-                ),
-                endAdornment: (
-                  <InputAdornment position="end">
-                    <IconButton
-                      aria-label="toggle password visibility"
-                      onClick={() => setShowPassword(!showPassword)}
-                      edge="end"
-                    >
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-            
-            <Button
-              type="submit"
-              fullWidth
-              variant="contained"
-              sx={{ mt: 3, mb: 2 }}
-              disabled={loading}
-            >
-              {loading ? 'Signing In...' : 'Sign In'}
-            </Button>
-            
-            <Box textAlign="center">
-              <Typography variant="body2">
-                Don't have an account?{' '}
-                <Link to="/customer-register" style={{ textDecoration: 'none' }}>
-                  Sign up here
-                </Link>
+        <Paper elevation={6} sx={{ p: 0, overflow: 'hidden', borderRadius: 4 }}>
+          <Grid container>
+            <Grid item xs={12} md={5} sx={{ bgcolor: '#2e7d32', color: 'white', p: 4, display: 'flex', flexDirection: 'column', justifyContent: 'center', minHeight: { md: 420 } }}>
+              <Typography variant="h4" fontWeight={800} gutterBottom>
+                Welcome Back!
               </Typography>
-            </Box>
-          </Box>
+              <Typography variant="body1" sx={{ opacity: 0.95 }}>
+                Sign in to access your personalized shopping experience, wishlist, and order history.
+              </Typography>
+            </Grid>
+            <Grid item xs={12} md={7} sx={{ p: 4, backgroundColor: 'rgba(255, 255, 255, 0.9)' }}>
+              {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+              
+              <Box component="form" onSubmit={handleSubmit}>
+                <TextField
+                  fullWidth
+                  required
+                  label="Email Address"
+                  name="email"
+                  type="email"
+                  value={form.email}
+                  onChange={handleChange}
+                  InputProps={{ 
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Person />
+                      </InputAdornment>
+                    ) 
+                  }}
+                  sx={{ mb: 2 }}
+                />
+                
+                <TextField
+                  fullWidth
+                  required
+                  label="Password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  value={form.password}
+                  onChange={handleChange}
+                  InputProps={{ 
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Lock />
+                      </InputAdornment>
+                    ),
+                    endAdornment: (
+                      <InputAdornment position="end">
+                        <IconButton
+                          aria-label="toggle password visibility"
+                          onClick={handleTogglePasswordVisibility}
+                          edge="end"
+                        >
+                          {showPassword ? <VisibilityOff /> : <Visibility />}
+                        </IconButton>
+                      </InputAdornment>
+                    )
+                  }}
+                  sx={{ mb: 3 }}
+                />
+                
+                <Button 
+                  type="submit" 
+                  fullWidth 
+                  variant="contained" 
+                  color="success" 
+                  disabled={loading}
+                  sx={{ mb: 2 }}
+                >
+                  {loading ? 'Signing In...' : 'SIGN IN'}
+                </Button>
+                
+                <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+                  <div ref={googleDivRef} />
+                </Box>
+                
+                <Box sx={{ textAlign: 'center', mt: 2 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Don't have an account?{' '}
+                    <Link 
+                      component="button" 
+                      variant="body2" 
+                      onClick={() => navigate('/customer-register')}
+                      sx={{ textDecoration: 'none', fontWeight: 600 }}
+                    >
+                      Create one here
+                    </Link>
+                  </Typography>
+                </Box>
+              </Box>
+            </Grid>
+          </Grid>
         </Paper>
       </Container>
     </Box>

@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Container, Paper, TextField, Button, Typography, Box, Alert } from '@mui/material';
 import api from '../../config/api';
-import firebase from '../../config/firebase';
 
 const ForgotPassword = () => {
   const [email, setEmail] = useState('');
@@ -14,17 +13,10 @@ const ForgotPassword = () => {
     e.preventDefault();
     setLoading(true); setError(''); setMessage(''); setDevResetUrl('');
     try {
-      // Prefer Firebase reset for Firebase auth users
-      await firebase.auth().sendPasswordResetEmail(email, {
-        url: `${window.location.origin}/login`,
-        handleCodeInApp: true
-      });
+      // Backend-only reset: sends a temporary password by email
+      const { data } = await api.post('/api/auth/forgot-password', { email });
       setMessage('If this email exists, a reset link has been sent.');
-      // Fallback: keep backend path for non-Firebase accounts (optional)
-      try {
-        const { data } = await api.post('/api/auth/forgot-password', { email });
-        if (data?.devResetUrl) setDevResetUrl(data.devResetUrl);
-      } catch (_) { /* ignore backend fallback errors */ }
+      if (data?.resetUrl) setDevResetUrl(data.resetUrl);
     } catch (e) {
       const msg = e?.response?.data?.message || e?.message || 'Failed to send reset link';
       setError(msg);

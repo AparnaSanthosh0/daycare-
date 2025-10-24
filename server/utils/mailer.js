@@ -27,14 +27,18 @@ async function getTransporter() {
 
   const { EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS } = process.env;
   const missing = !EMAIL_HOST || !EMAIL_PORT || !EMAIL_USER || !EMAIL_PASS;
-  const looksPlaceholder = /your_|example\.com/i.test(`${EMAIL_USER || ''}${EMAIL_PASS || ''}`);
+  const looksPlaceholder = /example\.com|placeholder|test_|demo/i.test(`${EMAIL_USER || ''}${EMAIL_PASS || ''}`);
 
   if (missing || looksPlaceholder) {
+    if ((process.env.NODE_ENV || 'development') === 'production') {
+      throw new Error('Email SMTP env not configured for production. ' + getProductionSetupInstructions());
+    }
     console.warn('Email env not fully configured or using placeholders. Using Ethereal test SMTP for development.');
     transporter = await getEtherealTransporter();
     return transporter;
   }
 
+  console.log(`📧 Using configured email service: ${EMAIL_HOST}:${EMAIL_PORT}`);
   transporter = nodemailer.createTransport({
     host: EMAIL_HOST,
     port: Number(EMAIL_PORT),
@@ -48,9 +52,19 @@ async function sendMail({ to, subject, html, text }) {
   const sendWith = async (t) => {
     const from = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'no-reply@tinytots.local';
     const info = await t.sendMail({ from, to, subject, text, html });
-    const preview = nodemailer.getTestMessageUrl(info);
-    if (preview) console.log(`Email preview URL: ${preview}`);
-    return info;
+
+    // Only show preview URLs for Ethereal (development), not for real email services
+    const isEthereal = t.options.host === 'smtp.ethereal.email';
+    const preview = isEthereal ? nodemailer.getTestMessageUrl(info) : null;
+
+    if (preview) {
+      console.log(`📧 Email preview URL: ${preview}`);
+    } else {
+      console.log(`📧 Email sent successfully to: ${to}`);
+    }
+
+    // Attach previewUrl for callers to surface in dev responses (only for Ethereal)
+    return { ...info, previewUrl: preview };
   };
 
   try {
@@ -151,6 +165,20 @@ function resetPasswordEmail(user, resetUrl) {
   };
 }
 
+function passwordResetDirectEmail(user, tempPassword) {
+  return {
+    subject: 'Your new TinyTots password',
+    html: `
+      <p>Hi ${user.firstName} ${user.lastName},</p>
+      <p>Your password has been reset. Use the temporary password below to sign in:</p>
+      <p><strong>${tempPassword}</strong></p>
+      <p>Please change it immediately after logging in from your account settings.</p>
+      <p>Regards,<br/>TinyTots Team</p>
+    `,
+    text: `Hi ${user.firstName} ${user.lastName},\n\nYour password has been reset. Temporary password: ${tempPassword}\n\nPlease change it immediately after logging in from your account settings.\n\nRegards,\nTinyTots Team`
+  };
+}
+
 function parentApprovedEmail(user) {
   return {
     subject: 'TinyTots Parent Account Approved',
@@ -228,6 +256,71 @@ function staffRejectedEmail(user, reason) {
   };
 }
 
+function customerWelcomeEmail(customer) {
+  const body = `Dear ${customer.firstName || 'Customer'},`;
+  return {
+    subject: 'Welcome to TinyTots - Your OTP login is ready',
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.5;color:#222">
+        <div style="text-align:center;margin-bottom:16px">
+          <img alt="TinyTots" src="${process.env.FRONTEND_URL || 'http://localhost:3000'}/tinytots-logo.svg" height="40"/>
+        </div>
+        <p>${body}</p>
+        <p>Welcome to TinyTots! You can now access your account using OTP based login with your registered email <b>${customer.email}</b>${customer.phone ? ` or mobile <b>${customer.phone}</b>` : ''}.</p>
+        <p style="margin:16px 0;padding:12px;background:#f8f9fa;border:1px solid #eee;border-radius:8px">
+          For security, never share your OTP with anyone. Our team will never ask for it.
+        </p>
+        <p>Thank you for choosing TinyTots.</p>
+        <p style="margin-top:24px">Best Regards,<br/>Team TinyTots</p>
+      </div>
+    `,
+    text: `${body}\n\nWelcome to TinyTots! You can now log in with OTP using your registered email ${customer.email}${customer.phone ? ` or mobile ${customer.phone}` : ''}.\n\nNever share your OTP.\n\nBest Regards,\nTeam TinyTots`
+  };
+}
+
+// Production setup guidance
+function getProductionSetupInstructions() {
+  return `
+📧 PRODUCTION EMAIL SETUP REQUIRED
+
+Your application is currently using Ethereal test SMTP for development.
+For production, please configure one of the following email services:
+
+1. SendGrid (Recommended):
+   - Sign up at: https://sendgrid.com
+   - Get API key from: Settings > API Keys
+   - Verify your sender identity in: Settings > Sender Authentication
+   - Set environment variables:
+     EMAIL_HOST=smtp.sendgrid.net
+     EMAIL_PORT=587
+     EMAIL_USER=apikey
+     EMAIL_PASS=your_sendgrid_api_key
+     EMAIL_FROM=TinyTots <noreply@yourdomain.com>
+
+2. AWS SES:
+   - Go to: https://console.aws.amazon.com/ses
+   - Verify your domain/email
+   - Generate SMTP credentials
+   - Set environment variables:
+     EMAIL_HOST=email-smtp.us-east-1.amazonaws.com
+     EMAIL_PORT=587
+     EMAIL_USER=your_access_key_id
+     EMAIL_PASS=your_secret_access_key
+     EMAIL_FROM=TinyTots <noreply@yourdomain.com>
+
+3. Gmail (Not recommended for production):
+   - Enable 2FA on your Google account
+   - Generate app password: Google Account > Security > App passwords
+   - Set environment variables:
+     EMAIL_HOST=smtp.gmail.com
+     EMAIL_PORT=587
+     EMAIL_USER=your_email@gmail.com
+     EMAIL_PASS=your_app_password
+
+See EMAIL_SMS_SETUP.md for detailed instructions.
+`;
+}
+
 module.exports = {
   sendMail,
   vendorApprovedEmail,
@@ -235,9 +328,12 @@ module.exports = {
   registrationSubmittedEmail,
   emailVerificationEmail,
   resetPasswordEmail,
+  passwordResetDirectEmail,
   parentApprovedEmail,
   parentRejectedEmail,
   staffApprovedEmail,
   staffRejectedEmail,
   childCreatedEmail,
+  customerWelcomeEmail,
+  getProductionSetupInstructions,
 };

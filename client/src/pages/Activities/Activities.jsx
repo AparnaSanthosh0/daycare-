@@ -93,7 +93,7 @@ const Activities = () => {
         <Grid container spacing={2}>
           <Grid item xs={12} md={2}>
             <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker label="Date" value={date} onChange={(v) => setDate(v || new Date())} renderInput={(params) => <TextField fullWidth {...params} />} />
+              <DatePicker label="Date" value={date} onChange={(v) => setDate(v || new Date())} slots={{ textField: TextField }} slotProps={{ textField: { fullWidth: true } }} />
             </LocalizationProvider>
           </Grid>
           <Grid item xs={12} md={2}>
@@ -136,12 +136,12 @@ const Activities = () => {
         <Grid container spacing={2} alignItems="center">
           <Grid item xs={12} md={2}>
             <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker label="From" value={from} onChange={(v) => setFrom(v || new Date())} renderInput={(params) => <TextField fullWidth {...params} />} />
+              <DatePicker label="From" value={from} onChange={(v) => setFrom(v || new Date())} slots={{ textField: TextField }} slotProps={{ textField: { fullWidth: true } }} />
             </LocalizationProvider>
           </Grid>
           <Grid item xs={12} md={2}>
             <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker label="To" value={to} onChange={(v) => setTo(v || new Date())} renderInput={(params) => <TextField fullWidth {...params} />} />
+              <DatePicker label="To" value={to} onChange={(v) => setTo(v || new Date())} slots={{ textField: TextField }} slotProps={{ textField: { fullWidth: true } }} />
             </LocalizationProvider>
           </Grid>
           <Grid item xs={12} md={3}>
@@ -212,7 +212,7 @@ const Activities = () => {
           </Grid>
           <Grid item xs={12} md={2}>
             <LocalizationProvider dateAdapter={AdapterDateFns}>
-              <DatePicker label="Date" value={mDate} onChange={(v) => setMDate(v || new Date())} renderInput={(params) => <TextField fullWidth {...params} />} />
+              <DatePicker label="Date" value={mDate} onChange={(v) => setMDate(v || new Date())} slots={{ textField: TextField }} slotProps={{ textField: { fullWidth: true } }} />
             </LocalizationProvider>
           </Grid>
           <Grid item xs={12} md={2}>

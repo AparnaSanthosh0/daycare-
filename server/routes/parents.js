@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const { requireChildProfile } = require('../middleware/auth');
 const Child = require('../models/Child');
 const AdmissionRequest = require('../models/AdmissionRequest');
 const { body, validationResult } = require('express-validator');
-const Message = require('../models/Message');
-const User = require('../models/User');
+const Attendance = require('../models/Attendance');
 
 // Get children for logged-in parent
-router.get('/me/children', auth, async (req, res) => {
+router.get('/me/children', auth, requireChildProfile, async (req, res) => {
   try {
     if (req.user.role !== 'parent') {
       return res.status(403).json({ message: 'Only parents can access their children' });
@@ -156,6 +156,112 @@ router.post('/me/feedback', auth, [
   } catch (error) {
     console.error('Feedback error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+router.get('/me/attendance', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'parent') {
+      return res.status(403).json({ message: 'Only parents can view attendance' });
+    }
+
+    // Check if parent has active children
+    const children = await Child.find({ 
+      parents: req.user.userId,
+      isActive: true 
+    }).select('_id firstName lastName');
+
+    if (children.length === 0) {
+      return res.status(404).json({ 
+        message: 'No active children found. Please ensure your child profile is created and approved.' 
+      });
+    }
+
+    const childIds = children.map(child => child._id);
+    
+    // Get attendance records for parent's children
+    const { from, to, childId } = req.query || {};
+    
+    const query = {
+      entityType: 'child',
+      entityId: childId ? 
+        (childIds.includes(childId) ? childId : null) : 
+        { $in: childIds }
+    };
+
+    if (from || to) {
+      query.date = {};
+      if (from) query.date.$gte = new Date(from);
+      if (to) query.date.$lte = new Date(to);
+    }
+
+    const attendance = await Attendance.find(query)
+      .populate('entityId', 'firstName lastName')
+      .sort({ date: -1 })
+      .limit(100); // Limit for performance
+
+    // Format response to include child names
+    const formattedAttendance = attendance.map(record => ({
+      ...record.toObject(),
+      childName: record.entityId ? `${record.entityId.firstName} ${record.entityId.lastName}` : 'Unknown'
+    }));
+
+    res.json({
+      children,
+      attendance: formattedAttendance,
+      total: formattedAttendance.length
+    });
+  } catch (error) {
+    console.error('Get parent attendance error:', error);
+    res.status(500).json({ message: 'Server error fetching attendance' });
+  }
+});
+
+// Get attendance for a specific child
+router.get('/me/attendance/:childId', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'parent') {
+      return res.status(403).json({ message: 'Only parents can view attendance' });
+    }
+
+    const { childId } = req.params;
+    const { from, to } = req.query || {};
+
+    // Verify the child belongs to this parent and is active
+    const child = await Child.findOne({
+      _id: childId,
+      parents: req.user.userId,
+      isActive: true
+    }).select('_id firstName lastName');
+
+    if (!child) {
+      return res.status(404).json({ 
+        message: 'Child not found or not associated with your account' 
+      });
+    }
+
+    const query = {
+      entityType: 'child',
+      entityId: childId
+    };
+
+    if (from || to) {
+      query.date = {};
+      if (from) query.date.$gte = new Date(from);
+      if (to) query.date.$lte = new Date(to);
+    }
+
+    const attendance = await Attendance.find(query)
+      .sort({ date: -1 })
+      .limit(50);
+
+    res.json({
+      child,
+      attendance,
+      total: attendance.length
+    });
+  } catch (error) {
+    console.error('Get child attendance error:', error);
+    res.status(500).json({ message: 'Server error fetching child attendance' });
   }
 });
 

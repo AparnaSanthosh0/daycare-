@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Box, Paper, Typography, Grid, Stack, TextField, Button, Table, TableHead, TableRow, TableCell, TableBody, Select, MenuItem, FormControl, InputLabel, Chip } from '@mui/material';
+import { Box, Paper, Typography, Grid, Stack, TextField, Button, Table, TableHead, TableRow, TableCell, TableBody, Select, MenuItem, FormControl, InputLabel, Chip, Alert, Snackbar } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
 
@@ -10,29 +10,41 @@ export default function Inventory() {
   const [items, setItems] = useState([]);
   const [movements, setMovements] = useState([]);
   const [filters, setFilters] = useState({ productId: '', warehouseId: '', lowStock: false });
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
 
   const [whForm, setWhForm] = useState({ name: '', code: '' });
   const [itemForm, setItemForm] = useState({ product: '', warehouse: '', batchNo: '', quantity: 0, reorderPoint: 0, locationCode: '' });
   const [movementForm, setMovementForm] = useState({ product: '', warehouse: '', batchNo: '', type: 'IN', quantity: 1, reference: '' });
 
   const refreshLists = useCallback(async () => {
-    const params = { ...filters };
-    const [itemsRes, movesRes] = await Promise.all([
-      api.get('/api/inventory/items', { params }),
-      api.get('/api/inventory/movements', { params }),
-    ]);
-    setItems(itemsRes.data.items || []);
-    setMovements(movesRes.data.movements || []);
+    try {
+      const params = { ...filters };
+      const [itemsRes, movesRes] = await Promise.all([
+        api.get('/api/inventory/items', { params }),
+        api.get('/api/inventory/movements', { params }),
+      ]);
+      setItems(itemsRes.data.items || []);
+      setMovements(movesRes.data.movements || []);
+    } catch (e) {
+      console.error('Inventory refresh error:', e);
+      setError(e?.response?.data?.message || 'Failed to load inventory lists');
+    }
   }, [filters]);
 
   const loadAll = useCallback(async () => {
-    const [wh, pr] = await Promise.all([
-      api.get('/api/inventory/warehouses'),
-      api.get('/api/products'),
-    ]);
-    setWarehouses(wh.data.warehouses || []);
-    setProducts(pr.data.products || []);
-    await refreshLists();
+    try {
+      const [wh, pr] = await Promise.all([
+        api.get('/api/inventory/warehouses'),
+        api.get('/api/products'),
+      ]);
+      setWarehouses(wh.data.warehouses || []);
+      setProducts(pr.data.products || []);
+      await refreshLists();
+    } catch (e) {
+      console.error('Inventory init error:', e);
+      setError(e?.response?.data?.message || 'Failed to load inventory dependencies');
+    }
   }, [refreshLists]);
 
   useEffect(() => {
@@ -52,14 +64,26 @@ export default function Inventory() {
   }
 
   return (
+    <>
     <Box sx={{ p: 3 }}>
+      {!!error && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
       <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
         <Typography variant="h4">Inventory & Warehouse Management</Typography>
         <Stack direction="row" spacing={1}>
           <Button variant="outlined" onClick={refreshLists}>Refresh</Button>
           <Button variant="contained" onClick={async () => {
-            await api.post('/api/inventory/alerts/low-stock/send');
-            await refreshLists();
+            try {
+              await api.post('/api/inventory/alerts/low-stock/send');
+              setSuccess('Low stock alert email sent (if items found).');
+              await refreshLists();
+            } catch (e) {
+              console.error('Low stock alert error:', e);
+              setError(e?.response?.data?.message || 'Failed to send low stock alert');
+            }
           }}>Send Low Stock Alert</Button>
         </Stack>
       </Stack>
@@ -70,11 +94,20 @@ export default function Inventory() {
           <TextField label="Warehouse Name" value={whForm.name} onChange={e => setWhForm({ ...whForm, name: e.target.value })} />
           <TextField label="Code" value={whForm.code} onChange={e => setWhForm({ ...whForm, code: e.target.value })} />
           <Button variant="contained" onClick={async () => {
-            if (!whForm.name || !whForm.code) return;
-            await api.post('/api/inventory/warehouses', whForm);
-            setWhForm({ name: '', code: '' });
-            const { data } = await api.get('/api/inventory/warehouses');
-            setWarehouses(data.warehouses || []);
+            try {
+              if (!whForm.name || !whForm.code) {
+                setError('Please enter Warehouse Name and Code');
+                return;
+              }
+              await api.post('/api/inventory/warehouses', whForm);
+              setWhForm({ name: '', code: '' });
+              const { data } = await api.get('/api/inventory/warehouses');
+              setWarehouses(data.warehouses || []);
+              setSuccess('Warehouse added');
+            } catch (e) {
+              console.error('Add warehouse error:', e);
+              setError(e?.response?.data?.message || 'Failed to add warehouse');
+            }
           }}>Add Warehouse</Button>
         </Stack>
         <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
@@ -147,9 +180,15 @@ export default function Inventory() {
         </Grid>
         <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
           <Button variant="contained" onClick={async () => {
-            const payload = { ...itemForm, quantity: Number(itemForm.quantity || 0), reorderPoint: Number(itemForm.reorderPoint || 0) };
-            await api.post('/api/inventory/items', payload);
-            await refreshLists();
+            try {
+              const payload = { ...itemForm, quantity: Number(itemForm.quantity || 0), reorderPoint: Number(itemForm.reorderPoint || 0) };
+              await api.post('/api/inventory/items', payload);
+              setSuccess('Inventory item saved');
+              await refreshLists();
+            } catch (e) {
+              console.error('Save item error:', e);
+              setError(e?.response?.data?.message || 'Failed to save inventory item');
+            }
           }}>Save Item</Button>
         </Stack>
       </Paper>
@@ -193,8 +232,14 @@ export default function Inventory() {
         </Grid>
         <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
           <Button variant="contained" onClick={async () => {
-            await api.post('/api/inventory/movements', movementForm);
-            await refreshLists();
+            try {
+              await api.post('/api/inventory/movements', movementForm);
+              setSuccess('Movement recorded');
+              await refreshLists();
+            } catch (e) {
+              console.error('Record movement error:', e);
+              setError(e?.response?.data?.message || 'Failed to record movement');
+            }
           }}>Record Movement</Button>
         </Stack>
       </Paper>
@@ -259,5 +304,11 @@ export default function Inventory() {
         </TableBody>
       </Table>
     </Box>
+    <Snackbar open={!!success} autoHideDuration={3000} onClose={() => setSuccess('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
+      <Alert onClose={() => setSuccess('')} severity="success" sx={{ width: '100%' }}>
+        {success}
+      </Alert>
+    </Snackbar>
+  </>
   );
 }

@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const auth = require('../middleware/auth');
+const { authorize } = require('../middleware/auth');
 const Attendance = require('../models/Attendance');
 const User = require('../models/User');
 const Child = require('../models/Child');
@@ -139,7 +140,6 @@ router.post('/mark-absence', auth, async (req, res) => {
 
     return res.status(200).json({ message: 'Marked absent', attendance: doc });
   } catch (e) {
-    console.error('Mark absence error:', e);
     return res.status(500).json({ message: 'Server error during absence mark' });
   }
 });
@@ -147,7 +147,7 @@ router.post('/mark-absence', auth, async (req, res) => {
 // Report with filters
 router.get('/report', auth, async (req, res) => {
   try {
-    const { from, to, entityType, entityId, status } = req.query || {};
+    const { from, to, entityType, entityId, status, staffOnly } = req.query || {};
     const q = {};
     if (entityType) q.entityType = entityType;
     if (entityId) q.entityId = entityId;
@@ -159,23 +159,79 @@ router.get('/report', auth, async (req, res) => {
       if (to) q.date.$lte = startOfDay(new Date(to));
     }
 
-    const records = await Attendance.find(q).sort({ date: -1 });
-    return res.json({ records });
-  } catch (e) {
-    console.error('Report error:', e);
-    return res.status(500).json({ message: 'Server error generating report' });
-  }
-});
+    // If staffOnly is requested, restrict to records created by staff users
+    if (String(staffOnly).toLowerCase() === 'true' || staffOnly === '1') {
+      // Default to child entityType if not already constrained
+      if (!q.entityType) q.entityType = 'child';
+      const staffUsers = await User.find({ role: 'staff' }).select('_id');
+      const staffIds = staffUsers.map(u => u._id);
+      q.createdBy = { $in: staffIds };
+    }
 
-// Today summary (for dashboard)
-router.get('/today', auth, async (req, res) => {
-  try {
-    const today = startOfDay(new Date());
-    const records = await Attendance.find({ date: today });
+    const records = await Attendance.find(q).sort({ date: -1 });
     return res.json({ records });
   } catch (e) {
     console.error('Today summary error:', e);
     return res.status(500).json({ message: 'Server error fetching today summary' });
+  }
+});
+
+// Admin summary for today's attendance
+router.get('/admin-summary', auth, authorize('admin'), async (req, res) => {
+  try {
+    const { date } = req.query || {};
+    const targetDate = date ? startOfDay(new Date(date)) : startOfDay(new Date());
+
+    const todayStart = targetDate;
+    const todayEnd = new Date(todayStart.getTime());
+    todayEnd.setHours(23, 59, 59, 999);
+
+    // Get all attendance records for today
+    const todayRecords = await Attendance.find({
+      date: { $gte: todayStart, $lte: todayEnd }
+    });
+
+    // Calculate summary
+    const summary = {
+      present: todayRecords.filter(r => r.status === 'present').length,
+      absent: todayRecords.filter(r => r.status === 'absent').length,
+      late: todayRecords.filter(r => r.status === 'late').length,
+      total: todayRecords.length
+    };
+
+    res.json(summary);
+  } catch (e) {
+    console.error('Admin summary error:', e);
+    res.status(500).json({ message: 'Server error fetching admin summary' });
+  }
+});
+
+// Recent attendance activity for admin dashboard
+router.get('/recent-activity', auth, authorize('admin'), async (req, res) => {
+  try {
+    // Get recent attendance records (last 24 hours)
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    const recentRecords = await Attendance.find({
+      updatedAt: { $gte: twentyFourHoursAgo }
+    })
+    .populate('entityId', 'firstName lastName')
+    .sort({ updatedAt: -1 })
+    .limit(10);
+
+    // Format activity data
+    const activities = recentRecords.map(record => ({
+      entityType: record.entityType,
+      entityName: record.entityId ? `${record.entityId.firstName} ${record.entityId.lastName}` : 'Unknown',
+      action: record.checkInAt ? 'Check-in' : record.checkOutAt ? 'Check-out' : 'Status Update',
+      status: record.status,
+      timestamp: record.updatedAt
+    }));
+
+    res.json(activities);
+  } catch (e) {
+    console.error('Recent activity error:', e);
+    res.status(500).json({ message: 'Server error fetching recent activity' });
   }
 });
 

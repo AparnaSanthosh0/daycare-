@@ -3,7 +3,8 @@ const mongoose = require('mongoose');
 // Stores hashed OTP codes for email verification
 // TTL index on expiresAt auto-removes expired documents
 const otpSchema = new mongoose.Schema({
-  email: { type: String, required: true, index: true, lowercase: true, trim: true },
+  email: { type: String, index: true, lowercase: true, trim: true },
+  phone: { type: String, index: true, trim: true },
   codeHash: { type: String, required: true },
   expiresAt: { type: Date, required: true }
 }, { timestamps: true });

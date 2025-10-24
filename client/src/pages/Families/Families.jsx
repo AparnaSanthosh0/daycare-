@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Typography, Box, Paper, Grid, Card, CardHeader, CardContent, Avatar,
   TextField, IconButton, Chip, Divider, Button, Dialog, DialogTitle,
@@ -30,7 +30,7 @@ const Families = () => {
     emergencyContactPhone: ''
   });
 
-  async function load() {
+  const load = useCallback(async () => {
     try {
       setLoading(true); setError('');
       if (user?.role === 'admin' || user?.role === 'staff') {
@@ -55,10 +55,10 @@ const Families = () => {
     } finally {
       setLoading(false);
     }
-  }
+  }, [user]);
 
-  // Load families on mount; stable dependency prevents infinite loops
-  useEffect(() => { load(); }, []);
+  // Load families on mount; include 'load' in deps per ESLint
+  useEffect(() => { load(); }, [load]);
 
   const byParent = useMemo(() => {
     const map = new Map();

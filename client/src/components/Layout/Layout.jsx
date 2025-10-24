@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { Box, CssBaseline, Toolbar } from '@mui/material';
+import { Box, CssBaseline } from '@mui/material';
 import Sidebar from './Sidebar';
-import Header from './Header';
+import DashboardHeader from './DashboardHeader';
 
 const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -13,13 +13,14 @@ const Layout = ({ children }) => {
   return (
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
-      <Header onMenuClick={handleDrawerToggle} />
+      <DashboardHeader />
       <Sidebar mobileOpen={mobileOpen} onDrawerToggle={handleDrawerToggle} />
       <Box
         component="main"
         sx={{
           flexGrow: 1,
           p: 3,
+          pt: { xs: 6, sm: 6 }, // Further reduced padding-top for higher header
           width: { sm: `calc(100% - 240px)` },
           minHeight: '100vh',
           position: 'relative',
@@ -37,7 +38,6 @@ const Layout = ({ children }) => {
           }
         }}
       >
-        <Toolbar />
         <Box sx={{ position: 'relative', zIndex: 1 }}>
           {children}
         </Box>

@@ -18,18 +18,17 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  TextField,
   Alert,
   IconButton
 } from '@mui/material';
-import { Person, Visibility, Edit, Delete } from '@mui/icons-material';
+import { Visibility } from '@mui/icons-material';
 import api from '../../config/api';
 
 const CustomerManagement = () => {
   const [customers, setCustomers] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {

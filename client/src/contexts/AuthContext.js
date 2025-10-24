@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../config/api';
 import { toast } from 'react-toastify';
+import { debugAuth } from '../utils/debugAuth';
 
 const AuthContext = createContext();
 
@@ -36,6 +37,7 @@ export const AuthProvider = ({ children }) => {
           console.error('Auth check failed:', error);
           localStorage.removeItem('token');
           delete api.defaults.headers.common['Authorization'];
+          // Don't redirect here - let the API interceptor handle it if needed
         }
       }
       setLoading(false);
@@ -44,14 +46,35 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
   }, []);
 
+  // Expose a refresh function for components to re-pull latest user (e.g., after profile image upload)
+  const refreshUser = async () => {
+    try {
+      const resp = await api.get('/api/auth/me');
+      setUser(resp.data.user);
+      return resp.data.user;
+    } catch (e) {
+      console.error('refreshUser failed:', e);
+      return null;
+    }
+  };
+
   const login = async (identifier, password) => {
     try {
+      console.log('🔐 Attempting login with:', identifier);
+      
       // Send as username primarily, fallback to email for backward compatibility
       const payload = identifier && identifier.includes('@')
         ? { email: identifier, password }
         : { username: identifier, password };
+      
+      console.log('📤 Sending login request:', { email: payload.email, username: payload.username });
+      console.log('🌐 API base URL:', api.defaults.baseURL);
+      console.log('🔗 Full URL will be:', `${api.defaults.baseURL}/api/auth/login`);
       const response = await api.post('/api/auth/login', payload);
       const { token, user } = response.data;
+      
+      console.log('✅ Login successful, received token:', token ? `${token.substring(0, 50)}...` : 'No token');
+      console.log('👤 User data:', user);
       
       localStorage.setItem('token', token);
       // Store role for client-side redirection safety (do not trust UI selection)
@@ -62,14 +85,28 @@ export const AuthProvider = ({ children }) => {
         const padded = base64.padEnd(base64.length + (4 - (base64.length % 4 || 4)) % 4, '=');
         const payloadJwt = JSON.parse(atob(padded) || '{}') || {};
         localStorage.setItem('token_payload', JSON.stringify({ role: payloadJwt.role }));
-      } catch {}
+        console.log('🔑 Token payload parsed:', payloadJwt);
+      } catch (e) {
+        console.warn('⚠️ Could not parse token payload:', e);
+      }
       
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
       setUser(user);
       
-      toast.success('Login successful!');
+      // Avoid showing duplicate toasts repeatedly; throttle within a session
+      const key = 'tt_login_toast_shown';
+      const lastShown = Number(sessionStorage.getItem(key) || 0);
+      const now = Date.now();
+      if (!lastShown || now - lastShown > 30000) { // 30s throttle
+        toast.success('Login successful!');
+        sessionStorage.setItem(key, String(now));
+      }
+      
+      console.log('🎯 User state updated, returning success with role:', user?.role);
       return { success: true, user, role: user?.role };
     } catch (error) {
+      console.error('❌ Login failed:', error);
+      console.error('Response:', error.response?.data);
       const message = error.response?.data?.message || 'Login failed';
       toast.error(message);
       return { success: false, message };
@@ -135,11 +172,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     delete api.defaults.headers.common['Authorization'];
     setUser(null);
-    // Avoid duplicate toasts if logout called multiple times (e.g., StrictMode)
-    if (!window.__tt_lastLogoutToast || Date.now() - window.__tt_lastLogoutToast > 1500) {
-      toast.info('Logged out successfully');
-      window.__tt_lastLogoutToast = Date.now();
-    }
+    // Removed logout toast per request to avoid showing a banner after logout
   };
 
   const updateProfile = async (profileData) => {
@@ -162,7 +195,9 @@ export const AuthProvider = ({ children }) => {
     register,
     logout,
     updateProfile,
-    loginWithGoogleIdToken
+    loginWithGoogleIdToken,
+    refreshUser,
+    debugAuth
   };
 
   return (

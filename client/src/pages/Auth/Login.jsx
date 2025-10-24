@@ -114,20 +114,27 @@ const Login = () => {
     
     if (result.success) {
       const role = result.role || result.user?.role || JSON.parse(localStorage.getItem('token_payload') || '{}').role || formData.role;
+      console.log('Login successful, role:', role, 'navigating to appropriate route');
+      
       switch (role) {
         case 'admin':
+          console.log('Navigating to /admin');
           navigate('/admin');
           break;
         case 'staff':
+          console.log('Navigating to /staff');
           navigate('/staff');
           break;
         case 'parent':
+          console.log('Navigating to /dashboard');
           navigate('/dashboard');
           break;
         case 'vendor':
+          console.log('Navigating to /vendor');
           navigate('/vendor');
           break;
         default:
+          console.log('Navigating to /dashboard (default)');
           navigate('/dashboard');
       }
     } else {

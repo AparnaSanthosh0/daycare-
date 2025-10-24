@@ -532,16 +532,133 @@ router.put('/vendors/:id/reject', adminOnly, async (req, res) => {
   }
 });
 
-// Remove vendor (admin can remove the current approved vendor)
+// Update vendor information (admin only)
+router.put('/vendors/:id', adminOnly, async (req, res) => {
+  try {
+    const vendorId = req.params.id;
+    const { vendorName, companyName, email, phone, businessLicenseNumber, address, notes } = req.body;
+
+    const vendor = await Vendor.findById(vendorId);
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+
+    // Check if email is being changed and if it's already in use
+    if (email && email.toLowerCase() !== vendor.email) {
+      const existingVendor = await Vendor.findOne({ 
+        email: email.toLowerCase(), 
+        _id: { $ne: vendorId } 
+      });
+      if (existingVendor) {
+        return res.status(400).json({ message: 'Email already in use by another vendor' });
+      }
+    }
+
+    // Update vendor fields
+    if (vendorName) vendor.vendorName = vendorName;
+    if (companyName) vendor.companyName = companyName;
+    if (email) vendor.email = email.toLowerCase();
+    if (phone) vendor.phone = phone;
+    if (businessLicenseNumber) vendor.businessLicenseNumber = businessLicenseNumber;
+    if (address) vendor.address = { ...vendor.address, ...address };
+    if (notes !== undefined) vendor.notes = notes;
+
+    await vendor.save();
+
+    // If vendor has a linked user account, update that too
+    if (vendor.user && email) {
+      const User = require('../models/User');
+      await User.findByIdAndUpdate(vendor.user, { 
+        email: email.toLowerCase(),
+        firstName: vendorName || vendor.vendorName,
+        lastName: companyName || vendor.companyName,
+        phone: phone || vendor.phone
+      });
+    }
+
+    const updatedVendor = await Vendor.findById(vendorId)
+      .populate('approvedBy', 'firstName lastName email')
+      .populate('user', 'email role isActive');
+
+    res.json({ message: 'Vendor updated successfully', vendor: updatedVendor });
+  } catch (error) {
+    console.error('Vendor update error:', error);
+    res.status(500).json({ message: 'Server error updating vendor' });
+  }
+});
+
+// Remove vendor (admin can remove any vendor)
 router.delete('/vendors/:id', adminOnly, async (req, res) => {
   try {
     const vendorId = req.params.id;
-    const vendor = await Vendor.findByIdAndDelete(vendorId);
+    const vendor = await Vendor.findById(vendorId);
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
-    res.json({ message: 'Vendor removed successfully' });
+
+    // If vendor has a linked user account, delete that too
+    if (vendor.user) {
+      const User = require('../models/User');
+      await User.findByIdAndDelete(vendor.user);
+    }
+
+    await Vendor.findByIdAndDelete(vendorId);
+    res.json({ message: 'Vendor and associated user account removed successfully' });
   } catch (error) {
     console.error('Vendor remove error:', error);
     res.status(500).json({ message: 'Server error removing vendor' });
+  }
+});
+
+// Get single vendor details (admin only)
+router.get('/vendors/:id', adminOnly, async (req, res) => {
+  try {
+    const vendorId = req.params.id;
+    const vendor = await Vendor.findById(vendorId)
+      .populate('approvedBy', 'firstName lastName email')
+      .populate('user', 'email role isActive');
+    
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+    
+    res.json(vendor);
+  } catch (error) {
+    console.error('Get vendor error:', error);
+    res.status(500).json({ message: 'Server error fetching vendor' });
+  }
+});
+
+// Reset vendor password (admin only)
+router.post('/vendors/:id/reset-password', adminOnly, async (req, res) => {
+  try {
+    const vendorId = req.params.id;
+    const vendor = await Vendor.findById(vendorId).populate('user');
+    
+    if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
+    if (!vendor.user) return res.status(400).json({ message: 'Vendor has no linked user account' });
+
+    const User = require('../models/User');
+    const tempPassword = Math.random().toString(36).slice(-10) + 'A@1';
+    
+    const user = await User.findById(vendor.user._id);
+    user.password = tempPassword;
+    await user.save();
+
+    // Send email with new password
+    try {
+      const { sendMail, vendorApprovedEmail } = require('../utils/mailer');
+      const loginInfo = { email: vendor.email, password: tempPassword };
+      const mail = vendorApprovedEmail(vendor.toObject(), loginInfo);
+      await sendMail({ to: vendor.email, ...mail });
+    } catch (e) {
+      console.warn('Failed to send password reset email:', e.message);
+    }
+
+    // Log for development (remove in production)
+    console.log(`Vendor password reset -> ${vendor.email} / ${tempPassword}`);
+
+    res.json({ 
+      message: 'Password reset successfully. New credentials sent via email.',
+      tempPassword: tempPassword // Remove this in production
+    });
+  } catch (error) {
+    console.error('Vendor password reset error:', error);
+    res.status(500).json({ message: 'Server error resetting vendor password' });
   }
 });
 
@@ -605,6 +722,43 @@ router.put('/users/:id/toggle-status', adminOnly, async (req, res) => {
   } catch (error) {
     console.error('Toggle user status error:', error);
     res.status(500).json({ message: 'Server error toggling user status' });
+  }
+});
+
+// Delete user (admin only)
+router.delete('/users/:id', adminOnly, async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Don't allow admin to delete themselves
+    if (userId === req.user.userId) {
+      return res.status(400).json({ message: 'Cannot delete your own account' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // If deleting a parent, also delete their children
+    if (user.role === 'parent') {
+      await Child.deleteMany({ parents: userId });
+    }
+
+    // If deleting a vendor, also delete the vendor record
+    if (user.role === 'vendor') {
+      await Vendor.findOneAndDelete({ user: userId });
+    }
+
+    // Delete the user
+    await User.findByIdAndDelete(userId);
+
+    res.json({
+      message: `User ${user.firstName} ${user.lastName} deleted successfully`
+    });
+  } catch (error) {
+    console.error('Delete user error:', error);
+    res.status(500).json({ message: 'Server error deleting user' });
   }
 });
 
@@ -747,19 +901,25 @@ router.post('/children', adminOnly, [
   body('lastName').trim().notEmpty().withMessage('Last name is required'),
   body('dateOfBirth').isISO8601().withMessage('Valid date of birth is required'),
   body('gender').isIn(['male', 'female']).withMessage('Gender must be male or female'),
-  body('parentId').isMongoId().withMessage('Valid parent ID is required'),
+  body('parentId').notEmpty().withMessage('Parent ID is required'),
   body('program').isIn(['infant', 'toddler', 'preschool', 'prekindergarten']).withMessage('Valid program is required')
 ], async (req, res) => {
   try {
+    console.log('Admin creating child with body:', req.body);
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
     const { firstName, lastName, dateOfBirth, gender, parentId, program, allergies, medicalConditions, emergencyContacts, authorizedPickup, notes } = req.body;
 
     // Validate parent exists and is active
+    console.log('Looking for parent with ID:', parentId);
     const parent = await User.findById(parentId);
+    console.log('Found parent:', parent ? { id: parent._id, role: parent.role, isActive: parent.isActive } : 'Not found');
+    
     if (!parent) {
       return res.status(404).json({ message: 'Parent not found' });
     }
@@ -780,6 +940,21 @@ router.post('/children', adminOnly, [
     }
 
     // Create child profile
+    console.log('Creating child with data:', {
+      firstName,
+      lastName,
+      dateOfBirth,
+      gender,
+      parents: [parent._id],
+      program,
+      allergies: Array.isArray(allergies) ? allergies : [],
+      medicalConditions: Array.isArray(medicalConditions) ? medicalConditions : [],
+      emergencyContacts: Array.isArray(emergencyContacts) ? emergencyContacts : [],
+      authorizedPickup: Array.isArray(authorizedPickup) ? authorizedPickup : [],
+      notes: notes || '',
+      isActive: true
+    });
+    
     const child = await Child.create({
       firstName,
       lastName,
@@ -794,6 +969,8 @@ router.post('/children', adminOnly, [
       notes: notes || '',
       isActive: true
     });
+    
+    console.log('Child created successfully:', child._id);
 
     // Send child creation email to parent
     try {

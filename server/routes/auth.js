@@ -170,8 +170,8 @@ router.post('/register', upload.single('certificate'), [
     // Otherwise, issue JWT and return user
     const token = jwt.sign(
       { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE }
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
 
     // Send email verification link (best-effort)
@@ -211,7 +211,8 @@ router.post('/login', [
       return res.status(400).json({ errors: errors.array() });
       }
 
-    const { username, email, password } = req.body;
+    const { username, email: rawEmail, password } = req.body;
+    const email = rawEmail ? String(rawEmail).toLowerCase() : undefined;
     if (!username && !email) {
       return res.status(400).json({ message: 'Username or email is required' });
     }
@@ -219,7 +220,7 @@ router.post('/login', [
     // Choose identifier: username preferred if provided, else email
     const query = username ? { username } : { email };
 
-    const user = await User.findOne(query);
+    const user = await User.findOne(query).select('+password');
     if (!user) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
@@ -227,7 +228,9 @@ router.post('/login', [
     if (!user.isActive) {
       // Allow admins to log in even if inactive; optionally allow all via .env
       const allowAll = (process.env.ALLOW_INACTIVE_LOGIN || '').toLowerCase() === 'true';
-      if (user.role !== 'admin' && !allowAll) {
+      // Allow recent password reset users a temporary login window
+      const withinResetWindow = user.passwordResetWindowExpires && user.passwordResetWindowExpires > new Date();
+      if (user.role !== 'admin' && !allowAll && !withinResetWindow) {
         return res.status(401).json({ message: 'Account is deactivated or pending approval' });
       }
     }
@@ -239,10 +242,17 @@ router.post('/login', [
 
     const token = jwt.sign(
       { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE }
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
 
+    // Clear reset window once they successfully login
+    if (user.passwordResetWindowExpires && user.passwordResetWindowExpires > new Date()) {
+      try {
+        user.passwordResetWindowExpires = null;
+        await user.save();
+      } catch {}
+    }
     res.json({ message: 'Login successful', token, user });
   } catch (error) {
     console.error('Login error:', error);
@@ -253,12 +263,35 @@ router.post('/login', [
 // Get current user
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId);
-    if (!user) {
-      return res.status(404).json({ message: 'User not found' });
+    // Supports both standard users (userId) and customers (customerId)
+    if (req.user && req.user.userId) {
+      const user = await User.findById(req.user.userId);
+      if (!user) return res.status(404).json({ message: 'User not found' });
+      return res.json({ user });
     }
-
-    res.json({ user });
+    if (req.user && req.user.customerId) {
+      const Customer = require('../models/Customer');
+      const customer = await Customer.findById(req.user.customerId).select('-password');
+      if (!customer) return res.status(404).json({ message: 'User not found' });
+      // Return a user-shaped object so frontend AuthContext can consume it seamlessly
+      const user = {
+        _id: customer._id,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        email: customer.email,
+        phone: customer.phone,
+        role: req.user.role || 'customer',
+        totalOrders: customer.totalOrders,
+        totalSpent: customer.totalSpent,
+        lastLogin: customer.lastLogin,
+        address: customer.address,
+        isActive: customer.isActive !== false,
+        profileImage: customer.profileImage || null,
+        updatedAt: customer.updatedAt
+      };
+      return res.json({ user });
+    }
+    return res.status(404).json({ message: 'User not found' });
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -340,9 +373,35 @@ router.post('/profile/image', auth, profileUpload.single('image'), async (req, r
   try {
     if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
     const url = `/uploads/profile_images/${req.file.filename}`;
-    const user = await User.findByIdAndUpdate(req.user.userId, { profileImage: url }, { new: true });
-    if (!user) return res.status(404).json({ message: 'User not found' });
-    res.json({ message: 'Profile image updated', url, user });
+    // Support both regular users and customers
+    if (req.user && req.user.userId) {
+      const user = await User.findByIdAndUpdate(req.user.userId, { profileImage: url }, { new: true });
+      if (!user) return res.status(404).json({ message: 'User not found' });
+      return res.json({ message: 'Profile image updated', url, user });
+    }
+    if (req.user && req.user.customerId) {
+      const Customer = require('../models/Customer');
+      const customer = await Customer.findByIdAndUpdate(req.user.customerId, { profileImage: url }, { new: true });
+      if (!customer) return res.status(404).json({ message: 'User not found' });
+      // Return a user-shaped object to keep client consistent
+      const user = {
+        _id: customer._id,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        email: customer.email,
+        phone: customer.phone,
+        role: req.user.role || 'customer',
+        totalOrders: customer.totalOrders,
+        totalSpent: customer.totalSpent,
+        lastLogin: customer.lastLogin,
+        address: customer.address,
+        isActive: customer.isActive !== false,
+        profileImage: customer.profileImage || url,
+        updatedAt: customer.updatedAt
+      };
+      return res.json({ message: 'Profile image updated', url, user });
+    }
+    return res.status(400).json({ message: 'Unrecognized auth token' });
   } catch (error) {
     console.error('Profile image upload error:', error);
     res.status(500).json({ message: 'Server error uploading profile image' });
@@ -355,38 +414,54 @@ router.post('/google', async (req, res) => {
     const { idToken } = req.body || {};
     if (!idToken) return res.status(400).json({ message: 'Missing idToken' });
 
+    // Feature flag: allow disabling Google OAuth without code changes
+    const googleEnabled = (process.env.ENABLE_GOOGLE_AUTH || 'true').toLowerCase() === 'true';
+    if (!googleEnabled) {
+      return res.status(503).json({
+        message: 'Google authentication is temporarily disabled. Please use email/password login.'
+      });
+    }
+
+    // Initialize Firebase Admin SDK if not already initialized
     if (!admin.apps.length) {
-      // Initialize Firebase Admin
-      // Priority:
-      // 1) Service account JSON via GOOGLE_APPLICATION_CREDENTIALS
-      // 2) Inline creds via FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY
-      // 3) Application Default Credentials
       try {
-        const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-        if (credPath) {
-          const serviceAccount = require(credPath);
-          admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+        // Try to initialize with service account credentials
+        if (process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+          const serviceAccount = require(process.env.GOOGLE_APPLICATION_CREDENTIALS);
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+          });
         } else if (process.env.FIREBASE_PROJECT_ID && process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
           admin.initializeApp({
             credential: admin.credential.cert({
               projectId: process.env.FIREBASE_PROJECT_ID,
               clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-              privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n')
+              privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
             })
           });
         } else {
-          admin.initializeApp({ credential: admin.credential.applicationDefault() });
+          // Try Application Default Credentials (for Google Cloud environments)
+          admin.initializeApp();
         }
+        console.log('Firebase Admin SDK initialized successfully');
       } catch (initErr) {
-        console.error('Failed to initialize Firebase Admin:', initErr);
-        return res.status(500).json({ message: 'Server auth config error. Contact admin.' });
+        console.error('Failed to initialize Firebase Admin SDK:', initErr);
+        return res.status(500).json({ 
+          message: 'Firebase authentication is not properly configured. Please contact administrator.' 
+        });
       }
     }
 
     // Verify the ID token
-    const decoded = await admin.auth().verifyIdToken(idToken);
-    const { email, name, picture, uid } = decoded;
+    let decoded;
+    try {
+      decoded = await admin.auth().verifyIdToken(idToken);
+    } catch (verifyErr) {
+      console.error('Token verification failed:', verifyErr);
+      return res.status(401).json({ message: 'Invalid Google authentication token' });
+    }
 
+    const { email, name, picture, uid } = decoded;
     if (!email) return res.status(400).json({ message: 'Email not available from Google' });
 
     // Allow seamless onboarding: auto-create Parent account if not found
@@ -416,8 +491,8 @@ router.post('/google', async (req, res) => {
     // Mint app JWT
     const token = jwt.sign(
       { userId: user._id, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRE }
+      process.env.JWT_SECRET || 'fallback_secret',
+      { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
 
     res.json({
@@ -431,7 +506,7 @@ router.post('/google', async (req, res) => {
   }
 });
 
-// Forgot password - request reset link
+// Forgot password - request reset link (email link with token)
 router.post('/forgot-password', [
   body('email').isEmail().withMessage('Valid email required')
 ], async (req, res) => {
@@ -448,12 +523,10 @@ router.post('/forgot-password', [
     if (!user) {
       const vendor = await Vendor.findOne({ email });
       if (vendor) {
-        // Create a minimal active vendor user to allow reset flow
         user = new User({
           firstName: vendor.vendorName,
           lastName: vendor.companyName || 'Vendor',
-          email: vendor.email, // already lowercase in model
-          // Set a random temp that will be replaced by reset password anyway
+          email: vendor.email,
           password: Math.random().toString(36).slice(-10) + 'A@1',
           role: 'vendor',
           phone: vendor.phone,
@@ -461,23 +534,22 @@ router.post('/forgot-password', [
           isActive: true,
         });
         await user.save();
-        if (!vendor.user) {
-          vendor.user = user._id;
-          await vendor.save();
-        }
+        if (!vendor.user) { vendor.user = user._id; await vendor.save(); }
       } else {
-        // No user or vendor -> generic success (no leak)
+        // Generic success to avoid email enumeration
         return res.json({ message: 'If this email exists, a reset link has been sent.' });
       }
     }
 
+    // Create reset token and expiry
     const token = crypto.randomBytes(32).toString('hex');
     user.resetPasswordToken = token;
-    user.resetPasswordExpires = new Date(Date.now() + 60*60*1000); // 1h
+    user.resetPasswordExpires = new Date(Date.now() + 60*60*1000); // 1 hour
     await user.save();
 
-    const baseUrl = process.env.APP_BASE_URL || 'http://localhost:3000';
+    const baseUrl = process.env.APP_BASE_URL || process.env.FRONTEND_URL || 'http://localhost:3000';
     const resetUrl = `${baseUrl}/reset-password?token=${token}&email=${encodeURIComponent(email)}`;
+
     try {
       const { sendMail, resetPasswordEmail } = require('../utils/mailer');
       const mail = resetPasswordEmail(user.toObject(), resetUrl);
@@ -486,8 +558,8 @@ router.post('/forgot-password', [
       console.warn('Reset email skipped/failed:', e.message);
     }
 
-    const devResetUrl = process.env.NODE_ENV !== 'production' ? resetUrl : undefined;
-    res.json({ message: 'If this email exists, a reset link has been sent.', devResetUrl });
+    // Return resetUrl in dev so UI can surface a direct link when using Ethereal
+    res.json({ message: 'If this email exists, a reset link has been sent.', resetUrl });
   } catch (error) {
     console.error('Forgot password error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -505,13 +577,16 @@ router.post('/reset-password', [
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });
     }
-    const { email, token, password } = req.body;
+    const { email: rawEmail, token, password } = req.body;
+    const email = String(rawEmail).toLowerCase();
     const user = await User.findOne({ email, resetPasswordToken: token, resetPasswordExpires: { $gt: new Date() } });
     if (!user) return res.status(400).json({ message: 'Invalid or expired token' });
 
     user.password = password; // will be hashed by pre-save hook
     user.resetPasswordToken = null;
     user.resetPasswordExpires = null;
+    // Allow login for 24 hours even if account is inactive (post-reset)
+    user.passwordResetWindowExpires = new Date(Date.now() + 24*60*60*1000);
     await user.save();
 
     res.json({ message: 'Password has been reset successfully' });

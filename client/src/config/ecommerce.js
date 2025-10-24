@@ -58,7 +58,8 @@ export const handleEcommerceNavigation = (navigate, category = '') => {
   
   // Check if it's an internal route (starts with /)
   if (url.startsWith('/')) {
-    navigate(url);
+    const from = (typeof window !== 'undefined' && window.location && window.location.pathname) ? window.location.pathname : undefined;
+    navigate(url, { state: from ? { from } : undefined });
   } else {
     // External URL
     if (ecommerceConfig.openInNewTab) {

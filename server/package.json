@@ -7,8 +7,15 @@
     "start": "node index.js",
     "dev": "nodemon index.js",
     "test": "jest",
+    "test:email-sms": "node scripts/testEmailSms.js",
+    "validate:gmail": "node scripts/validateGmail.js",
+    "status": "node scripts/status.js",
+    "setup:vendor": "node scripts/setupVendor.js",
+    "reset:vendor": "node scripts/resetVendor.js",
+    "create:products": "node scripts/createSampleProducts.js",
     "create-admin": "node scripts/createAdmin.js",
-    "reset-vendor-password": "node scripts/resetVendorPassword.js"
+    "reset-vendor-password": "node scripts/resetVendorPassword.js",
+    "setup": "node scripts/setupEmailSms.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -18,13 +25,15 @@
     "express-rate-limit": "^7.1.5",
     "express-validator": "^7.0.1",
     "firebase-admin": "^12.5.0",
+    "google-auth-library": "^10.3.0",
     "helmet": "^7.1.0",
     "jsonwebtoken": "^9.0.2",
     "moment": "^2.29.4",
     "mongoose": "^8.0.3",
     "multer": "^1.4.5-lts.1",
     "nodemailer": "^6.9.7",
-    "tinytots-daycare-system": "file:..",
+    "razorpay": "^2.9.6",
+    "twilio": "^5.10.3",
     "uuid": "^9.0.1"
   },
   "devDependencies": {

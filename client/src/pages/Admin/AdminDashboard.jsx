@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Grid,
   Card,
@@ -25,7 +25,13 @@ import {
   Tab,
   IconButton,
   Tooltip,
-  MenuItem
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Select,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
 import {
   SupervisorAccount,
@@ -36,12 +42,13 @@ import {
   Cancel,
   Visibility,
   PersonAdd,
-  Refresh
+  Refresh,
+  ExpandMore
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
+// import StaffChildAssignment from './StaffChildAssignment';
 import { API_BASE_URL } from '../../config/api';
-
 // Animated counter for stats
 const CountUp = ({ value, duration = 600 }) => {
   const [display, setDisplay] = React.useState(0);
@@ -90,25 +97,19 @@ const AdminDashboard = () => {
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
   const [tabValue, setTabValue] = useState(0);
+  const [search, setSearch] = useState('');
   
   // Data states
   const [pendingStaff, setPendingStaff] = useState([]);
   const [pendingParents, setPendingParents] = useState([]);
   const [pendingVendors, setPendingVendors] = useState([]);
   const [currentVendor, setCurrentVendor] = useState(null);
-  // Families (parents + children combined)
-  const [families, setFamilies] = useState([]);
+  const [staffAssignments, setStaffAssignments] = useState([]);
+  const [availableStaff, setAvailableStaff] = useState([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
 
-  // UI state
-  const [search, setSearch] = useState('');
-  
-  // Dialog states
-  const [viewDialog, setViewDialog] = useState({ open: false, data: null, type: '' });
-  const [actionDialog, setActionDialog] = useState({ open: false, data: null, type: '', action: '' });
-  const [createChildDialog, setCreateChildDialog] = useState(false);
-  const [reason, setReason] = useState('');
-  
   // Create child form (and parent selection)
   const [childForm, setChildForm] = useState({
     parentId: '',
@@ -125,6 +126,45 @@ const AdminDashboard = () => {
   });
   const [parentsList, setParentsList] = useState([]);
   const [prefilledLocked, setPrefilledLocked] = useState(false);
+  // Vendor edit dialog
+  const [editVendorDialog, setEditVendorDialog] = useState({ open: false });
+  const [vendorForm, setVendorForm] = useState({
+    vendorName: '',
+    companyName: '',
+    email: '',
+    phone: '',
+    businessLicenseNumber: '',
+    address: { street: '', city: '', state: '', zipCode: '' },
+    notes: ''
+  });
+  const [assignmentDialog, setAssignmentDialog] = useState({ open: false, child: null, selectedStaffId: '', selectedChildId: '' });
+
+  // Families (parents + children combined)
+  const [families, setFamilies] = useState([]);
+
+  // All users data
+  const [allStaff, setAllStaff] = useState([]);
+  const [allVendors, setAllVendors] = useState([]);
+  const [allChildren, setAllChildren] = useState([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+
+  // Customers state for e-commerce
+  const [customers, setCustomers] = useState([]);
+  const [customerForm, setCustomerForm] = useState({
+    parentId: '',
+    firstName: '',
+    lastName: '',
+    email: '',
+    phone: '',
+    address: { street: '', city: '', state: '', zipCode: '' },
+    preferredProducts: []
+  });
+  const [createCustomerDialog, setCreateCustomerDialog] = useState(false);
+  const [actionDialog, setActionDialog] = useState({ open: false, data: null, type: '', action: '' });
+  const [createChildDialog, setCreateChildDialog] = useState(false);
+  const [reason, setReason] = useState('');
+  const [viewDialog, setViewDialog] = useState({ open: false, data: null, type: '' });
+  const [editAssignmentDialog, setEditAssignmentDialog] = useState({ open: false, staff: null, children: [] });
 
   useEffect(() => {
     if (user?.role === 'admin') {
@@ -133,35 +173,33 @@ const AdminDashboard = () => {
       (async () => {
         try {
           const res = await api.get('/api/admin/parents', { params: { page: 1, limit: 100 } });
+          console.log('Parents API response:', res.data);
           setParentsList(res.data || []);
         } catch (e) {
           console.error('Load parents list error:', e);
+          setError('Failed to load parents list: ' + (e?.response?.data?.message || e.message));
         }
       })();
-      // Load combined parents and children for Families section
+      // Load all users data for the comprehensive view
       (async () => {
         try {
-          const [parentsRes, childrenRes] = await Promise.all([
-            api.get('/api/admin/parents'),
+          setUsersLoading(true);
+          const [staffRes, vendorsRes, childrenRes] = await Promise.all([
+            api.get('/api/admin/staff'),
+            api.get('/api/admin/vendors'),
             api.get('/api/children')
           ]);
-          const parents = Array.isArray(parentsRes.data) ? parentsRes.data : (parentsRes.data || []);
-          const children = Array.isArray(childrenRes.data) ? childrenRes.data : (childrenRes.data.children || []);
-          const byParent = new Map();
-          for (const p of parents) {
-            byParent.set(p._id, { parent: p, children: [] });
-          }
-          for (const c of children) {
-            (c.parents || []).forEach((pid) => {
-              if (!byParent.has(pid)) byParent.set(pid, { parent: { _id: pid }, children: [] });
-              byParent.get(pid).children.push(c);
-            });
-          }
-          setFamilies(Array.from(byParent.values()));
+          setAllStaff(staffRes.data || []);
+          setAllVendors(vendorsRes.data || []);
+          setAllChildren(childrenRes.data || []);
         } catch (e) {
-          console.error('Load families error:', e);
+          console.error('Load all users error:', e);
+        } finally {
+          setUsersLoading(false);
         }
       })();
+      // Load staff assignments
+      fetchStaffAssignments();
     }
   }, [user]);
 
@@ -188,6 +226,35 @@ const AdminDashboard = () => {
       setLoading(false);
     }
   };
+
+  const handleUnassignStaff = async (childId) => {
+    try {
+      await api.put(`/api/children/${childId}/unassign-staff`);
+      fetchStaffAssignments();
+    } catch (error) {
+      console.error('Error unassigning staff:', error);
+      setError('Failed to unassign staff');
+    }
+  };
+
+  // Vendor management handlers are intentionally omitted from UI for now to avoid unused code warnings.
+
+  const handleUpdateVendor = async () => {
+    try {
+      if (!currentVendor?._id) return;
+      const payload = { ...vendorForm };
+      await api.put(`/api/admin/vendors/${currentVendor._id}`, payload);
+      setEditVendorDialog({ open: false });
+      fetchDashboardData();
+    } catch (e) {
+      console.error('Update vendor error:', e);
+      setError(e?.response?.data?.message || 'Failed to update vendor');
+    }
+  };
+
+  // const handleDeleteVendor = async () => { /* intentionally removed (unused) */ };
+
+  // const handleResetVendorPassword = async () => { /* intentionally removed (unused) */ };
 
   const prefillFromAdmission = async (parentId) => {
     try {
@@ -229,6 +296,43 @@ const AdminDashboard = () => {
     }
   };
 
+  // Staff assignment functions
+  const fetchStaffAssignments = async () => {
+    try {
+      setLoadingAssignments(true);
+      const [assignmentsRes, staffRes] = await Promise.all([
+        api.get('/api/children/assignments/staff'),
+        api.get('/api/children/available-staff')
+      ]);
+      setStaffAssignments(assignmentsRes.data.staffAssignments || []);
+      setAvailableStaff(staffRes.data || []);
+    } catch (error) {
+      console.error('Error fetching staff assignments:', error);
+      setError('Failed to load staff assignments');
+    } finally {
+      setLoadingAssignments(false);
+    }
+  };
+
+  const handleAssignStaff = async () => {
+    try {
+      const childId = assignmentDialog.child?._id || assignmentDialog.selectedChildId;
+      if (!childId || !assignmentDialog.selectedStaffId) return;
+
+      await api.put(`/api/children/${childId}/assign-staff`, {
+        staffId: assignmentDialog.selectedStaffId
+      });
+
+      setAssignmentDialog({ open: false, child: null, selectedStaffId: '', selectedChildId: '' });
+      fetchStaffAssignments();
+    } catch (error) {
+      console.error('Error assigning staff:', error);
+      setError('Failed to assign staff');
+    }
+  };
+
+  // const handleQuickAssignment = async () => { /* intentionally removed (unused) */ };
+
   const handleApproveReject = async (id, type, action) => {
     try {
       let endpoint = `/api/admin/${type}/${id}/status`;
@@ -244,7 +348,7 @@ const AdminDashboard = () => {
       } else {
         await api.put(endpoint);
       }
-      
+
       setActionDialog({ open: false, data: null, type: '', action: '' });
       setReason('');
       fetchDashboardData();
@@ -256,8 +360,44 @@ const AdminDashboard = () => {
 
   const handleCreateChild = async () => {
     try {
-      if (!childForm.parentId) { setError('Select a parent'); return; }
-      if (!childForm.firstName || !childForm.lastName || !childForm.dateOfBirth) { setError('Please fill required fields'); return; }
+      if (!childForm.parentId) { 
+        setError('Please select a parent'); 
+        return; 
+      }
+      if (!childForm.firstName || !childForm.lastName || !childForm.dateOfBirth) { 
+        setError('Please fill in all required fields (First Name, Last Name, Date of Birth)'); 
+        return; 
+      }
+      
+      // If parentId looks like an email, we need to find the actual parent ID
+      let parentId = childForm.parentId;
+      if (childForm.parentId.includes('@')) {
+        try {
+          const parentRes = await api.get(`/api/admin/parents`);
+          const parent = parentRes.data.find(p => p.email === childForm.parentId);
+          if (!parent) {
+            setError('Parent not found with email: ' + childForm.parentId);
+            return;
+          }
+          parentId = parent._id;
+        } catch (e) {
+          setError('Could not find parent. Please check the email address.');
+          return;
+        }
+      }
+
+      // Validate parent exists and is active
+      try {
+        const parentRes = await api.get(`/api/admin/parents/${parentId}`);
+        if (!parentRes.data || !parentRes.data.isActive) {
+          setError('Selected parent is not active. Please activate the parent first.');
+          return;
+        }
+      } catch (e) {
+        setError('Parent not found or inactive. Please select a valid parent.');
+        return;
+      }
+
       // Build emergencyContacts respecting schema required fields
       const ec0 = (Array.isArray(childForm.emergencyContacts) ? childForm.emergencyContacts[0] : null) || {};
       const emergencyContacts = (ec0.name && ec0.phone)
@@ -274,7 +414,7 @@ const AdminDashboard = () => {
         lastName: childForm.lastName.trim(),
         dateOfBirth: childForm.dateOfBirth,
         gender: childForm.gender,
-        parents: [childForm.parentId],
+        parentId: parentId, // Send parentId instead of parents array for admin route
         program: childForm.program,
         tuitionRate: Number(childForm.tuitionRate) || 0,
         allergies: (childForm.allergies || []).map((a) => String(a)).filter(Boolean),
@@ -283,28 +423,102 @@ const AdminDashboard = () => {
         authorizedPickup,
         schedule: {}
       };
-      await api.post('/api/children', payload);
+      
+      console.log('Creating child with payload:', payload);
+      const response = await api.post('/api/admin/children', payload);
+      console.log('Child creation response:', response.data);
+      
       setCreateChildDialog(false);
-      setChildForm({ parentId: '', firstName: '', lastName: '', dateOfBirth: '', gender: 'male', program: 'preschool', tuitionRate: 0, allergies: [], medicalConditions: [], emergencyContacts: [], authorizedPickup: [] });
+      setChildForm({ 
+        parentId: '', 
+        firstName: '', 
+        lastName: '', 
+        dateOfBirth: '', 
+        gender: 'male', 
+        program: 'preschool', 
+        tuitionRate: 0, 
+        allergies: [], 
+        medicalConditions: [], 
+        emergencyContacts: [], 
+        authorizedPickup: [] 
+      });
       setPrefilledLocked(false);
+      setError(''); // Clear any previous errors
       fetchDashboardData();
+      
+      // Show success message
+      setSuccessMsg(`Child profile created successfully for ${payload.firstName} ${payload.lastName}`);
     } catch (error) {
       console.error('Error creating child:', error);
-      setError(error?.response?.data?.message || 'Failed to create child profile');
+      const errorMessage = error?.response?.data?.message || error?.response?.data?.errors?.[0]?.msg || 'Failed to create child profile';
+      setError(errorMessage);
     }
   };
 
-  const renderPendingTable = (raw, type) => {
+  const handleRegisterCustomer = async () => {
+    try {
+      if (!customerForm.email) { setError('Email is required'); return; }
+      if (!customerForm.parentId && (!customerForm.firstName || !customerForm.lastName)) { setError('Name is required for new customers'); return; }
+
+      const payload = {
+        parentId: customerForm.parentId || null,
+        firstName: customerForm.firstName || '',
+        lastName: customerForm.lastName || '',
+        email: customerForm.email,
+        phone: customerForm.phone || '',
+        address: customerForm.address,
+        preferredProducts: customerForm.preferredProducts
+      };
+
+      // Assuming an API endpoint for registering customers
+      await api.post('/api/customers', payload);
+
+      setCreateCustomerDialog(false);
+      setCustomerForm({
+        parentId: '',
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        address: { street: '', city: '', state: '', zipCode: '' },
+        preferredProducts: []
+      });
+
+      // Refresh customers list (assuming fetchCustomers function)
+      // For now, just add to local state
+      setCustomers(prev => [...prev, { ...payload, _id: Date.now() }]);
+    } catch (error) {
+      console.error('Error registering customer:', error);
+      setError(error?.response?.data?.message || 'Failed to register customer');
+    }
+  };
+
+  const filteredPending = useMemo(() => {
+    if (!search.trim()) {
+      return {
+        staff: pendingStaff,
+        parents: pendingParents,
+        vendors: pendingVendors,
+      };
+    }
     const q = search.trim().toLowerCase();
-    const data = q
-      ? raw.filter((it) => {
-          const name = type === 'vendors' ? it.vendorName : `${it.firstName} ${it.lastName}`;
-          return (
-            (name || '').toLowerCase().includes(q) ||
-            (it.email || '').toLowerCase().includes(q)
-          );
-        })
-      : raw;
+    const applyFilter = (list, type) => (list || []).filter((it) => {
+      const name = type === 'vendors' ? it.vendorName : `${it.firstName || ''} ${it.lastName || ''}`;
+      return (
+        (name || '').toLowerCase().includes(q) ||
+        (it.email || '').toLowerCase().includes(q)
+      );
+    });
+
+    return {
+      staff: applyFilter(pendingStaff, 'staff'),
+      parents: applyFilter(pendingParents, 'parents'),
+      vendors: applyFilter(pendingVendors, 'vendors'),
+    };
+  }, [search, pendingStaff, pendingParents, pendingVendors]);
+
+  const renderPendingTable = useCallback((raw, type) => {
+    const data = filteredPending[type] || [];
     return (
       <TableContainer component={Paper}>
         <Table>
@@ -321,8 +535,8 @@ const AdminDashboard = () => {
             {data.map((item) => (
               <TableRow key={item._id}>
                 <TableCell>
-                  {type === 'vendors' 
-                    ? item.vendorName 
+                  {type === 'vendors'
+                    ? item.vendorName
                     : (
                       <Button
                         size="small"
@@ -367,11 +581,11 @@ const AdminDashboard = () => {
                   </Tooltip>
                   <Tooltip title="Approve">
                     <IconButton
-                      onClick={() => setActionDialog({ 
-                        open: true, 
-                        data: item, 
-                        type: type === 'vendors' ? 'vendors' : type, 
-                        action: 'approved' 
+                      onClick={() => setActionDialog({
+                        open: true,
+                        data: item,
+                        type: type === 'vendors' ? 'vendors' : type,
+                        action: 'approved'
                       })}
                       size="small"
                       color="success"
@@ -381,11 +595,11 @@ const AdminDashboard = () => {
                   </Tooltip>
                   <Tooltip title="Reject">
                     <IconButton
-                      onClick={() => setActionDialog({ 
-                        open: true, 
-                        data: item, 
-                        type: type === 'vendors' ? 'vendors' : type, 
-                        action: 'rejected' 
+                      onClick={() => setActionDialog({
+                        open: true,
+                        data: item,
+                        type: type === 'vendors' ? 'vendors' : type,
+                        action: 'rejected'
                       })}
                       size="small"
                       color="error"
@@ -407,7 +621,7 @@ const AdminDashboard = () => {
         </Table>
       </TableContainer>
     );
-  };
+  }, [filteredPending]);
 
   if (user?.role !== 'admin') {
     return (
@@ -459,6 +673,12 @@ const AdminDashboard = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
           {error}
+        </Alert>
+      )}
+
+      {successMsg && (
+        <Alert severity="success" sx={{ mb: 3 }} onClose={() => setSuccessMsg('')}>
+          {successMsg}
         </Alert>
       )}
       
@@ -569,14 +789,14 @@ const AdminDashboard = () => {
       <Paper sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="h6" gutterBottom>
-            Pending Approvals
+            Pending Approvals & Staff Console
           </Typography>
           {/* Quick search/filter */}
           <TextField size="small" placeholder="Search name or email" onChange={(e) => setSearch(e.target.value)} sx={{ ml: 2, width: 260 }} />
         </Box>
         
         <Tabs value={tabValue} onChange={(e, newValue) => setTabValue(newValue)}>
-          <Tab 
+          <Tab
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 Staff
@@ -584,9 +804,9 @@ const AdminDashboard = () => {
                   <Chip size="small" label={pendingStaff.length} color="error" />
                 )}
               </Box>
-            } 
+            }
           />
-          <Tab 
+          <Tab
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 Parents
@@ -594,9 +814,9 @@ const AdminDashboard = () => {
                   <Chip size="small" label={pendingParents.length} color="error" />
                 )}
               </Box>
-            } 
+            }
           />
-          <Tab 
+          <Tab
             label={
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 Vendors
@@ -604,25 +824,397 @@ const AdminDashboard = () => {
                   <Chip size="small" label={pendingVendors.length} color="error" />
                 )}
               </Box>
-            } 
+            }
           />
+          <Tab label="Staff Console" />
+          <Tab label="Customers" />
+          <Tab label="All Users" />
         </Tabs>
 
         <Box sx={{ mt: 3 }}>
           {tabValue === 0 && renderPendingTable(pendingStaff, 'staff')}
           {tabValue === 1 && renderPendingTable(pendingParents, 'parents')}
-          {tabValue === 2 && (
+          {tabValue === 2 && renderPendingTable(pendingVendors, 'vendors')}
+          {tabValue === 3 && (
             <Box>
-              {currentVendor ? (
-                <Alert severity="info" sx={{ mb: 2 }}>
-                  Current approved vendor: <strong>{currentVendor.vendorName}</strong> ({currentVendor.companyName}). Vendor selection is closed.
-                </Alert>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h6">Staff Management & Assignments</Typography>
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <Button variant="outlined" onClick={fetchStaffAssignments} disabled={loadingAssignments}>
+                    Refresh
+                  </Button>
+                  <Button variant="contained" startIcon={<PersonAdd />} onClick={() => setAssignmentDialog({ open: true, child: null, selectedStaffId: '', selectedChildId: '' })}>
+                    Assign Child to Staff
+                  </Button>
+                  <Button variant="contained" startIcon={<Group />} onClick={() => setTabValue(4)}>
+                    View All Staff Details
+                  </Button>
+                </Box>
+              </Box>
+
+              {loadingAssignments ? (
+                <Typography>Loading staff assignments...</Typography>
               ) : (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                  No vendor approved yet. Approve exactly one from the list below; the rest will be auto-rejected and notified.
-                </Alert>
+                <Grid container spacing={3}>
+                  {/* Staff with Assigned Children */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 3 }}>
+                      <Typography variant="h6" gutterBottom>Staff and Assigned Children</Typography>
+                      {staffAssignments.length === 0 ? (
+                        <Typography>No staff assignments found.</Typography>
+                      ) : (
+                        staffAssignments.map((staffAssignment) => (
+                          <Accordion key={staffAssignment.staff._id} sx={{ mb: 2 }}>
+                            <AccordionSummary expandIcon={<ExpandMore />}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
+                                  {staffAssignment.staff.firstName?.[0]}{staffAssignment.staff.lastName?.[0]}
+                                </Avatar>
+                                <Box sx={{ flex: 1 }}>
+                                  <Typography variant="h6">
+                                    {staffAssignment.staff.firstName} {staffAssignment.staff.lastName}
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {staffAssignment.staff.role} • {staffAssignment.totalChildren} children assigned
+                                  </Typography>
+                                </Box>
+                                <Button size="small" variant="outlined" onClick={() => {
+                                  // Open edit dialog for this staff's assignments
+                                  setEditAssignmentDialog({ open: true, staff: staffAssignment.staff, children: staffAssignment.children });
+                                }}>
+                                  Edit Assignments
+                                </Button>
+                              </Box>
+                            </AccordionSummary>
+                            <AccordionDetails>
+                              <Typography variant="subtitle1" gutterBottom>Staff Details</Typography>
+                              <Grid container spacing={2} sx={{ mb: 3 }}>
+                                <Grid item xs={12} sm={6}>
+                                  <Typography variant="body2"><strong>Email:</strong> {staffAssignment.staff.email}</Typography>
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <Typography variant="body2"><strong>Phone:</strong> {staffAssignment.staff.phone || 'N/A'}</Typography>
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <Typography variant="body2"><strong>Experience:</strong> {staffAssignment.staff.staff?.yearsOfExperience || 0} years</Typography>
+                                </Grid>
+                                <Grid item xs={12} sm={6}>
+                                  <Typography variant="body2"><strong>Qualification:</strong> {staffAssignment.staff.staff?.qualification || 'N/A'}</Typography>
+                                </Grid>
+                              </Grid>
+                              <Typography variant="subtitle1" gutterBottom>Assigned Children</Typography>
+                              {staffAssignment.children.length === 0 ? (
+                                <Typography>No children assigned to this staff member.</Typography>
+                              ) : (
+                                <Grid container spacing={2}>
+                                  {staffAssignment.children.map((child) => (
+                                    <Grid item xs={12} sm={6} md={4} key={child._id}>
+                                      <Card variant="outlined">
+                                        <CardContent sx={{ p: 2, '&:last-child': { pb: 2 } }}>
+                                          <Typography variant="h6" gutterBottom>
+                                            {child.firstName} {child.lastName}
+                                          </Typography>
+                                          <Typography variant="body2"><strong>Age:</strong> {child.age || 'N/A'}</Typography>
+                                          <Typography variant="body2"><strong>Gender:</strong> {child.gender}</Typography>
+                                          <Typography variant="body2"><strong>Program:</strong> {child.program}</Typography>
+                                          <Typography variant="body2"><strong>Status:</strong> {child.isActive ? 'Active' : 'Inactive'}</Typography>
+                                          {child.medicalConditions && child.medicalConditions.length > 0 && (
+                                            <Typography variant="body2"><strong>Medical Conditions:</strong> {child.medicalConditions.map(m => m.condition || m).join(', ')}</Typography>
+                                          )}
+                                          {child.emergencyContacts && child.emergencyContacts.length > 0 && (
+                                            <Typography variant="body2"><strong>Emergency Contact:</strong> {child.emergencyContacts[0]?.name} ({child.emergencyContacts[0]?.phone})</Typography>
+                                          )}
+                                          <Box sx={{ mt: 2 }}>
+                                            <Button size="small" variant="outlined" color="error" onClick={() => handleUnassignStaff(child._id)}>
+                                              Unassign
+                                            </Button>
+                                          </Box>
+                                        </CardContent>
+                                      </Card>
+                                    </Grid>
+                                  ))}
+                                </Grid>
+                              )}
+                            </AccordionDetails>
+                          </Accordion>
+                        ))
+                      )}
+                    </Paper>
+                  </Grid>
+
+                  {/* Staff Overview Cards */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 3, mb: 3 }}>
+                      <Typography variant="h6" gutterBottom>Staff Overview</Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Card sx={{ bgcolor: 'primary.main', color: 'white' }}>
+                            <CardContent>
+                              <Typography variant="h4" gutterBottom>
+                                {staffAssignments.length}
+                              </Typography>
+                              <Typography variant="body2">
+                                Total Staff Members
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Card sx={{ bgcolor: 'success.main', color: 'white' }}>
+                            <CardContent>
+                              <Typography variant="h4" gutterBottom>
+                                {staffAssignments.reduce((acc, assignment) => acc + assignment.totalChildren, 0)}
+                              </Typography>
+                              <Typography variant="body2">
+                                Total Assigned Children
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Card sx={{ bgcolor: 'warning.main', color: 'white' }}>
+                            <CardContent>
+                              <Typography variant="h4" gutterBottom>
+                                {(() => {
+                                  const allAssignedChildren = staffAssignments.flatMap(a => a.children.map(c => c._id));
+                                  return families.flatMap(f => f.children).filter(c => !allAssignedChildren.includes(c._id)).length;
+                                })()}
+                              </Typography>
+                              <Typography variant="body2">
+                                Unassigned Children
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Card sx={{ bgcolor: 'info.main', color: 'white' }}>
+                            <CardContent>
+                              <Typography variant="h4" gutterBottom>
+                                {Math.round(staffAssignments.reduce((acc, assignment) => acc + assignment.totalChildren, 0) / Math.max(staffAssignments.length, 1))}
+                              </Typography>
+                              <Typography variant="body2">
+                                Avg Children per Staff
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  </Grid>
+
+                </Grid>
               )}
-              {renderPendingTable(pendingVendors, 'vendors')}
+            </Box>
+          )}
+          {tabValue === 4 && (
+            <Box>
+              <Typography variant="h6" gutterBottom>All Users Overview</Typography>
+
+              {/* Staff Section */}
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h6">Staff Members</Typography>
+                  <Button variant="outlined" onClick={() => {
+                    // Refresh all users data
+                    (async () => {
+                      try {
+                        setUsersLoading(true);
+                        const [staffRes, vendorsRes, childrenRes] = await Promise.all([
+                          api.get('/api/admin/staff'),
+                          api.get('/api/admin/vendors'),
+                          api.get('/api/children')
+                        ]);
+                        setAllStaff(staffRes.data || []);
+                        setAllVendors(vendorsRes.data || []);
+                        setAllChildren(childrenRes.data || []);
+                      } catch (e) {
+                        console.error('Refresh all users error:', e);
+                      } finally {
+                        setUsersLoading(false);
+                      }
+                    })();
+                  }} disabled={usersLoading}>
+                    Refresh
+                  </Button>
+                </Box>
+
+                {usersLoading ? (
+                  <Typography>Loading staff...</Typography>
+                ) : (
+                  <Grid container spacing={2}>
+                    {allStaff.map((staff) => (
+                      <Grid item xs={12} sm={6} md={4} key={staff._id}>
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                              <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
+                                {staff.firstName?.[0]}{staff.lastName?.[0]}
+                              </Avatar>
+                              <Box>
+                                <Typography variant="h6">
+                                  {staff.firstName} {staff.lastName}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {staff.role} • {staff.staff?.qualification}
+                                </Typography>
+                              </Box>
+                            </Box>
+                            <Typography variant="body2">
+                              <strong>Email:</strong> {staff.email}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>Phone:</strong> {staff.phone || 'N/A'}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>Experience:</strong> {staff.staff?.yearsOfExperience || 0} years
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                    {allStaff.length === 0 && (
+                      <Grid item xs={12}>
+                        <Typography variant="body2" color="text.secondary">No staff members found</Typography>
+                      </Grid>
+                    )}
+                  </Grid>
+                )}
+              </Paper>
+
+              {/* Vendors Section */}
+              <Paper sx={{ p: 3, mb: 3 }}>
+                <Typography variant="h6" gutterBottom>Vendors</Typography>
+                {usersLoading ? (
+                  <Typography>Loading vendors...</Typography>
+                ) : (
+                  <Grid container spacing={2}>
+                    {allVendors.map((vendor) => (
+                      <Grid item xs={12} sm={6} md={4} key={vendor._id}>
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Typography variant="h6" gutterBottom>
+                              {vendor.vendorName}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>Company:</strong> {vendor.companyName}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>Email:</strong> {vendor.email}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>Phone:</strong> {vendor.phone || 'N/A'}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>License:</strong> {vendor.businessLicenseNumber || 'N/A'}
+                            </Typography>
+                            {vendor.address && (
+                              <Typography variant="body2">
+                                <strong>Address:</strong> {[
+                                  vendor.address.street,
+                                  vendor.address.city,
+                                  vendor.address.state,
+                                  vendor.address.zipCode
+                                ].filter(Boolean).join(', ')}
+                              </Typography>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                    {allVendors.length === 0 && (
+                      <Grid item xs={12}>
+                        <Typography variant="body2" color="text.secondary">No vendors found</Typography>
+                      </Grid>
+                    )}
+                  </Grid>
+                )}
+              </Paper>
+
+              {/* Children Section */}
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>Children</Typography>
+                {usersLoading ? (
+                  <Typography>Loading children...</Typography>
+                ) : (
+                  <Grid container spacing={2}>
+                    {allChildren.map((child) => (
+                      <Grid item xs={12} sm={6} md={4} key={child._id}>
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Typography variant="h6" gutterBottom>
+                              {child.firstName} {child.lastName}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>Age:</strong> {child.age || 'N/A'}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>Gender:</strong> {child.gender}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>Program:</strong> {child.program}
+                            </Typography>
+                            <Typography variant="body2">
+                              <strong>Status:</strong> {child.isActive ? 'Active' : 'Inactive'}
+                            </Typography>
+                            {child.allergies && child.allergies.length > 0 && (
+                              <Typography variant="body2">
+                                <strong>Allergies:</strong> {child.allergies.join(', ')}
+                              </Typography>
+                            )}
+                            {child.assignedStaff && (
+                              <Typography variant="body2" color="primary">
+                                <strong>Assigned Staff:</strong> {child.assignedStaff.firstName} {child.assignedStaff.lastName}
+                              </Typography>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                    {allChildren.length === 0 && (
+                      <Grid item xs={12}>
+                        <Typography variant="body2" color="text.secondary">No children found</Typography>
+                      </Grid>
+                    )}
+                  </Grid>
+                )}
+              </Paper>
+            </Box>
+          )}
+          {tabValue === 5 && (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                <Typography variant="h6">E-commerce Customers</Typography>
+                <Button variant="contained" startIcon={<PersonAdd />} onClick={() => setCreateCustomerDialog(true)}>
+                  Register New Customer
+                </Button>
+              </Box>
+              <Grid container spacing={2}>
+                {customers.map((customer) => (
+                  <Grid item xs={12} sm={6} md={4} key={customer._id}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          {customer.firstName} {customer.lastName}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Email:</strong> {customer.email}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Phone:</strong> {customer.phone || 'N/A'}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Parent:</strong> {customer.parentId ? 'Linked to Parent' : 'New Customer'}
+                        </Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+                {customers.length === 0 && (
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="text.secondary">No customers registered yet</Typography>
+                  </Grid>
+                )}
+              </Grid>
             </Box>
           )}
         </Box>
@@ -719,6 +1311,49 @@ const AdminDashboard = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Edit Vendor Dialog */}
+      <Dialog open={editVendorDialog.open} onClose={() => setEditVendorDialog({ open: false })} maxWidth="sm" fullWidth>
+        <DialogTitle>Edit Vendor</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Vendor Name" value={vendorForm.vendorName} onChange={(e) => setVendorForm({ ...vendorForm, vendorName: e.target.value })} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Company Name" value={vendorForm.companyName} onChange={(e) => setVendorForm({ ...vendorForm, companyName: e.target.value })} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Email" value={vendorForm.email} onChange={(e) => setVendorForm({ ...vendorForm, email: e.target.value })} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Phone" value={vendorForm.phone} onChange={(e) => setVendorForm({ ...vendorForm, phone: e.target.value })} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Business License Number" value={vendorForm.businessLicenseNumber} onChange={(e) => setVendorForm({ ...vendorForm, businessLicenseNumber: e.target.value })} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Street" value={vendorForm.address.street} onChange={(e) => setVendorForm({ ...vendorForm, address: { ...vendorForm.address, street: e.target.value } })} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="City" value={vendorForm.address.city} onChange={(e) => setVendorForm({ ...vendorForm, address: { ...vendorForm.address, city: e.target.value } })} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="State" value={vendorForm.address.state} onChange={(e) => setVendorForm({ ...vendorForm, address: { ...vendorForm.address, state: e.target.value } })} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth label="Zip Code" value={vendorForm.address.zipCode} onChange={(e) => setVendorForm({ ...vendorForm, address: { ...vendorForm.address, zipCode: e.target.value } })} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth multiline minRows={2} label="Notes" value={vendorForm.notes} onChange={(e) => setVendorForm({ ...vendorForm, notes: e.target.value })} />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditVendorDialog({ open: false })}>Cancel</Button>
+          <Button onClick={handleUpdateVendor} variant="contained">Save Changes</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Action Confirmation Dialog */}
       <Dialog open={actionDialog.open} onClose={() => setActionDialog({ open: false, data: null, type: '', action: '' })}>
         <DialogTitle>
@@ -754,6 +1389,75 @@ const AdminDashboard = () => {
         </DialogActions>
       </Dialog>
 
+      {/* Staff Assignment Dialog */}
+      <Dialog open={assignmentDialog.open} onClose={() => setAssignmentDialog({ open: false, child: null, selectedStaffId: '', selectedChildId: '' })} maxWidth="sm" fullWidth>
+        <DialogTitle>Assign Staff to Child</DialogTitle>
+        <DialogContent>
+          <Box>
+            {/* Child selector (defaults to currently viewed child if provided) */}
+            {!assignmentDialog.child && (
+              <FormControl fullWidth sx={{ mt: 1 }}>
+                <InputLabel>Select Child</InputLabel>
+                <Select
+                  value={assignmentDialog.selectedChildId}
+                  onChange={(e) => setAssignmentDialog({ ...assignmentDialog, selectedChildId: e.target.value })}
+                  label="Select Child"
+                >
+                  {(() => {
+                    const assignedIds = new Set((staffAssignments || []).flatMap(a => (a.children || []).map(c => c._id)));
+                    const children = (allChildren || []).filter(c => !assignedIds.has(c._id));
+                    return children.map((child) => (
+                      <MenuItem key={child._id} value={child._id}>
+                        {child.firstName} {child.lastName} • {child.program}
+                      </MenuItem>
+                    ));
+                  })()}
+                </Select>
+              </FormControl>
+            )}
+
+            {assignmentDialog.child && (
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="h6" gutterBottom>
+                  {assignmentDialog.child.firstName} {assignmentDialog.child.lastName}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Age {assignmentDialog.child.age} • {assignmentDialog.child.gender} • {assignmentDialog.child.program}
+                </Typography>
+              </Box>
+            )}
+
+            {/* Staff selector */}
+            <FormControl fullWidth sx={{ mt: 2 }}>
+              <InputLabel>Select Staff Member</InputLabel>
+              <Select
+                value={assignmentDialog.selectedStaffId}
+                onChange={(e) => setAssignmentDialog({ ...assignmentDialog, selectedStaffId: e.target.value })}
+                label="Select Staff Member"
+              >
+                {availableStaff.map((staff) => (
+                  <MenuItem key={staff._id} value={staff._id}>
+                    {staff.firstName} {staff.lastName} ({staff.assignedChildrenCount} children assigned)
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setAssignmentDialog({ open: false, child: null, selectedStaffId: '', selectedChildId: '' })}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleAssignStaff}
+            variant="contained"
+            disabled={!(assignmentDialog.selectedStaffId && (assignmentDialog.child?._id || assignmentDialog.selectedChildId))}
+          >
+            Assign Staff
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Create Child Profile Dialog */}
       <Dialog open={createChildDialog} onClose={() => setCreateChildDialog(false)} maxWidth="md" fullWidth>
         <DialogTitle>Create Child Profile</DialogTitle>
@@ -767,12 +1471,19 @@ const AdminDashboard = () => {
                 value={childForm.parentId}
                 onChange={(e) => setChildForm({ ...childForm, parentId: e.target.value })}
                 required
+                helperText={parentsList.length === 0 ? "No active parents found. Please ensure parents are registered and approved first." : `${parentsList.length} parent(s) available`}
               >
-                {parentsList.map((p) => (
-                  <MenuItem key={p._id} value={p._id} onClick={() => prefillFromAdmission(p._id)}>
-                    {p.firstName} {p.lastName} - {p.email}
+                {parentsList.length === 0 ? (
+                  <MenuItem value="" disabled>
+                    No active parents available - Please approve parents first
                   </MenuItem>
-                ))}
+                ) : (
+                  parentsList.map((p) => (
+                    <MenuItem key={p._id} value={p._id} onClick={() => prefillFromAdmission(p._id)}>
+                      {p.firstName} {p.lastName} - {p.email} {!p.isActive ? '(Inactive)' : ''}
+                    </MenuItem>
+                  ))
+                )}
               </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -783,6 +1494,8 @@ const AdminDashboard = () => {
                 onChange={(e) => setChildForm({ ...childForm, firstName: e.target.value })}
                 required
                 disabled={prefilledLocked}
+                error={!childForm.firstName && childForm.firstName !== ''}
+                helperText={!childForm.firstName && childForm.firstName !== '' ? 'First name is required' : ''}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -793,6 +1506,8 @@ const AdminDashboard = () => {
                 onChange={(e) => setChildForm({ ...childForm, lastName: e.target.value })}
                 required
                 disabled={prefilledLocked}
+                error={!childForm.lastName && childForm.lastName !== ''}
+                helperText={!childForm.lastName && childForm.lastName !== '' ? 'Last name is required' : ''}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -805,6 +1520,8 @@ const AdminDashboard = () => {
                 onChange={(e) => setChildForm({ ...childForm, dateOfBirth: e.target.value })}
                 required
                 disabled={prefilledLocked}
+                error={!childForm.dateOfBirth && childForm.dateOfBirth !== ''}
+                helperText={!childForm.dateOfBirth && childForm.dateOfBirth !== '' ? 'Date of birth is required' : ''}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -814,10 +1531,13 @@ const AdminDashboard = () => {
                 label="Gender"
                 value={childForm.gender}
                 onChange={(e) => setChildForm({ ...childForm, gender: e.target.value })}
+                required
                 disabled={prefilledLocked}
+                error={!childForm.gender && childForm.gender !== ''}
+                helperText={!childForm.gender && childForm.gender !== '' ? 'Gender is required' : ''}
               >
-                <option value="male">Male</option>
-                <option value="female">Female</option>
+                <MenuItem value="male">Male</MenuItem>
+                <MenuItem value="female">Female</MenuItem>
               </TextField>
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -827,12 +1547,15 @@ const AdminDashboard = () => {
                 label="Program"
                 value={childForm.program}
                 onChange={(e) => setChildForm({ ...childForm, program: e.target.value })}
+                required
                 disabled={prefilledLocked}
+                error={!childForm.program && childForm.program !== ''}
+                helperText={!childForm.program && childForm.program !== '' ? 'Program is required' : ''}
               >
-                <option value="infant">Infant</option>
-                <option value="toddler">Toddler</option>
-                <option value="preschool">Preschool</option>
-                <option value="prekindergarten">Prekindergarten</option>
+                <MenuItem value="infant">Infant</MenuItem>
+                <MenuItem value="toddler">Toddler</MenuItem>
+                <MenuItem value="preschool">Preschool</MenuItem>
+                <MenuItem value="prekindergarten">Prekindergarten</MenuItem>
               </TextField>
             </Grid>
             <Grid item xs={12}>
@@ -961,6 +1684,171 @@ const AdminDashboard = () => {
             disabled={!childForm.parentId || !childForm.firstName || !childForm.lastName || !childForm.dateOfBirth}
           >
             Create Profile
+          </Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={createCustomerDialog} onClose={() => setCreateCustomerDialog(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Register New Customer</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <Typography variant="body2" gutterBottom>
+                If the customer is an existing parent, select them below. Otherwise, fill in the new customer details.
+              </Typography>
+              <TextField
+                select
+                fullWidth
+                label="Link to Existing Parent (Optional)"
+                value={customerForm.parentId}
+                onChange={(e) => setCustomerForm({ ...customerForm, parentId: e.target.value })}
+              >
+                <MenuItem value="">New Customer</MenuItem>
+                {parentsList.map((p) => (
+                  <MenuItem key={p._id} value={p._id}>
+                    {p.firstName} {p.lastName} - {p.email}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="First Name"
+                value={customerForm.firstName}
+                onChange={(e) => setCustomerForm({ ...customerForm, firstName: e.target.value })}
+                required={!customerForm.parentId}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Last Name"
+                value={customerForm.lastName}
+                onChange={(e) => setCustomerForm({ ...customerForm, lastName: e.target.value })}
+                required={!customerForm.parentId}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Email"
+                value={customerForm.email}
+                onChange={(e) => setCustomerForm({ ...customerForm, email: e.target.value })}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Phone"
+                value={customerForm.phone}
+                onChange={(e) => setCustomerForm({ ...customerForm, phone: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Street Address"
+                value={customerForm.address.street}
+                onChange={(e) => setCustomerForm({ ...customerForm, address: { ...customerForm.address, street: e.target.value } })}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="City"
+                value={customerForm.address.city}
+                onChange={(e) => setCustomerForm({ ...customerForm, address: { ...customerForm.address, city: e.target.value } })}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="State"
+                value={customerForm.address.state}
+                onChange={(e) => setCustomerForm({ ...customerForm, address: { ...customerForm.address, state: e.target.value } })}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Zip Code"
+                value={customerForm.address.zipCode}
+                onChange={(e) => setCustomerForm({ ...customerForm, address: { ...customerForm.address, zipCode: e.target.value } })}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCreateCustomerDialog(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={handleRegisterCustomer}
+            variant="contained"
+            disabled={(!(customerForm.firstName) && !customerForm.parentId) || !customerForm.email}
+          >
+            Register Customer
+          </Button>
+        </DialogActions>
+      </Dialog>
+      {/* Edit Staff Assignments Dialog */}
+      <Dialog open={editAssignmentDialog.open} onClose={() => setEditAssignmentDialog({ open: false, staff: null, children: [] })} maxWidth="md" fullWidth>
+        <DialogTitle>Edit Assignments for {editAssignmentDialog.staff?.firstName} {editAssignmentDialog.staff?.lastName}</DialogTitle>
+        <DialogContent>
+          {editAssignmentDialog.staff && (
+            <Box>
+              <Typography variant="h6" gutterBottom>Staff Details</Typography>
+              <Grid container spacing={2} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2"><strong>Email:</strong> {editAssignmentDialog.staff.email}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2"><strong>Phone:</strong> {editAssignmentDialog.staff.phone || 'N/A'}</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2"><strong>Experience:</strong> {editAssignmentDialog.staff.staff?.yearsOfExperience || 0} years</Typography>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Typography variant="body2"><strong>Qualification:</strong> {editAssignmentDialog.staff.staff?.qualification || 'N/A'}</Typography>
+                </Grid>
+              </Grid>
+              <Typography variant="h6" gutterBottom>Assigned Children</Typography>
+              <Grid container spacing={2}>
+                {editAssignmentDialog.children.map((child) => (
+                  <Grid item xs={12} sm={6} md={4} key={child._id}>
+                    <Card variant="outlined">
+                      <CardContent>
+                        <Typography variant="h6" gutterBottom>
+                          {child.firstName} {child.lastName}
+                        </Typography>
+                        <Typography variant="body2"><strong>Age:</strong> {child.age || 'N/A'}</Typography>
+                        <Typography variant="body2"><strong>Gender:</strong> {child.gender}</Typography>
+                        <Typography variant="body2"><strong>Program:</strong> {child.program}</Typography>
+                        <Box sx={{ mt: 2 }}>
+                          <Button size="small" variant="outlined" color="error" onClick={() => handleUnassignStaff(child._id)}>
+                            Unassign
+                          </Button>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+              <Box sx={{ mt: 3 }}>
+                <Button variant="contained" onClick={() => {
+                  setAssignmentDialog({ open: true, child: null, selectedStaffId: editAssignmentDialog.staff._id });
+                  setEditAssignmentDialog({ open: false, staff: null, children: [] });
+                }}>
+                  Assign New Child to This Staff
+                </Button>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditAssignmentDialog({ open: false, staff: null, children: [] })}>
+            Close
           </Button>
         </DialogActions>
       </Dialog>

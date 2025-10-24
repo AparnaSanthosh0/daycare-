@@ -1,5 +1,5 @@
 import React from 'react';
-import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { Box } from '@mui/material';
 
 import { useAuth } from './contexts/AuthContext';
@@ -19,44 +19,40 @@ import Visitors from './pages/Staff/Visitors';
 import Emergency from './pages/Staff/Emergency';
 import Transport from './pages/Staff/Transport';
 import Communication from './pages/Staff/Communication';
-import Attendance from './pages/Attendance/Attendance';
 import Billing from './pages/Billing/Billing';
-import Activities from './pages/Activities/Activities';
 import Reports from './pages/Reports/Reports';
 import Profile from './pages/Profile/Profile';
-import ParentDashboard from './pages/Parents/ParentDashboard';
-import CustomerDashboard from './pages/Customer/CustomerDashboard';
+import CustomerRegister from './pages/Customer/CustomerRegister';
 import CustomerLogin from './pages/Customer/CustomerLogin';
+import PaymentDemo from './pages/Customer/PaymentDemo';
+import PaymentSuccess from './pages/Customer/PaymentSuccess';
+import ParentDashboard from './pages/Parents/ParentDashboard';
+import CustomerOrders from './pages/Customer/CustomerOrders';
+import VendorCustomerManagement from './pages/Vendor/VendorCustomerManagement';
+import Attendance from './pages/Attendance/Attendance';
+import Activities from './pages/Activities/Activities';
 import LoadingSpinner from './components/Common/LoadingSpinner';
 import { EcommerceDemo } from './components/Ecommerce';
-import CustomerRegister from './pages/Customer/CustomerRegister';
+import Wishlist from './components/Ecommerce/Wishlist';
+import ProductDetail from './components/Ecommerce/ProductDetail';
+import CartPage from './components/Ecommerce/CartPage';
+import { ShopProvider } from './contexts/ShopContext';
+import TrackOrder from './pages/TrackOrder';
+import Stores from './pages/Stores';
 import VendorRegister from './pages/Vendor/VendorRegister';
 import VendorDashboard from './pages/Vendor/VendorDashboard';
 import AdminDashboard from './pages/Admin/AdminDashboard';
 import UserManagement from './pages/Admin/UserManagement';
-import CustomerManagement from './pages/Admin/CustomerManagement';
+import AdminOrders from './pages/Admin/AdminOrders';
+import VendorOrders from './pages/Vendor/VendorOrders';
 import Families from './pages/Families/Families';
+import SupportCenter from './pages/Support/SupportCenter';
 const InventoryPage = React.lazy(() => import('./pages/Admin/Inventory'));
 const AboutLazy = React.lazy(() => import('./pages/About/About'));
 const ApproachLazy = React.lazy(() => import('./pages/About/Approach'));
 const CurriculumLazy = React.lazy(() => import('./pages/Curriculum/Curriculum'));
 
-function ForceLandingOnFirstLoad({ children }) {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const hasForced = React.useRef(false);
-
-  React.useEffect(() => {
-    if (!hasForced.current) {
-      hasForced.current = true;
-      if (location.pathname !== '/') {
-        navigate('/', { replace: true });
-      }
-    }
-  }, [location.pathname, navigate]);
-
-  return children;
-}
+// Removed ForceLandingOnFirstLoad: it caused unexpected redirects to the landing page on refresh.
 
 // When navigating to /login or /admin-login, always show the login screen
 // and clear any existing session so it never bounces back to the last page.
@@ -81,9 +77,9 @@ function App() {
   }
 
   return (
+    <ShopProvider>
     <Box sx={{ minHeight: '100vh' }}>
-      <ForceLandingOnFirstLoad>
-        <Routes>
+      <Routes>
           {/* Landing Page */}
           <Route 
             path="/" 
@@ -99,19 +95,14 @@ function App() {
             path="/admin-login" 
             element={<AlwaysLogin admin />}
           />
+          {/* Public registration is only for customers */}
           <Route 
             path="/register" 
-            element={!user ? <Register /> : <Navigate to={user.role === 'admin' ? '/admin' : user.role === 'customer' ? '/customer' : '/dashboard'} replace />} 
+            element={<Register />} 
           />
-          {/* Explicit parent and staff registration paths (no dropdowns) */}
-          <Route
-            path="/register/parent"
-            element={!user ? <Register fixedRole="parent" /> : <Navigate to={user.role === 'admin' ? '/admin' : user.role === 'customer' ? '/customer' : '/dashboard'} replace />} 
-          />
-          <Route
-            path="/register/staff"
-            element={!user ? <Register fixedRole="staff" /> : <Navigate to={user.role === 'admin' ? '/admin' : user.role === 'customer' ? '/customer' : '/dashboard'} replace />} 
-          />
+          {/* Explicit parent and staff registration paths */}
+          <Route path="/register/parent" element={<Register fixedRole="parent" />} />
+          <Route path="/register/staff" element={<Register fixedRole="staff" />} />
           <Route
             path="/forgot-password"
             element={!user ? <ForgotPassword /> : <Navigate to="/dashboard" replace />} 
@@ -127,6 +118,12 @@ function App() {
             element={<JobsLanding />} 
           />
 
+          {/* Support Center - Public Route */}
+          <Route 
+            path="/support" 
+            element={<SupportCenter />} 
+          />
+
           {/* About, Approach and Curriculum Pages (no dashboard layout) */}
           <Route path="/about" element={<React.Suspense fallback={null}><AboutLazy /></React.Suspense>} />
           <Route path="/approach" element={<React.Suspense fallback={null}><ApproachLazy /></React.Suspense>} />
@@ -136,6 +133,48 @@ function App() {
           <Route 
             path="/shop" 
             element={<EcommerceDemo />} 
+          />
+
+          {/* Track Order - Public Route */}
+          <Route
+            path="/track-order"
+            element={<TrackOrder />}
+          />
+
+          {/* Stores & Preschools - Public Route */}
+          <Route
+            path="/stores"
+            element={<Stores />}
+          />
+
+          {/* Shortlist/Wishlist - Public Route */}
+          <Route 
+            path="/shortlist" 
+            element={<Wishlist />} 
+          />
+
+          {/* Cart Page - Public Route (login required only to checkout) */}
+          <Route
+            path="/cart"
+            element={<CartPage />}
+          />
+
+          {/* Product Detail */}
+          <Route 
+            path="/product/:id" 
+            element={<ProductDetail />} 
+          />
+
+          {/* Fashion Aggregated Page - Public Route */}
+          <Route
+            path="/fashion"
+            element={<EcommerceDemo initialCategory="fashion" filterMode="categoryOnly" initialQuery="" />}
+          />
+
+          {/* Festival Offers landing - Public Route */}
+          <Route
+            path="/festival-offers"
+            element={<EcommerceDemo initialCategory="girl" initialQuery="festival, fest, diwali, offer" filterMode="union" />}
           />
 
           {/* Customer Registration - Public Route */}
@@ -150,6 +189,18 @@ function App() {
             element={<CustomerLogin />}
           />
 
+          {/* Payment Demo - Public Route */}
+          <Route
+            path="/payment-demo"
+            element={<PaymentDemo />}
+          />
+
+          {/* Payment Success - Public Route */}
+          <Route
+            path="/payment-success"
+            element={<PaymentSuccess />}
+          />
+
           {/* Vendor Registration - Public Route (many can register; admin approves one) */}
           <Route
             path="/vendor-register"
@@ -160,6 +211,10 @@ function App() {
           <Route
             path="/vendor"
             element={user ? <Layout><VendorDashboard /></Layout> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/vendor/customers"
+            element={user?.role === 'vendor' ? <Layout><VendorCustomerManagement /></Layout> : <Navigate to="/" replace />}
           />
           
           {/* Protected Routes */}
@@ -196,10 +251,10 @@ function App() {
             path="/parent/admissions" 
             element={user?.role === 'parent' ? <Layout><ParentDashboard initialTab="admissions" /></Layout> : <Navigate to="/dashboard" replace />} 
           />
-          {/* Customer Dashboard */}
+          {/* Customer Orders - Protected Route */}
           <Route
-            path="/customer"
-            element={user?.role === 'customer' ? <Layout><CustomerDashboard /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />}
+            path="/orders"
+            element={user ? <CustomerOrders /> : <Navigate to="/" replace />}
           />
           {/* Redirect old modules to unified Families */}
           <Route 
@@ -256,7 +311,7 @@ function App() {
           />
           <Route 
             path="/profile" 
-            element={user ? <Layout><Profile /></Layout> : <Navigate to="/" replace />} 
+            element={user ? <Profile /> : <Navigate to="/" replace />} 
           />
           
           {/* Admin Routes */}
@@ -273,18 +328,22 @@ function App() {
             element={user?.role === 'admin' ? <Layout><React.Suspense fallback={null}><InventoryPage /></React.Suspense></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
           />
           <Route 
-            path="/admin/customers" 
-            element={user?.role === 'admin' ? <Layout><CustomerManagement /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
+            path="/admin/orders" 
+            element={user?.role === 'admin' ? <Layout><AdminOrders /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
+          />
+          <Route 
+            path="/vendor/orders" 
+            element={user?.role === 'vendor' ? <Layout><VendorOrders /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
           />
           
           {/* Fallback */}
-          <Route 
-            path="*" 
-            element={user ? <Navigate to="/dashboard" replace /> : <Navigate to="/" replace />} 
+          <Route
+            path="*"
+            element={user ? <Navigate to={user.role === 'customer' ? '/shop' : '/dashboard'} replace /> : <Navigate to="/" replace />}
           />
         </Routes>
-      </ForceLandingOnFirstLoad>
     </Box>
+    </ShopProvider>
   );
 }
 

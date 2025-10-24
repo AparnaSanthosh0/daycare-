@@ -47,6 +47,8 @@ import {
   Email
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
+import { useAuth } from '../../contexts/AuthContext';
+import EduRecommendations from '../../components/Parents/EduRecommendations';
 
 // Simple helper to format date strings
 const formatDate = (d) => {
@@ -56,11 +58,35 @@ const formatDate = (d) => {
   return dt.toLocaleDateString();
 };
 
+// Normalize any image/resource URL against API_BASE_URL.
+// - Works whether API_BASE_URL is "http://host:port" or "http://host:port/api"
+// - Returns absolute URL for relative resource paths (e.g., "/uploads/..." or "uploads/...")
+const toAbsoluteUrl = (maybePath) => {
+  if (!maybePath) return '';
+  if (typeof maybePath === 'string' && /^https?:\/\//i.test(maybePath)) return maybePath;
+  try {
+    // Derive an origin (strip trailing '/api' if present). If API_BASE_URL is relative, fall back to window origin.
+    let origin = API_BASE_URL.replace(/\/?api\/?$/i, '').replace(/\/$/, '');
+    if (!/^https?:\/\//i.test(origin)) {
+      if (typeof window !== 'undefined' && window.location?.origin) {
+        origin = window.location.origin;
+      }
+    }
+    const resource = String(maybePath).startsWith('/') ? String(maybePath) : `/${String(maybePath)}`;
+    const u = new URL(resource, origin);
+    return u.href;
+  } catch (e) {
+    return String(maybePath);
+  }
+};
+
 const ParentDashboard = ({ initialTab }) => {
+  const { user } = useAuth();
   const [tab, setTab] = useState(0);
   const [, setLoading] = useState(false);
   const [children, setChildren] = useState([]);
   const [activeChildId, setActiveChildId] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
 
   // Data for active child
   const [profile, setProfile] = useState(null);
@@ -126,7 +152,14 @@ const ParentDashboard = ({ initialTab }) => {
   // Load my children
   const loadChildren = useCallback(async () => {
     try {
+      setErrorMsg('');
       setLoading(true);
+      if (user?.role !== 'parent') {
+        setChildren([]);
+        setActiveChildId('');
+        setErrorMsg('This area is for Parent accounts. Please sign in as a Parent to view your children and gallery.');
+        return;
+      }
       const res = await api.get('/api/parents/me/children');
       setChildren(res.data || []);
       if ((res.data || []).length > 0 && !activeChildId) {
@@ -134,10 +167,29 @@ const ParentDashboard = ({ initialTab }) => {
       }
     } catch (e) {
       console.error('Load children error:', e);
+      const msg = e?.response?.data?.message || '';
+      const status = e?.response?.status;
+      const code = e?.response?.data?.code;
+      
+      // Handle the case when no child profiles exist
+      if (status === 403 && code === 'NO_CHILD_PROFILE') {
+        setChildren([]);
+        setErrorMsg('No child profiles found. Please contact administration to create your child profile before accessing the dashboard.');
+        return;
+      }
+      
+      // Many deployments return 404 "Route not found" when the parent/children API isn't enabled yet.
+      // Treat this as non-fatal and keep the dashboard usable without an orange banner.
+      if (status === 404 || /route not found/i.test(msg)) {
+        setChildren([]);
+        setErrorMsg('');
+      } else {
+        setErrorMsg(msg || 'Failed to load children');
+      }
     } finally {
       setLoading(false);
     }
-  }, [activeChildId]);
+  }, [activeChildId, user?.role]);
 
   useEffect(() => {
     loadChildren();
@@ -156,6 +208,7 @@ const ParentDashboard = ({ initialTab }) => {
   const fetchChildData = useCallback(async (childId) => {
     if (!childId) return;
     try {
+      if (user?.role !== 'parent') return;
       const [pRes, gRes, aRes, actRes, mRes, rRes, sRes] = await Promise.all([
         api.get(`/api/children/${childId}`),
         api.get(`/api/children/${childId}/gallery`),
@@ -191,8 +244,16 @@ const ParentDashboard = ({ initialTab }) => {
       });
     } catch (e) {
       console.error('Fetch child data error:', e);
+      const msg = e?.response?.data?.message || '';
+      const status = e?.response?.status;
+      if (status === 404 || /route not found/i.test(msg)) {
+        // Ignore cosmetic 404s from optional endpoints; do not show banner.
+        setErrorMsg('');
+      } else {
+        setErrorMsg(msg || 'Failed to load child data');
+      }
     }
-  }, []);
+  }, [user?.role]);
 
   // When active child changes, fetch everything
   useEffect(() => {
@@ -203,7 +264,7 @@ const ParentDashboard = ({ initialTab }) => {
 
   // Simple polling for attendance, activities, meals
   useEffect(() => {
-    if (!activeChildId) return;
+    if (!activeChildId || user?.role !== 'parent') return;
     const interval = setInterval(async () => {
       try {
         const [aRes, actRes, mRes] = await Promise.all([
@@ -219,7 +280,7 @@ const ParentDashboard = ({ initialTab }) => {
       }
     }, 30000); // 30s
     return () => clearInterval(interval);
-  }, [activeChildId]);
+  }, [activeChildId, user?.role]);
 
   const handleSave = async () => {
     if (!activeChildId) return;
@@ -425,11 +486,31 @@ const ParentDashboard = ({ initialTab }) => {
                 <CardMedia 
                   component="img" 
                   height="180" 
-                  image={p.url && p.url.startsWith('http') ? p.url : `${API_BASE_URL}${p.url || ''}`} 
+                  image={toAbsoluteUrl(p.url || '')} 
                   alt={p.caption || 'Child photo'}
                   sx={{ objectFit: 'cover', cursor: 'pointer' }}
+                  title={toAbsoluteUrl(p.url || '')}
+                  onError={(e) => {
+                    const bad = e.currentTarget.getAttribute('src');
+                    // Try a last-resort fallback using window origin
+                    try {
+                      const origin = (typeof window !== 'undefined' && window.location?.origin) ? window.location.origin : '';
+                      const resource = (p.url || '').startsWith('/') ? (p.url || '') : `/${p.url || ''}`;
+                      const fallback = origin ? new URL(resource, origin).href : '';
+                      if (fallback && fallback !== bad) {
+                        // eslint-disable-next-line no-console
+                        console.warn('Gallery image failed, retrying with origin fallback', { bad, fallback });
+                        e.currentTarget.src = fallback;
+                        return;
+                      }
+                    } catch (err) {
+                      // ignore
+                    }
+                    // eslint-disable-next-line no-console
+                    console.error('Gallery image failed to load:', bad);
+                  }}
                   onClick={() => {
-                    const fullUrl = p.url && p.url.startsWith('http') ? p.url : `${API_BASE_URL}${p.url || ''}`;
+                    const fullUrl = toAbsoluteUrl(p.url || '');
                     setPhotoPreview({ open: true, url: fullUrl });
                   }}
                 />
@@ -485,7 +566,32 @@ const ParentDashboard = ({ initialTab }) => {
           <DialogContent dividers>
             {photoPreview.url && (
               <Box sx={{ textAlign: 'center' }}>
-                <Box component="img" src={photoPreview.url} alt="Preview" sx={{ maxWidth: '100%', borderRadius: 1 }} />
+                <Box 
+                  component="img" 
+                  src={photoPreview.url} 
+                  alt="Preview" 
+                  title={photoPreview.url}
+                  sx={{ maxWidth: '100%', borderRadius: 1 }}
+                  onError={(e) => {
+                    const bad = e.currentTarget.getAttribute('src');
+                    try {
+                      const origin = (typeof window !== 'undefined' && window.location?.origin) ? window.location.origin : '';
+                      const resource = photoPreview.url?.replace(/^https?:\/\/[^/]+/i, '') || '';
+                      const resourceFixed = resource.startsWith('/') ? resource : `/${resource}`;
+                      const fallback = origin ? new URL(resourceFixed, origin).href : '';
+                      if (fallback && fallback !== bad) {
+                        // eslint-disable-next-line no-console
+                        console.warn('Preview image failed, retrying with origin fallback', { bad, fallback });
+                        e.currentTarget.src = fallback;
+                        return;
+                      }
+                    } catch (err) {
+                      // ignore
+                    }
+                    // eslint-disable-next-line no-console
+                    console.error('Preview image failed to load:', bad);
+                  }}
+                />
               </Box>
             )}
           </DialogContent>
@@ -508,7 +614,7 @@ const ParentDashboard = ({ initialTab }) => {
             <Avatar sx={{ bgcolor: 'primary.main' }}>
               {profile?.profileImage ? (
                 <img 
-                  src={(profile.profileImage.startsWith('http') ? profile.profileImage : `${API_BASE_URL}${profile.profileImage}`) + `?v=${profileImageVersion}`}
+                  src={`${toAbsoluteUrl(profile.profileImage)}?v=${profileImageVersion}`}
                   alt={fullName}
                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                 />
@@ -645,7 +751,7 @@ const ParentDashboard = ({ initialTab }) => {
                         <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
                           {staff.profileImage ? (
                             <img 
-                              src={staff.profileImage.startsWith('http') ? staff.profileImage : `${API_BASE_URL}${staff.profileImage}`} 
+                              src={toAbsoluteUrl(staff.profileImage)} 
                               alt={staff.firstName}
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
@@ -719,6 +825,11 @@ const ParentDashboard = ({ initialTab }) => {
   return (
     <Box>
       <Typography variant="h4" gutterBottom>Parent Dashboard</Typography>
+      {errorMsg && (
+        <Box sx={{ mb: 2, p: 1.5, borderRadius: 1, bgcolor: 'warning.50', border: '1px solid', borderColor: 'warning.light', color: 'warning.dark' }}>
+          {errorMsg}
+        </Box>
+      )}
 
       {/* Parent + Child summary */}
       <Paper sx={{ p: 2, mb: 2 }}>
@@ -782,16 +893,36 @@ const ParentDashboard = ({ initialTab }) => {
         )}
 
         {/* Content */}
-        {(!activeChildId || children.length === 0) && (
+        {user?.role === 'parent' && (!activeChildId || children.length === 0) && (
           <Box>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              {children.length === 0 ? 'No approved children yet. Submit an admission for your child.' : 'No child selected.'}
-            </Typography>
-            <Button variant="contained" onClick={() => setTab(7)}>Go to Admissions</Button>
+            {children.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 4 }}>
+                <ChildCare sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" gutterBottom>
+                  No Child Profiles Found
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Your child profile has not been created yet. Please contact the administration to create your child profile before you can access the dashboard.
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                  Once your child profile is created by the admin, you will be able to view your child's information, attendance, activities, and more.
+                </Typography>
+                <Button variant="contained" onClick={() => setTab(8)}>
+                  Submit Admission Request
+                </Button>
+              </Box>
+            ) : (
+              <Box>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  No child selected.
+                </Typography>
+                <Button variant="contained" onClick={() => setTab(7)}>Go to Admissions</Button>
+              </Box>
+            )}
           </Box>
         )}
 
-        {activeChildId && children.length > 0 && (
+        {user?.role === 'parent' && activeChildId && children.length > 0 && (
           <Box>
             {tab === 0 && (
               <Grid container spacing={3}>
@@ -819,6 +950,17 @@ const ParentDashboard = ({ initialTab }) => {
                 </Grid>
                 <Grid item xs={12}>
                   <ScheduleCard />
+                </Grid>
+                {/* AI Education Recommendations */}
+                <Grid item xs={12}>
+                  <EduRecommendations 
+                    profile={profile}
+                    activities={activities?.recent || []}
+                    milestones={[
+                      ...((reports?.milestones?.completed || []).map(m => ({ ...m, status: 'completed' })) || []),
+                      ...((reports?.milestones?.upcoming || []).map(m => ({ ...m, status: 'upcoming' })) || []),
+                    ]}
+                  />
                 </Grid>
               </Grid>
             )}

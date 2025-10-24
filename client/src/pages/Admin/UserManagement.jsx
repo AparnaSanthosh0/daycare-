@@ -33,7 +33,8 @@ import {
   ToggleOff,
   Visibility,
   Refresh,
-  Search
+  Search,
+  Delete
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
@@ -92,6 +93,17 @@ const UserManagement = () => {
     } catch (error) {
       console.error('Error toggling user status:', error);
       setError('Failed to update user status');
+    }
+  };
+
+  const handleDeleteUser = async (userId) => {
+    try {
+      await api.delete(`/api/admin/users/${userId}`);
+      fetchUsers();
+      setConfirmDialog({ open: false, user: null, action: '' });
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      setError('Failed to delete user');
     }
   };
 
@@ -316,19 +328,34 @@ const UserManagement = () => {
                         </IconButton>
                       </Tooltip>
                       {u._id !== user.userId && (
-                        <Tooltip title={u.isActive ? 'Deactivate' : 'Activate'}>
-                          <IconButton
-                            onClick={() => setConfirmDialog({
-                              open: true,
-                              user: u,
-                              action: u.isActive ? 'deactivate' : 'activate'
-                            })}
-                            size="small"
-                            color={u.isActive ? 'error' : 'success'}
-                          >
-                            {u.isActive ? <ToggleOff /> : <ToggleOn />}
-                          </IconButton>
-                        </Tooltip>
+                        <>
+                          <Tooltip title={u.isActive ? 'Deactivate' : 'Activate'}>
+                            <IconButton
+                              onClick={() => setConfirmDialog({
+                                open: true,
+                                user: u,
+                                action: u.isActive ? 'deactivate' : 'activate'
+                              })}
+                              size="small"
+                              color={u.isActive ? 'error' : 'success'}
+                            >
+                              {u.isActive ? <ToggleOff /> : <ToggleOn />}
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete User">
+                            <IconButton
+                              onClick={() => setConfirmDialog({
+                                open: true,
+                                user: u,
+                                action: 'delete'
+                              })}
+                              size="small"
+                              color="error"
+                            >
+                              <Delete />
+                            </IconButton>
+                          </Tooltip>
+                        </>
                       )}
                     </TableCell>
                   </TableRow>
@@ -428,11 +455,25 @@ const UserManagement = () => {
       {/* Confirm Action Dialog */}
       <Dialog open={confirmDialog.open} onClose={() => setConfirmDialog({ open: false, user: null, action: '' })}>
         <DialogTitle>
-          {confirmDialog.action === 'activate' ? 'Activate' : 'Deactivate'} User
+          {confirmDialog.action === 'delete' ? 'Delete' : confirmDialog.action === 'activate' ? 'Activate' : 'Deactivate'} User
         </DialogTitle>
         <DialogContent>
           <Typography>
-            Are you sure you want to {confirmDialog.action} {confirmDialog.user?.firstName} {confirmDialog.user?.lastName}?
+            {confirmDialog.action === 'delete' ? (
+              <>
+                Are you sure you want to permanently delete {confirmDialog.user?.firstName} {confirmDialog.user?.lastName}?
+                <br />
+                <strong>This action cannot be undone and will also delete:</strong>
+                <br />
+                • All associated children (if parent)
+                <br />
+                • All vendor records (if vendor)
+                <br />
+                • All user data and history
+              </>
+            ) : (
+              `Are you sure you want to ${confirmDialog.action} ${confirmDialog.user?.firstName} ${confirmDialog.user?.lastName}?`
+            )}
           </Typography>
         </DialogContent>
         <DialogActions>
@@ -440,11 +481,17 @@ const UserManagement = () => {
             Cancel
           </Button>
           <Button
-            onClick={() => handleToggleUserStatus(confirmDialog.user?._id, confirmDialog.user?.isActive)}
-            color={confirmDialog.action === 'activate' ? 'success' : 'error'}
+            onClick={() => {
+              if (confirmDialog.action === 'delete') {
+                handleDeleteUser(confirmDialog.user?._id);
+              } else {
+                handleToggleUserStatus(confirmDialog.user?._id, confirmDialog.user?.isActive);
+              }
+            }}
+            color={confirmDialog.action === 'delete' ? 'error' : confirmDialog.action === 'activate' ? 'success' : 'error'}
             variant="contained"
           >
-            {confirmDialog.action === 'activate' ? 'Activate' : 'Deactivate'}
+            {confirmDialog.action === 'delete' ? 'Delete' : confirmDialog.action === 'activate' ? 'Activate' : 'Deactivate'}
           </Button>
         </DialogActions>
       </Dialog>

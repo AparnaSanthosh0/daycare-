@@ -5,7 +5,7 @@ const customerSchema = new mongoose.Schema({
   lastName: { type: String, required: true },
   email: { type: String, required: true, unique: true },
   phone: { type: String, required: true },
-  password: { type: String, required: true },
+  password: { type: String }, // Made optional for guest customers
   dateOfBirth: { type: Date },
   gender: { type: String, enum: ['male', 'female', 'other'] },
   address: {
@@ -15,6 +15,8 @@ const customerSchema = new mongoose.Schema({
     zipCode: String,
     country: { type: String, default: 'US' }
   },
+  // Optional profile image (served from /uploads/profile_images or external URL)
+  profileImage: { type: String, default: null },
   isActive: { type: String, default: true },
   totalOrders: { type: Number, default: 0 },
   totalSpent: { type: Number, default: 0 },
