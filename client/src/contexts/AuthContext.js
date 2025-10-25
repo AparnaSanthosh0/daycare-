@@ -113,6 +113,35 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Alternative Google auth using redirect instead of popup
+  const loginWithGoogleRedirect = async () => {
+    try {
+      const provider = new firebase.auth.GoogleAuthProvider();
+      provider.addScope('email');
+      provider.addScope('profile');
+      
+      // Use redirect instead of popup to avoid COOP issues
+      await firebase.auth().signInWithRedirect(provider);
+    } catch (error) {
+      console.error('Google redirect auth error:', error);
+      toast.error('Google authentication failed');
+    }
+  };
+
+  // Handle redirect result
+  const handleRedirectResult = async () => {
+    try {
+      const result = await firebase.auth().getRedirectResult();
+      if (result.credential) {
+        const idToken = await result.user.getIdToken();
+        return await loginWithGoogleIdToken(idToken);
+      }
+    } catch (error) {
+      console.error('Redirect result error:', error);
+    }
+    return { success: false };
+  };
+
   // Exchange Firebase ID token for backend JWT and set user
   const loginWithGoogleIdToken = async (idToken) => {
     try {
@@ -216,6 +245,8 @@ export const AuthProvider = ({ children }) => {
     logout,
     updateProfile,
     loginWithGoogleIdToken,
+    loginWithGoogleRedirect,
+    handleRedirectResult,
     refreshUser,
     debugAuth
   };
