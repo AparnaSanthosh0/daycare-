@@ -427,6 +427,11 @@ router.post('/profile/image', auth, profileUpload.single('image'), async (req, r
   }
 });
 
+// Debug route to test if auth routes are working
+router.get('/test', (req, res) => {
+  res.json({ message: 'Auth routes are working!', timestamp: new Date().toISOString() });
+});
+
 // Google Sign-In: exchange Firebase ID token for app JWT
 router.post('/google', async (req, res) => {
   try {

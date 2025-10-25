@@ -14,6 +14,7 @@ app.set('trust proxy', 1);
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
   crossOriginOpenerPolicy: false,  // Disable COOP to allow popups
+  crossOriginEmbedderPolicy: false, // Disable COEP to allow popups
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -39,16 +40,12 @@ const allowedOrigins = [
 ];
 
 app.use(cors({
-  origin: function (origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, etc.)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
+  origin: [
+    'http://localhost:3000',
+    'https://daycare-plmf.vercel.app',
+    'https://daycare-plmf-git-main-aparnas-projects-4913ab30.vercel.app',
+    'https://daycare-plmf-c8xo0dsxz-aparnas-projects-4913ab30.vercel.app'
+  ],
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
