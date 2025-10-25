@@ -13,7 +13,7 @@ app.set('trust proxy', 1);
 // Security middleware (allow cross-origin resource loading for images/assets)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  crossOriginOpenerPolicy: { policy: 'unsafe-none' }
+  crossOriginOpenerPolicy: false  // Disable COOP to allow popups
 }));
 app.use(cors({
   origin: [
