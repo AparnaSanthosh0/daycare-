@@ -106,10 +106,20 @@ app.get('/api/health', (req, res) => {
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
   const path = require('path');
-  app.use(express.static(path.join(__dirname, '../client/build')));
+  const buildPath = path.join(__dirname, '../client/build');
   
+  // Serve static files from React build
+  app.use(express.static(buildPath));
+  
+  // Handle React routing - return index.html for all non-API routes
   app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../client/build', 'index.html'));
+    // Skip API routes
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ message: 'API route not found' });
+    }
+    
+    // Serve React app for all other routes
+    res.sendFile(path.join(buildPath, 'index.html'));
   });
 }
 
@@ -127,15 +137,18 @@ app.use('*', (req, res) => {
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/tinytots';
 
+// Ensure PORT is a number
+const serverPort = parseInt(PORT, 10) || 5000;
+
 // Connect to MongoDB
 mongoose.connect(MONGODB_URI)
   .then(() => {
     console.log('✅ Connected to MongoDB');
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT}`);
-      console.log(`📱 Frontend should connect to: http://localhost:${PORT}`);
-      console.log(`🔍 Health check: http://localhost:${PORT}/api/health`);
-      console.log(`📊 API Base URL: http://localhost:${PORT}/api`);
+    app.listen(serverPort, () => {
+      console.log(`🚀 Server running on port ${serverPort}`);
+      console.log(`📱 Frontend should connect to: http://localhost:${serverPort}`);
+      console.log(`🔍 Health check: http://localhost:${serverPort}/api/health`);
+      console.log(`📊 API Base URL: http://localhost:${serverPort}/api`);
     });
   })
   .catch((error) => {
@@ -152,9 +165,9 @@ mongoose.connect(MONGODB_URI)
     console.log('\n⚠️  Starting server without database connection...');
 
     // Start server anyway for development
-    app.listen(PORT, () => {
-      console.log(`🚀 Server running on port ${PORT} (without database)`);
-      console.log(`📱 Frontend should connect to: http://localhost:${PORT}`);
-      console.log(`🔍 Health check: http://localhost:${PORT}/api/health`);
+    app.listen(serverPort, () => {
+      console.log(`🚀 Server running on port ${serverPort} (without database)`);
+      console.log(`📱 Frontend should connect to: http://localhost:${serverPort}`);
+      console.log(`🔍 Health check: http://localhost:${serverPort}/api/health`);
     });
   });
