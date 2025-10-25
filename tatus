@@ -1,0 +1,7 @@
+[33mcommit bee27034fc84ee0d2cb4b14a9f37f35677a8ab65[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: Aparna <aparnasanthosh009@gmail.com>
+Date:   Sat Oct 25 20:32:28 2025 +0530
+
+    Add missing date-fns dependency for MUI date pickers
+
+client/package.json

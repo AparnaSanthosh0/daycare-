@@ -94,6 +94,10 @@ app.get('/api/health', (req, res) => {
     status: 'OK', 
     message: 'TinyTots Server is running!',
     database: dbStatus,
+    services: {
+      email: process.env.EMAIL_HOST ? 'configured' : 'not configured',
+      sms: process.env.TWILIO_ACCOUNT_SID ? 'configured' : 'not configured'
+    },
     timestamp: new Date().toISOString(),
     port: PORT
   });
