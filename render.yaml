@@ -4,8 +4,8 @@ services:
     name: tinytots-backend
     env: node
     plan: free
-    buildCommand: npm install && cd server && npm install
-    startCommand: cd server && npm start
+    buildCommand: npm run build
+    startCommand: npm start
     envVars:
       - key: NODE_ENV
         value: production
