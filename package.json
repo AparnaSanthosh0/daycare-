@@ -14,6 +14,7 @@
     "build:client": "cd client && npm run build:prod",
     "build:server": "cd server && npm run start:prod",
     "start:prod": "concurrently \"npm run build:client\" \"npm run build:server\"",
+    "start": "cd server && npm start",
     "install-all": "npm install && cd server && npm install && cd ../client && npm install",
     "test": "npm run test:client && npm run test:server",
     "test:client": "cd client && npm run test:ci",
