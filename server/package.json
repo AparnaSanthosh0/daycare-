@@ -4,9 +4,11 @@
   "description": "Backend server for TinyTots Daycare System",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
-    "test": "jest",
+    "start": "NODE_ENV=production node index.js",
+    "start:prod": "NODE_ENV=production node index.js",
+    "dev": "NODE_ENV=development nodemon index.js",
+    "test": "NODE_ENV=test jest --coverage --watchAll=false",
+    "test:ci": "NODE_ENV=test jest --coverage --watchAll=false --ci",
     "test:email-sms": "node scripts/testEmailSms.js",
     "validate:gmail": "node scripts/validateGmail.js",
     "status": "node scripts/status.js",
@@ -15,7 +17,9 @@
     "create:products": "node scripts/createSampleProducts.js",
     "create-admin": "node scripts/createAdmin.js",
     "reset-vendor-password": "node scripts/resetVendorPassword.js",
-    "setup": "node scripts/setupEmailSms.js"
+    "setup": "node scripts/setupEmailSms.js",
+    "health": "node scripts/healthCheck.js",
+    "migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -44,8 +48,13 @@
   "keywords": [
     "daycare",
     "backend",
-    "api"
+    "api",
+    "production"
   ],
-  "author": "Your Name",
-  "license": "MIT"
+  "author": "TinyTots Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  }
 }

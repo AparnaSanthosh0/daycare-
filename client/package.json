@@ -31,8 +31,11 @@
   },
   "scripts": {
     "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
+    "build": "GENERATE_SOURCEMAP=false react-scripts build",
+    "build:prod": "GENERATE_SOURCEMAP=false NODE_ENV=production react-scripts build",
+    "test": "react-scripts test --coverage --watchAll=false",
+    "test:ci": "react-scripts test --coverage --watchAll=false --ci",
+    "analyze": "npm run build && npx bundle-analyzer build/static/js/*.js",
     "eject": "react-scripts eject"
   },
   "eslintConfig": {
@@ -45,7 +48,8 @@
     "production": [
       ">0.2%",
       "not dead",
-      "not op_mini all"
+      "not op_mini all",
+      "not ie 11"
     ],
     "development": [
       "last 1 chrome version",

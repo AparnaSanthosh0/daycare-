@@ -10,21 +10,34 @@
     "client:test": "cd client && set PORT=4000 && npm start",
     "dev:two": "concurrently \"npm run server\" \"npm run client\" \"npm run client:test\"",
     "seed:users": "node server/scripts/seed-users.js",
-    "build": "cd client && npm run build",
+    "build": "cd client && npm run build:prod",
+    "build:client": "cd client && npm run build:prod",
+    "build:server": "cd server && npm run start:prod",
+    "start:prod": "concurrently \"npm run build:client\" \"npm run build:server\"",
     "install-all": "npm install && cd server && npm install && cd ../client && npm install",
+    "test": "npm run test:client && npm run test:server",
+    "test:client": "cd client && npm run test:ci",
+    "test:server": "cd server && npm run test:ci",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
-    "test:e2e:debug": "PWDEBUG=1 playwright test"
+    "test:e2e:debug": "PWDEBUG=1 playwright test",
+    "lint": "cd client && npm run lint && cd ../server && npm run lint",
+    "health": "cd server && npm run health"
   },
   "keywords": [
     "daycare",
     "management",
     "sales",
     "react",
-    "nodejs"
+    "nodejs",
+    "production"
   ],
-  "author": "Your Name",
+  "author": "TinyTots Team",
   "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
   "devDependencies": {
     "@playwright/test": "^1.48.2",
     "concurrently": "^8.2.2"
