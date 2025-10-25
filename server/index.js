@@ -113,34 +113,9 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Serve static files in production
-if (process.env.NODE_ENV === 'production') {
-  const path = require('path');
-  const buildPath = path.join(__dirname, '../client/build');
-  
-  // Serve static files from React build (before any middleware that might interfere)
-  app.use(express.static(buildPath, {
-    // Ensure static files are served without authentication
-    setHeaders: (res, path) => {
-      // Set proper headers for manifest.json
-      if (path.endsWith('manifest.json')) {
-        res.setHeader('Content-Type', 'application/manifest+json');
-        res.setHeader('Cache-Control', 'public, max-age=31536000');
-      }
-    }
-  }));
-  
-  // Handle React routing - return index.html for all non-API routes
-  app.get('*', (req, res) => {
-    // Skip API routes
-    if (req.path.startsWith('/api/')) {
-      return res.status(404).json({ message: 'API route not found' });
-    }
-    
-    // Serve React app for all other routes
-    res.sendFile(path.join(buildPath, 'index.html'));
-  });
-}
+// Serve static files in production (REMOVED - handled by Vercel)
+// Static file serving is handled by Vercel for frontend deployment
+// Backend only serves API routes and uploaded files
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -148,9 +123,17 @@ app.use((err, req, res, next) => {
   res.status(500).json({ message: 'Something went wrong!' });
 });
 
-// 404 handler
+// 404 handler for API routes only
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ message: 'API route not found' });
+});
+
+// For non-API routes, return a message (frontend is handled by Vercel)
 app.use('*', (req, res) => {
-  res.status(404).json({ message: 'Route not found' });
+  res.status(404).json({ 
+    message: 'Route not found. Frontend is served by Vercel.',
+    frontend_url: process.env.FRONTEND_URL || 'https://daycare-plmf.vercel.app'
+  });
 });
 
 const PORT = process.env.PORT || 5000;
