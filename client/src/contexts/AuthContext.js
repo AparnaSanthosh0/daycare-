@@ -124,10 +124,30 @@ export const AuthProvider = ({ children }) => {
       toast.success('Signed in with Google');
       return { success: true, user, role: user?.role };
     } catch (error) {
+      console.error('Google sign-in error:', error);
       const message = error.response?.data?.message || 'Google sign-in failed';
       toast.error(message);
       return { success: false, message };
     }
+  };
+
+  // Check if Firebase is properly configured
+  const isFirebaseConfigured = () => {
+    const requiredVars = [
+      'REACT_APP_FIREBASE_API_KEY',
+      'REACT_APP_FIREBASE_AUTH_DOMAIN', 
+      'REACT_APP_FIREBASE_PROJECT_ID',
+      'REACT_APP_FIREBASE_APP_ID'
+    ];
+    
+    const missingVars = requiredVars.filter(varName => !process.env[varName]);
+    
+    if (missingVars.length > 0) {
+      console.error('Firebase configuration missing:', missingVars);
+      return false;
+    }
+    
+    return true;
   };
 
   const register = async (userData) => {

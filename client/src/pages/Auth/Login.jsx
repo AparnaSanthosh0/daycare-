@@ -354,6 +354,23 @@ const Login = () => {
                         if (googleLoading) return;
                         setGoogleLoading(true);
                         setError('');
+                        
+                        // Check Firebase configuration first
+                        const requiredVars = [
+                          'REACT_APP_FIREBASE_API_KEY',
+                          'REACT_APP_FIREBASE_AUTH_DOMAIN', 
+                          'REACT_APP_FIREBASE_PROJECT_ID',
+                          'REACT_APP_FIREBASE_APP_ID'
+                        ];
+                        
+                        const missingVars = requiredVars.filter(varName => !process.env[varName]);
+                        
+                        if (missingVars.length > 0) {
+                          setError('Firebase authentication is not properly configured. Please contact administrator.');
+                          setGoogleLoading(false);
+                          return;
+                        }
+                        
                         try {
                           const auth = firebase.auth();
                           const provider = new firebase.auth.GoogleAuthProvider();

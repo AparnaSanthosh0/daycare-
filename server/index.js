@@ -13,7 +13,7 @@ app.set('trust proxy', 1);
 // Security middleware (allow cross-origin resource loading for images/assets)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }
+  crossOriginOpenerPolicy: { policy: 'unsafe-none' }
 }));
 app.use(cors({
   origin: [
@@ -23,7 +23,9 @@ app.use(cors({
     'https://daycare-plmf-c8xo0dsxz-aparnas-projects-4913ab30.vercel.app'
   ],
   credentials: true,
-  optionsSuccessStatus: 200
+  optionsSuccessStatus: 200,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
 // Rate limiting (configurable, disabled in development by default)
