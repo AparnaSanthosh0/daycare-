@@ -25,11 +25,22 @@ const storage = multer.diskStorage({
 });
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { 
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+    files: 1 // Only one file per request
+  },
   fileFilter: (req, file, cb) => {
-    const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
-    if (allowed.includes(file.mimetype)) return cb(null, true);
-    cb(new Error('Only PDF, JPG, and PNG files are allowed'));
+    // More strict file type validation
+    const allowedMimes = ['application/pdf', 'image/jpeg', 'image/png'];
+    const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png'];
+    
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    
+    if (allowedMimes.includes(file.mimetype) && allowedExtensions.includes(fileExtension)) {
+      return cb(null, true);
+    }
+    
+    cb(new Error('Only PDF, JPG, and PNG files are allowed. File type: ' + file.mimetype));
   }
 });
 
@@ -168,9 +179,13 @@ router.post('/register', upload.single('certificate'), [
     }
 
     // Otherwise, issue JWT and return user
+    if (!process.env.JWT_SECRET) {
+      throw new Error('JWT_SECRET environment variable is required');
+    }
+    
     const token = jwt.sign(
       { userId: user._id, role: user.role },
-      process.env.JWT_SECRET || 'fallback_secret',
+      process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
 
@@ -240,9 +255,13 @@ router.post('/login', [
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
+    if (!process.env.JWT_SECRET) {
+      throw new Error('JWT_SECRET environment variable is required');
+    }
+    
     const token = jwt.sign(
       { userId: user._id, role: user.role },
-      process.env.JWT_SECRET || 'fallback_secret',
+      process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRE || '7d' }
     );
 

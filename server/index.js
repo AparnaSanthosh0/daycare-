@@ -13,15 +13,42 @@ app.set('trust proxy', 1);
 // Security middleware (allow cross-origin resource loading for images/assets)
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
-  crossOriginOpenerPolicy: false  // Disable COOP to allow popups
+  crossOriginOpenerPolicy: false,  // Disable COOP to allow popups
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:"],
+      scriptSrc: ["'self'"],
+      connectSrc: ["'self'", "https://api.twilio.com", "https://api.sendgrid.com"]
+    }
+  },
+  hsts: {
+    maxAge: 31536000,
+    includeSubDomains: true,
+    preload: true
+  }
 }));
+// CORS configuration - more secure approach
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://daycare-plmf.vercel.app',
+  'https://daycare-plmf-git-main-aparnas-projects-4913ab30.vercel.app',
+  'https://daycare-plmf-c8xo0dsxz-aparnas-projects-4913ab30.vercel.app'
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'https://daycare-plmf.vercel.app',
-    'https://daycare-plmf-git-main-aparnas-projects-4913ab30.vercel.app',
-    'https://daycare-plmf-c8xo0dsxz-aparnas-projects-4913ab30.vercel.app'
-  ],
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, etc.)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -138,8 +165,20 @@ app.use('*', (req, res) => {
   });
 });
 
+// Environment variable validation
+const requiredEnvVars = ['JWT_SECRET', 'MONGODB_URI'];
+const missingEnvVars = requiredEnvVars.filter(envVar => !process.env[envVar]);
+
+if (missingEnvVars.length > 0) {
+  console.error('❌ Missing required environment variables:', missingEnvVars);
+  console.error('Please set these variables in your Render environment settings');
+  process.exit(1);
+}
+
+console.log('✅ All required environment variables are set');
+
 const PORT = process.env.PORT || 5000;
-const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/tinytots';
+const MONGODB_URI = process.env.MONGODB_URI;
 
 // Ensure PORT is a number
 const serverPort = parseInt(PORT, 10) || 5000;

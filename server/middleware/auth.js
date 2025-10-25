@@ -11,7 +11,11 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ message: 'No token provided, authorization denied' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+    if (!process.env.JWT_SECRET) {
+      return res.status(500).json({ message: 'Server configuration error' });
+    }
+
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     
     // Check if user still exists and is active
     let user;
