@@ -12,9 +12,19 @@ app.set('trust proxy', 1);
 
 // Security middleware (allow cross-origin resource loading for images/assets)
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  crossOriginOpenerPolicy: { policy: 'same-origin-allow-popups' }
 }));
-app.use(cors());
+app.use(cors({
+  origin: [
+    'http://localhost:3000',
+    'https://daycare-plmf.vercel.app',
+    'https://daycare-plmf-git-main-aparnas-projects-4913ab30.vercel.app',
+    'https://daycare-plmf-c8xo0dsxz-aparnas-projects-4913ab30.vercel.app'
+  ],
+  credentials: true,
+  optionsSuccessStatus: 200
+}));
 
 // Rate limiting (configurable, disabled in development by default)
 const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 100);
@@ -108,8 +118,17 @@ if (process.env.NODE_ENV === 'production') {
   const path = require('path');
   const buildPath = path.join(__dirname, '../client/build');
   
-  // Serve static files from React build
-  app.use(express.static(buildPath));
+  // Serve static files from React build (before any middleware that might interfere)
+  app.use(express.static(buildPath, {
+    // Ensure static files are served without authentication
+    setHeaders: (res, path) => {
+      // Set proper headers for manifest.json
+      if (path.endsWith('manifest.json')) {
+        res.setHeader('Content-Type', 'application/manifest+json');
+        res.setHeader('Cache-Control', 'public, max-age=31536000');
+      }
+    }
+  }));
   
   // Handle React routing - return index.html for all non-API routes
   app.get('*', (req, res) => {

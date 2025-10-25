@@ -1,32 +1,18 @@
-# Render deployment configuration for TinyTots
 services:
   - type: web
     name: tinytots-backend
     env: node
     plan: free
-    buildCommand: npm run build
+    region: oregon
+    branch: main
+    rootDir: server
+    buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV
         value: production
       - key: PORT
         value: 10000
-      - key: MONGODB_URI
-        fromDatabase:
-          name: tinytots-db
-          property: connectionString
-      - key: JWT_SECRET
-        generateValue: true
-      - key: CORS_ORIGIN
-        value: https://your-frontend-url.vercel.app
-      - key: RATE_LIMIT_ENABLED
-        value: true
-      - key: RATE_LIMIT_MAX
-        value: 100
-      - key: RATE_LIMIT_WINDOW_MIN
-        value: 15
-
-databases:
-  - name: tinytots-db
-    plan: free
-    databaseName: tinytots
+    autoDeploy: true
+    pullRequestPreviewsEnabled: false

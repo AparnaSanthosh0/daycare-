@@ -4,8 +4,9 @@
   "description": "Backend server for TinyTots Daycare System",
   "main": "index.js",
   "scripts": {
-    "start": "NODE_ENV=production node index.js",
+    "start": "node index.js",
     "start:prod": "NODE_ENV=production node index.js",
+    "start:bash": "bash start.sh",
     "dev": "NODE_ENV=development nodemon index.js",
     "test": "NODE_ENV=test jest --coverage --watchAll=false",
     "test:ci": "NODE_ENV=test jest --coverage --watchAll=false --ci",
@@ -19,7 +20,8 @@
     "reset-vendor-password": "node scripts/resetVendorPassword.js",
     "setup": "node scripts/setupEmailSms.js",
     "health": "node scripts/healthCheck.js",
-    "migrate": "node scripts/migrate.js"
+    "migrate": "node scripts/migrate.js",
+    "postinstall": "echo '✅ Dependencies installed successfully'"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -35,7 +37,7 @@
     "moment": "^2.29.4",
     "mongoose": "^8.0.3",
     "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.9.7",
+    "nodemailer": "^7.0.10",
     "razorpay": "^2.9.6",
     "twilio": "^5.10.3",
     "uuid": "^9.0.1"
