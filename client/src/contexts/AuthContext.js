@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import api from '../config/api';
 import { toast } from 'react-toastify';
 import { debugAuth } from '../utils/debugAuth';
+import firebase from '../config/firebase';
 
 const AuthContext = createContext();
 
