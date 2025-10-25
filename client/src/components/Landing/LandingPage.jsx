@@ -240,10 +240,11 @@ const LandingPage = () => {
               <Button 
                 color="inherit" 
                 sx={navButtonSx}
-                onClick={() => document.getElementById('discovery')?.scrollIntoView({ behavior: 'smooth' })}
+                onClick={() => document.getElementById('discovery')?.scrollIntoView({ behavior: 'smooth' })} 
               >
                 Features
               </Button>
+              
               
               {/* Ecommerce Shop Button */}
               {ecommerceConfig.enabled && (
@@ -454,6 +455,7 @@ const LandingPage = () => {
 
       {/* Discovery Callout (Inspired by abts.png) */}
       <DiscoverySection />
+
 
       {/* Features Section removed in favor of DiscoverySection (two-column hero with CTA to /approach) */}
 

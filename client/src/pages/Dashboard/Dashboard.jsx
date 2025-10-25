@@ -16,6 +16,8 @@ import {
   TrendingUp
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
+import RecommendationQuickAccess from '../../components/RecommendationQuickAccess';
+import FeedbackClassification from '../../components/FeedbackClassification';
 
 const StatCard = ({ title, value, icon, color }) => (
   <Card sx={{ height: '100%', transition: 'transform 120ms ease, box-shadow 120ms ease', '&:hover': { transform: 'translateY(-3px)', boxShadow: 6 } }}>
@@ -94,6 +96,16 @@ const Dashboard = () => {
               adding new children, recording attendance, etc.
             </Typography>
           </Paper>
+        </Grid>
+
+        {/* Recommendation System */}
+        <Grid item xs={12}>
+          <RecommendationQuickAccess />
+        </Grid>
+
+        {/* Feedback Classification */}
+        <Grid item xs={12}>
+          <FeedbackClassification />
         </Grid>
       </Grid>
     </Box>

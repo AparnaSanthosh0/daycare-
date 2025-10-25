@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Feedback Classification Test - TinyTots</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #e3f2fd;
+        }
+        .header h1 {
+            color: #1976d2;
+            margin: 0;
+        }
+        .header p {
+            color: #666;
+            margin: 10px 0 0 0;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background: #1976d2;
+            color: white;
+            padding: 12px 30px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-right: 10px;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            margin-top: 30px;
+            padding: 20px;
+            border-radius: 5px;
+            border: 2px solid #e3f2fd;
+        }
+        .result.positive {
+            background: #e8f5e8;
+            border-color: #4caf50;
+        }
+        .result.needs_improvement {
+            background: #ffebee;
+            border-color: #f44336;
+        }
+        .result h3 {
+            margin: 0 0 15px 0;
+            color: #333;
+        }
+        .confidence {
+            font-size: 18px;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .probabilities {
+            display: flex;
+            gap: 20px;
+            margin: 15px 0;
+        }
+        .prob-item {
+            flex: 1;
+            text-align: center;
+            padding: 10px;
+            border-radius: 5px;
+            background: #f5f5f5;
+        }
+        .features {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f9f9f9;
+            border-radius: 5px;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+        .error {
+            background: #ffebee;
+            color: #c62828;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            font-weight: bold;
+            margin: 5px;
+        }
+        .status.success {
+            background: #4caf50;
+            color: white;
+        }
+        .status.error {
+            background: #f44336;
+            color: white;
+        }
+        .status.warning {
+            background: #ff9800;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧠 Parent Feedback Classification</h1>
+            <p>AI-Powered Bayesian Classifier for Feedback Analysis</p>
+        </div>
+
+        <form id="feedbackForm">
+            <div class="form-group">
+                <label for="feedbackText">Feedback Text:</label>
+                <textarea 
+                    id="feedbackText" 
+                    placeholder="Enter parent feedback here..."
+                    required
+                ></textarea>
+            </div>
+
+            <div class="form-group">
+                <label for="serviceCategory">Service Category:</label>
+                <select id="serviceCategory" required>
+                    <option value="meal">Meal & Nutrition</option>
+                    <option value="activity">Activities & Learning</option>
+                    <option value="communication">Communication</option>
+                    <option value="staff">Staff & Care</option>
+                    <option value="facility">Facility & Environment</option>
+                    <option value="safety">Safety & Security</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="rating">Rating (1-5):</label>
+                <input 
+                    type="number" 
+                    id="rating" 
+                    min="1" 
+                    max="5" 
+                    step="0.1" 
+                    value="5" 
+                    required
+                >
+            </div>
+
+            <button type="submit" id="classifyBtn">Classify Feedback</button>
+            <button type="button" id="testBtn">Test with Sample</button>
+        </form>
+
+        <div id="result" style="display: none;"></div>
+        <div id="loading" class="loading" style="display: none;">Classifying feedback...</div>
+        <div id="error" style="display: none;"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:5000/api/feedback-classification';
+        
+        const form = document.getElementById('feedbackForm');
+        const resultDiv = document.getElementById('result');
+        const loadingDiv = document.getElementById('loading');
+        const errorDiv = document.getElementById('error');
+        const classifyBtn = document.getElementById('classifyBtn');
+        const testBtn = document.getElementById('testBtn');
+
+        // Sample test data
+        const sampleData = [
+            {
+                feedback: "The food was absolutely delicious and my child loved every bite!",
+                category: "meal",
+                rating: 5
+            },
+            {
+                feedback: "Terrible service, staff was rude and unhelpful",
+                category: "staff", 
+                rating: 1
+            },
+            {
+                feedback: "Great activities, very engaging and fun",
+                category: "activity",
+                rating: 4
+            },
+            {
+                feedback: "Poor communication, never get updates about my child",
+                category: "communication",
+                rating: 2
+            }
+        ];
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            await classifyFeedback();
+        });
+
+        testBtn.addEventListener('click', () => {
+            const randomSample = sampleData[Math.floor(Math.random() * sampleData.length)];
+            document.getElementById('feedbackText').value = randomSample.feedback;
+            document.getElementById('serviceCategory').value = randomSample.category;
+            document.getElementById('rating').value = randomSample.rating;
+        });
+
+        async function classifyFeedback() {
+            const feedbackText = document.getElementById('feedbackText').value;
+            const serviceCategory = document.getElementById('serviceCategory').value;
+            const rating = parseFloat(document.getElementById('rating').value);
+
+            if (!feedbackText.trim()) {
+                showError('Please enter feedback text');
+                return;
+            }
+
+            showLoading();
+            hideError();
+            hideResult();
+
+            try {
+                const response = await fetch(`${API_BASE}/predict`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    },
+                    body: JSON.stringify({
+                        feedback_text: feedbackText,
+                        rating: rating,
+                        service_category: serviceCategory
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showResult(data.classification);
+                } else {
+                    showError(data.message || 'Classification failed');
+                }
+            } catch (error) {
+                showError('Network error: ' + error.message);
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function showResult(classification) {
+            const predictedClass = classification.predicted_class;
+            const confidence = classification.confidence;
+            const probabilities = classification.probabilities;
+            const features = classification.features_used;
+
+            const resultClass = predictedClass === 'positive' ? 'positive' : 'needs_improvement';
+            const confidenceColor = confidence >= 0.8 ? 'success' : confidence >= 0.6 ? 'warning' : 'error';
+
+            resultDiv.innerHTML = `
+                <div class="result ${resultClass}">
+                    <h3>Classification Results</h3>
+                    <div style="display: flex; align-items: center; gap: 15px; margin-bottom: 15px;">
+                        <span class="status ${resultClass === 'positive' ? 'success' : 'error'}">
+                            ${predictedClass.replace('_', ' ').toUpperCase()}
+                        </span>
+                        <div class="confidence">
+                            Confidence: ${(confidence * 100).toFixed(1)}%
+                        </div>
+                    </div>
+                    
+                    <div class="probabilities">
+                        <div class="prob-item">
+                            <strong>Positive</strong><br>
+                            ${(probabilities.positive * 100).toFixed(1)}%
+                        </div>
+                        <div class="prob-item">
+                            <strong>Needs Improvement</strong><br>
+                            ${(probabilities.needs_improvement * 100).toFixed(1)}%
+                        </div>
+                    </div>
+
+                    <div class="features">
+                        <h4>Features Analyzed:</h4>
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                            <span class="status success">Words: ${features.word_count}</span>
+                            <span class="status success">Rating: ${features.rating}</span>
+                            <span class="status success">Category: ${features.service_category}</span>
+                            ${features.has_positive_words ? '<span class="status success">Positive Words</span>' : ''}
+                            ${features.has_negative_words ? '<span class="status error">Negative Words</span>' : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            resultDiv.style.display = 'block';
+        }
+
+        function showLoading() {
+            loadingDiv.style.display = 'block';
+            classifyBtn.disabled = true;
+        }
+
+        function hideLoading() {
+            loadingDiv.style.display = 'none';
+            classifyBtn.disabled = false;
+        }
+
+        function showError(message) {
+            errorDiv.innerHTML = `<div class="error">${message}</div>`;
+            errorDiv.style.display = 'block';
+        }
+
+        function hideError() {
+            errorDiv.style.display = 'none';
+        }
+
+        function hideResult() {
+            resultDiv.style.display = 'none';
+        }
+
+        // Check if server is running
+        fetch(`${API_BASE}/categories`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    console.log('✅ Feedback Classification API is running');
+                }
+            })
+            .catch(error => {
+                console.error('❌ API not accessible:', error);
+                showError('API server not running. Please start the server first.');
+            });
+    </script>
+</body>
+</html>

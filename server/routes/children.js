@@ -292,8 +292,55 @@ router.get('/:id/meals', auth, async (req, res) => {
   try {
     const access = await canAccessChild(req, req.params.id);
     if (!access.ok) return res.status(access.status).json({ message: access.message });
-    // TODO: integrate meal plan
-    res.json({ plan: [], weekOf: new Date() });
+    
+    // Get child to determine program
+    const child = await Child.findById(req.params.id);
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found' });
+    }
+    
+    // Get current week's meal plan for this child's program
+    const today = new Date();
+    const startOfWeek = new Date(today);
+    startOfWeek.setDate(today.getDate() - today.getDay() + 1); // Monday
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    
+    const MealPlan = require('../models/MealPlan');
+    const mealPlan = await MealPlan.findOne({
+      isActive: true,
+      program: { $in: [child.program, 'all'] },
+      weekOf: { $gte: startOfWeek, $lte: endOfWeek }
+    }).populate('createdBy', 'firstName lastName');
+    
+    if (mealPlan) {
+      // Format for parent dashboard
+      const formattedPlan = mealPlan.dailyMeals.map(day => ({
+        day: day.day,
+        menu: {
+          breakfast: day.breakfast.map(item => item.name).join(', '),
+          morningSnack: day.morningSnack.map(item => item.name).join(', '),
+          lunch: day.lunch.map(item => item.name).join(', '),
+          afternoonSnack: day.afternoonSnack.map(item => item.name).join(', '),
+          dinner: day.dinner.map(item => item.name).join(', ')
+        },
+        notes: day.notes
+      }));
+      
+      res.json({ 
+        plan: formattedPlan, 
+        weekOf: mealPlan.weekOf,
+        createdBy: mealPlan.createdBy,
+        title: mealPlan.title,
+        description: mealPlan.description
+      });
+    } else {
+      res.json({ 
+        plan: [], 
+        weekOf: startOfWeek,
+        message: 'No meal plan available for this week'
+      });
+    }
   } catch (error) {
     console.error('Meals error:', error);
     res.status(500).json({ message: 'Server error' });

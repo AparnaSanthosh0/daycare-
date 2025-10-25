@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Child Grouping Recommendation System - Test Page</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .loading-spinner {
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3498db;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="container mx-auto p-6 max-w-6xl">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-900 mb-4">
+                🎯 Child Grouping Recommendation System
+            </h1>
+            <p class="text-gray-600 text-lg mb-6">
+                Test the K-Nearest Neighbors algorithm for optimal child grouping
+            </p>
+        </div>
+
+        <!-- Child Selection -->
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4 flex items-center gap-2">
+                🎯 Select Child for Recommendations
+            </h2>
+            <div id="childrenGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <!-- Children will be populated here -->
+            </div>
+            
+            <div id="getRecommendationsBtn" class="mt-6 text-center hidden">
+                <button class="px-8 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium">
+                    <span id="btnText">Get Recommendations</span>
+                    <div id="loadingSpinner" class="loading-spinner inline-block ml-2 hidden"></div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6 hidden">
+            <strong>Error:</strong> <span id="errorText"></span>
+        </div>
+
+        <!-- Recommendations Display -->
+        <div id="recommendationsSection" class="hidden">
+            <!-- Tabs -->
+            <div class="bg-white rounded-lg shadow-md mb-6">
+                <div class="border-b border-gray-200">
+                    <nav class="-mb-px flex space-x-8 px-6">
+                        <button id="groupsTab" class="py-4 px-1 border-b-2 border-blue-500 text-blue-600 font-medium">
+                            Recommended Groups
+                        </button>
+                        <button id="partnersTab" class="py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            Individual Partners
+                        </button>
+                        <button id="infoTab" class="py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
+                            Model Info
+                        </button>
+                    </nav>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="p-6">
+                    <!-- Groups Tab Content -->
+                    <div id="groupsContent" class="tab-content">
+                        <div id="groupsList">
+                            <!-- Groups will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Partners Tab Content -->
+                    <div id="partnersContent" class="tab-content hidden">
+                        <div id="partnersList">
+                            <!-- Partners will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Info Tab Content -->
+                    <div id="infoContent" class="tab-content hidden">
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold mb-3">Model Information</h3>
+                                <div id="modelInfo">
+                                    <!-- Model info will be populated here -->
+                                </div>
+                            </div>
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold mb-3">Target Child Information</h3>
+                                <div id="targetChildInfo">
+                                    <!-- Target child info will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Sample data
+        const sampleChildren = [
+            {
+                _id: 'child_1',
+                firstName: 'Emma',
+                lastName: 'Johnson',
+                dateOfBirth: '2020-03-15',
+                gender: 'female',
+                program: 'preschool',
+                interests: ['arts_crafts', 'reading', 'music', 'drawing', 'storytelling'],
+                age: 3.2
+            },
+            {
+                _id: 'child_2',
+                firstName: 'Liam',
+                lastName: 'Smith',
+                dateOfBirth: '2020-05-22',
+                gender: 'male',
+                program: 'preschool',
+                interests: ['building_blocks', 'outdoor_play', 'sports', 'running', 'technology'],
+                age: 3.1
+            },
+            {
+                _id: 'child_3',
+                firstName: 'Sophia',
+                lastName: 'Brown',
+                dateOfBirth: '2020-01-10',
+                gender: 'female',
+                program: 'preschool',
+                interests: ['arts_crafts', 'music', 'dancing', 'singing', 'pretend_play'],
+                age: 3.4
+            },
+            {
+                _id: 'child_4',
+                firstName: 'Noah',
+                lastName: 'Davis',
+                dateOfBirth: '2020-07-08',
+                gender: 'male',
+                program: 'preschool',
+                interests: ['building_blocks', 'puzzles', 'science', 'technology', 'board_games'],
+                age: 2.9
+            },
+            {
+                _id: 'child_5',
+                firstName: 'Olivia',
+                lastName: 'Wilson',
+                dateOfBirth: '2020-04-30',
+                gender: 'female',
+                program: 'preschool',
+                interests: ['reading', 'storytelling', 'pretend_play', 'animals', 'cooking'],
+                age: 3.1
+            }
+        ];
+
+        const interestLabels = {
+            'arts_crafts': 'Arts & Crafts',
+            'music': 'Music',
+            'dancing': 'Dancing',
+            'reading': 'Reading',
+            'outdoor_play': 'Outdoor Play',
+            'building_blocks': 'Building Blocks',
+            'puzzles': 'Puzzles',
+            'sports': 'Sports',
+            'cooking': 'Cooking',
+            'science': 'Science',
+            'storytelling': 'Storytelling',
+            'drawing': 'Drawing',
+            'singing': 'Singing',
+            'running': 'Running',
+            'swimming': 'Swimming',
+            'board_games': 'Board Games',
+            'pretend_play': 'Pretend Play',
+            'gardening': 'Gardening',
+            'animals': 'Animals',
+            'technology': 'Technology'
+        };
+
+        let selectedChild = null;
+        let currentRecommendations = null;
+
+        // Initialize the page
+        function init() {
+            renderChildren();
+            setupEventListeners();
+        }
+
+        function renderChildren() {
+            const grid = document.getElementById('childrenGrid');
+            grid.innerHTML = '';
+
+            sampleChildren.forEach(child => {
+                const card = document.createElement('div');
+                card.className = 'bg-white border border-gray-200 rounded-lg p-4 cursor-pointer hover:shadow-md transition-shadow';
+                card.innerHTML = `
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="font-medium text-lg">${child.firstName} ${child.lastName}</h3>
+                        <span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded">${child.program}</span>
+                    </div>
+                    <div class="text-sm text-gray-600 mb-3">
+                        Age: ${child.age} years • ${child.gender}
+                    </div>
+                    <div class="flex flex-wrap gap-1">
+                        ${child.interests.slice(0, 3).map(interest => 
+                            `<span class="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">${interestLabels[interest] || interest}</span>`
+                        ).join('')}
+                        ${child.interests.length > 3 ? `<span class="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded">+${child.interests.length - 3} more</span>` : ''}
+                    </div>
+                `;
+                
+                card.addEventListener('click', () => selectChild(child));
+                grid.appendChild(card);
+            });
+        }
+
+        function selectChild(child) {
+            selectedChild = child;
+            
+            // Update visual selection
+            document.querySelectorAll('#childrenGrid > div').forEach(card => {
+                card.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50');
+            });
+            event.currentTarget.classList.add('ring-2', 'ring-blue-500', 'bg-blue-50');
+            
+            // Show get recommendations button
+            const btnContainer = document.getElementById('getRecommendationsBtn');
+            const btnText = document.getElementById('btnText');
+            btnText.textContent = `Get Recommendations for ${child.firstName}`;
+            btnContainer.classList.remove('hidden');
+        }
+
+        function setupEventListeners() {
+            // Get recommendations button
+            document.getElementById('getRecommendationsBtn').addEventListener('click', getRecommendations);
+
+            // Tab buttons
+            document.getElementById('groupsTab').addEventListener('click', () => switchTab('groups'));
+            document.getElementById('partnersTab').addEventListener('click', () => switchTab('partners'));
+            document.getElementById('infoTab').addEventListener('click', () => switchTab('info'));
+        }
+
+        async function getRecommendations() {
+            if (!selectedChild) return;
+
+            const btnText = document.getElementById('btnText');
+            const spinner = document.getElementById('loadingSpinner');
+            const errorMessage = document.getElementById('errorMessage');
+
+            // Show loading
+            btnText.textContent = 'Getting Recommendations...';
+            spinner.classList.remove('hidden');
+            errorMessage.classList.add('hidden');
+
+            try {
+                // Use real API
+                const token = localStorage.getItem('token');
+                const response = await fetch(`/api/recommendations/child/${selectedChild._id}?k=3&minGroupSize=2&maxGroupSize=4`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch recommendations');
+                }
+
+                currentRecommendations = await response.json();
+
+                displayRecommendations();
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                btnText.textContent = `Get Recommendations for ${selectedChild.firstName}`;
+                spinner.classList.add('hidden');
+            }
+        }
+
+
+        function displayRecommendations() {
+            document.getElementById('recommendationsSection').classList.remove('hidden');
+            switchTab('groups');
+            renderGroups();
+            renderPartners();
+            renderInfo();
+        }
+
+        function renderGroups() {
+            const container = document.getElementById('groupsList');
+            const groups = currentRecommendations.recommendedGroups;
+
+            if (groups.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8">
+                        <div class="text-gray-400 text-6xl mb-4">👥</div>
+                        <h3 class="text-lg font-medium text-gray-900 mb-2">No Groups Available</h3>
+                        <p class="text-gray-600">Not enough children match the criteria for group recommendations.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = groups.map(group => `
+                <div class="bg-gray-50 rounded-lg p-6 mb-4">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-semibold">${group.groupId.replace('_', ' ').toUpperCase()}</h3>
+                        <span class="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded">${group.groupSize} members</span>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-yellow-500">⭐</span>
+                            <span class="text-sm font-medium">Average Similarity: ${(group.averageSimilarity * 100).toFixed(1)}%</span>
+                        </div>
+                    </div>
+
+                    ${group.commonInterests.length > 0 ? `
+                        <div class="mb-4">
+                            <h4 class="text-sm font-medium text-gray-700 mb-2">Common Interests:</h4>
+                            <div class="flex flex-wrap gap-2">
+                                ${group.commonInterests.map(interest => 
+                                    `<span class="px-2 py-1 bg-white border border-gray-200 text-gray-700 text-xs rounded">${interestLabels[interest] || interest}</span>`
+                                ).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <div>
+                        <h4 class="text-sm font-medium text-gray-700 mb-2">Group Members:</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            ${group.members.map(member => `
+                                <div class="flex items-center justify-between p-3 bg-white rounded-lg border">
+                                    <div>
+                                        <div class="font-medium">${member.name}</div>
+                                        <div class="text-sm text-gray-600">Age: ${member.age.toFixed(1)} years • ${member.program}</div>
+                                    </div>
+                                    <span class="px-2 py-1 ${getSimilarityColor(member.similarity)} text-xs rounded">
+                                        ${getSimilarityLabel(member.similarity)} Match
+                                    </span>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderPartners() {
+            const container = document.getElementById('partnersList');
+            const partners = currentRecommendations.individualPartners;
+
+            if (partners.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center py-8">
+                        <div class="text-gray-400 text-6xl mb-4">❤️</div>
+                        <h3 class="text-lg font-medium text-gray-900 mb-2">No Partners Found</h3>
+                        <p class="text-gray-600">No suitable activity partners found for this child.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = partners.map(partner => `
+                <div class="bg-gray-50 rounded-lg p-4 mb-4">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-2">
+                                <h3 class="font-medium text-lg">${partner.name}</h3>
+                                <span class="px-2 py-1 ${getSimilarityColor(partner.similarity)} text-xs rounded">
+                                    ${getSimilarityLabel(partner.similarity)} Match
+                                </span>
+                            </div>
+                            <div class="text-sm text-gray-600 mb-2">
+                                Age: ${partner.age.toFixed(1)} years • Program: ${partner.program} • 
+                                Age Difference: ${partner.ageDifference.toFixed(1)} years
+                            </div>
+                            ${partner.interests.length > 0 ? `
+                                <div>
+                                    <div class="text-sm font-medium text-gray-700 mb-1">Interests:</div>
+                                    <div class="flex flex-wrap gap-1">
+                                        ${partner.interests.map(interest => 
+                                            `<span class="px-2 py-1 bg-white border border-gray-200 text-gray-700 text-xs rounded">${interestLabels[interest] || interest}</span>`
+                                        ).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <div class="text-right">
+                            <div class="text-2xl font-bold text-blue-600">${(partner.similarity * 100).toFixed(1)}%</div>
+                            <div class="text-sm text-gray-600">Similarity</div>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderInfo() {
+            const modelInfo = document.getElementById('modelInfo');
+            const targetChildInfo = document.getElementById('targetChildInfo');
+
+            modelInfo.innerHTML = `
+                <div class="space-y-2 text-sm">
+                    <div><span class="font-medium">Algorithm:</span> ${currentRecommendations.modelInfo.algorithm}</div>
+                    <div><span class="font-medium">K Value:</span> ${currentRecommendations.modelInfo.parameters.k}</div>
+                    <div><span class="font-medium">Group Size Range:</span> ${currentRecommendations.modelInfo.parameters.minGroupSize} - ${currentRecommendations.modelInfo.parameters.maxGroupSize}</div>
+                    <div><span class="font-medium">Last Updated:</span> ${new Date(currentRecommendations.modelInfo.lastUpdated).toLocaleString()}</div>
+                </div>
+            `;
+
+            targetChildInfo.innerHTML = `
+                <div class="space-y-2 text-sm">
+                    <div><span class="font-medium">Name:</span> ${currentRecommendations.targetChild.name}</div>
+                    <div><span class="font-medium">Age:</span> ${currentRecommendations.targetChild.age} years</div>
+                    <div><span class="font-medium">Program:</span> ${currentRecommendations.targetChild.program}</div>
+                    <div>
+                        <span class="font-medium">Interests:</span>
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            ${currentRecommendations.targetChild.interests.map(interest => 
+                                `<span class="px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded">${interestLabels[interest] || interest}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function switchTab(tabName) {
+            // Update tab buttons
+            document.querySelectorAll('nav button').forEach(btn => {
+                btn.className = 'py-4 px-1 border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300';
+            });
+            document.getElementById(tabName + 'Tab').className = 'py-4 px-1 border-b-2 border-blue-500 text-blue-600 font-medium';
+
+            // Update tab content
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.add('hidden');
+            });
+            document.getElementById(tabName + 'Content').classList.remove('hidden');
+        }
+
+        function getSimilarityColor(similarity) {
+            if (similarity >= 0.8) return 'bg-green-100 text-green-800';
+            if (similarity >= 0.6) return 'bg-yellow-100 text-yellow-800';
+            return 'bg-red-100 text-red-800';
+        }
+
+        function getSimilarityLabel(similarity) {
+            if (similarity >= 0.8) return 'High';
+            if (similarity >= 0.6) return 'Medium';
+            return 'Low';
+        }
+
+        function showError(message) {
+            const errorMessage = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
+            errorText.textContent = message;
+            errorMessage.classList.remove('hidden');
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

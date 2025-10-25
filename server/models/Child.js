@@ -100,7 +100,27 @@ const childSchema = new mongoose.Schema({
     caption: { type: String, default: '' },
     uploadedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     uploadedAt: { type: Date, default: Date.now }
-  }]
+  }],
+  interests: [{
+    type: String,
+    enum: [
+      'arts_crafts', 'music', 'dancing', 'reading', 'outdoor_play',
+      'building_blocks', 'puzzles', 'sports', 'cooking', 'science',
+      'storytelling', 'drawing', 'singing', 'running', 'swimming',
+      'board_games', 'pretend_play', 'gardening', 'animals', 'technology'
+    ],
+    default: []
+  }],
+  activityPreferences: [{
+    activityType: { type: String, required: true },
+    preferenceLevel: { type: Number, min: 1, max: 5, default: 3 },
+    lastEngaged: { type: Date, default: Date.now }
+  }],
+  socialPreferences: {
+    groupSize: { type: String, enum: ['small', 'medium', 'large'], default: 'medium' },
+    interactionStyle: { type: String, enum: ['quiet', 'active', 'mixed'], default: 'mixed' },
+    leadershipTendency: { type: String, enum: ['follower', 'leader', 'neutral'], default: 'neutral' }
+  }
 }, {
   timestamps: true
 });

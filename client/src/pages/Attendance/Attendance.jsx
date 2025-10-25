@@ -33,8 +33,31 @@ const Attendance = () => {
   const [message, setMessage] = useState('');
   const [records, setRecords] = useState([]);
   const [adminView, setAdminView] = useState(false);
+  const [assignedChildren, setAssignedChildren] = useState([]);
+  const [childrenLoading, setChildrenLoading] = useState(false);
 
-  // Demo: entity list could be fetched; for now, manual input of entityId is supported.
+  // Fetch assigned children for staff
+  const fetchAssignedChildren = React.useCallback(async () => {
+    if (user?.role !== 'staff' || !user?._id) return;
+    try {
+      setChildrenLoading(true);
+      const response = await api.get(`/api/children/staff/${user._id}`);
+      if (response.data && response.data.children) {
+        setAssignedChildren(response.data.children);
+      }
+    } catch (error) {
+      console.error('Error fetching assigned children:', error);
+    } finally {
+      setChildrenLoading(false);
+    }
+  }, [user]);
+
+  // Load assigned children when component mounts for staff
+  React.useEffect(() => {
+    if (user?.role === 'staff') {
+      fetchAssignedChildren();
+    }
+  }, [user, fetchAssignedChildren]);
 
   async function handleCheckIn() {
     try {
@@ -252,9 +275,21 @@ const Attendance = () => {
       {/* Only show Daily Actions for Staff and Admin */}
       {(user?.role === 'staff' || user?.role === 'admin') && (
         <Paper sx={{ p: 3, mb: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            {adminView ? 'Admin Attendance Actions' : 'Daily Actions'}
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6">
+              {adminView ? 'Admin Attendance Actions' : 'Daily Actions'}
+            </Typography>
+            {user?.role === 'staff' && (
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={fetchAssignedChildren}
+                disabled={childrenLoading}
+              >
+                Refresh Children
+              </Button>
+            )}
+          </Box>
           <Grid container spacing={2}>
             <Grid item xs={12} md={3}>
               <TextField select label="Entity Type" fullWidth value={entityType} onChange={(e) => setEntityType(e.target.value)}>
@@ -263,13 +298,33 @@ const Attendance = () => {
               </TextField>
             </Grid>
             <Grid item xs={12} md={4}>
-              <TextField
-                label={adminView ? "Entity ID (optional)" : "Entity ID"}
-                fullWidth
-                value={entityId}
-                onChange={(e) => setEntityId(e.target.value)}
-                placeholder="Paste Child/Staff ID"
-              />
+              {user?.role === 'staff' && entityType === 'child' && assignedChildren.length > 0 ? (
+                <TextField
+                  select
+                  label="Select Child"
+                  fullWidth
+                  value={entityId}
+                  onChange={(e) => setEntityId(e.target.value)}
+                  disabled={childrenLoading}
+                >
+                  <MenuItem value="">
+                    <em>Select a child</em>
+                  </MenuItem>
+                  {assignedChildren.map((child) => (
+                    <MenuItem key={child._id} value={child._id}>
+                      {child.firstName} {child.lastName}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              ) : (
+                <TextField
+                  label={adminView ? "Entity ID (optional)" : "Entity ID"}
+                  fullWidth
+                  value={entityId}
+                  onChange={(e) => setEntityId(e.target.value)}
+                  placeholder="Paste Child/Staff ID"
+                />
+              )}
             </Grid>
             <Grid item xs={12} md={3}>
               <LocalizationProvider dateAdapter={AdapterDateFns}>

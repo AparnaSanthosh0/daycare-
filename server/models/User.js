@@ -67,7 +67,7 @@ const userSchema = new mongoose.Schema({
   // Optional communication history for admins to track outreach
   communications: [{
     date: { type: Date, default: Date.now },
-    channel: { type: String, enum: ['email', 'phone', 'in-person', 'other'], default: 'other' },
+    channel: { type: String, enum: ['email', 'phone', 'in-person', 'feedback', 'other'], default: 'other' },
     subject: { type: String, trim: true },
     notes: { type: String, trim: true },
     by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }

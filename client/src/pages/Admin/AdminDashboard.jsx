@@ -834,6 +834,83 @@ const AdminDashboard = () => {
         </Grid>
       </Grid>
 
+      {/* Attendance Management Section */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h5" gutterBottom>
+            Attendance Management
+          </Typography>
+          <Button
+            variant="contained"
+            startIcon={<Assessment />}
+            onClick={() => window.open('/attendance', '_blank')}
+          >
+            Open Attendance Dashboard
+          </Button>
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Comprehensive attendance tracking for all children and staff. View today's summary, recent activity, and manage attendance records.
+        </Typography>
+        
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>Today's Attendance Summary</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Real-time attendance data for today
+                </Typography>
+                <Button
+                  variant="outlined"
+                  onClick={async () => {
+                    try {
+                      const today = new Date().toISOString().split('T')[0];
+                      const res = await api.get(`/api/attendance/admin-summary?date=${today}`);
+                      alert(`Today's Summary:\nPresent: ${res.data.present}\nAbsent: ${res.data.absent}\nLate: ${res.data.late}\nTotal: ${res.data.total}`);
+                    } catch (error) {
+                      console.error('Error fetching attendance summary:', error);
+                    }
+                  }}
+                >
+                  View Today's Summary
+                </Button>
+              </CardContent>
+            </Card>
+          </Grid>
+          
+          <Grid item xs={12} md={6}>
+            <Card>
+              <CardContent>
+                <Typography variant="h6" gutterBottom>Recent Activity</Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Latest check-ins and check-outs
+                </Typography>
+                <Button
+                  variant="outlined"
+                  onClick={async () => {
+                    try {
+                      const res = await api.get('/api/attendance/recent-activity');
+                      if (res.data && res.data.length > 0) {
+                        const activityText = res.data.slice(0, 5).map(activity => 
+                          `${activity.entityName} - ${activity.action} (${activity.status})`
+                        ).join('\n');
+                        alert(`Recent Activity:\n${activityText}`);
+                      } else {
+                        alert('No recent activity found');
+                      }
+                    } catch (error) {
+                      console.error('Error fetching recent activity:', error);
+                    }
+                  }}
+                >
+                  View Recent Activity
+                </Button>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </Paper>
+
       {/* Parents & Children Combined (Families) */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>

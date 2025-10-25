@@ -22,6 +22,7 @@ import Communication from './pages/Staff/Communication';
 import Billing from './pages/Billing/Billing';
 import Reports from './pages/Reports/Reports';
 import Profile from './pages/Profile/Profile';
+// Customer components restored - original OTP-based system
 import CustomerRegister from './pages/Customer/CustomerRegister';
 import CustomerLogin from './pages/Customer/CustomerLogin';
 import PaymentDemo from './pages/Customer/PaymentDemo';
@@ -48,6 +49,8 @@ import AdminOrders from './pages/Admin/AdminOrders';
 import VendorOrders from './pages/Vendor/VendorOrders';
 import Families from './pages/Families/Families';
 import SupportCenter from './pages/Support/SupportCenter';
+import RecommendationTestPage from './pages/RecommendationTestPage';
+import FeedbackClassification from './components/FeedbackClassification';
 const InventoryPage = React.lazy(() => import('./pages/Admin/Inventory'));
 const AboutLazy = React.lazy(() => import('./pages/About/About'));
 const ApproachLazy = React.lazy(() => import('./pages/About/Approach'));
@@ -125,6 +128,18 @@ function App() {
             element={<SupportCenter />} 
           />
 
+          {/* Recommendation Test Page - Public Route */}
+          <Route 
+            path="/recommendations-test" 
+            element={<RecommendationTestPage />} 
+          />
+
+          {/* Feedback Classification Page - Public Route */}
+          <Route 
+            path="/feedback-classification" 
+            element={<FeedbackClassification />} 
+          />
+
           {/* About, Approach and Curriculum Pages (no dashboard layout) */}
           <Route path="/about" element={<React.Suspense fallback={null}><AboutLazy /></React.Suspense>} />
           <Route path="/approach" element={<React.Suspense fallback={null}><ApproachLazy /></React.Suspense>} />
@@ -178,13 +193,13 @@ function App() {
             element={<EcommerceDemo initialCategory="girl" initialQuery="festival, fest, diwali, offer" filterMode="union" />}
           />
 
-          {/* Customer Registration - Public Route */}
+          {/* Customer Registration - OTP-based */}
           <Route
             path="/customer-register"
             element={<CustomerRegister />}
           />
           
-          {/* Customer Login - Public Route */}
+          {/* Customer Login - OTP-based */}
           <Route
             path="/customer-login"
             element={<CustomerLogin />}

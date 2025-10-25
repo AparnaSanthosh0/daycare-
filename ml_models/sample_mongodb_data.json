@@ -1,0 +1,479 @@
+[
+  {
+    "_id": {
+      "$oid": "child_1"
+    },
+    "firstName": "Emma",
+    "lastName": "Johnson",
+    "dateOfBirth": {
+      "$date": "2020-03-15"
+    },
+    "gender": "female",
+    "program": "preschool",
+    "interests": [
+      "arts_crafts",
+      "reading",
+      "music",
+      "drawing",
+      "storytelling"
+    ],
+    "activityPreferences": [
+      {
+        "activityType": "arts_crafts",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492284"
+        }
+      },
+      {
+        "activityType": "music",
+        "preferenceLevel": 4,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492304"
+        }
+      },
+      {
+        "activityType": "reading",
+        "preferenceLevel": 4,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492312"
+        }
+      }
+    ],
+    "socialPreferences": {
+      "groupSize": "medium",
+      "interactionStyle": "quiet",
+      "leadershipTendency": "leader"
+    },
+    "isActive": true,
+    "createdAt": {
+      "$date": "2025-10-24T23:32:34.492320"
+    },
+    "updatedAt": {
+      "$date": "2025-10-24T23:32:34.492323"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "child_2"
+    },
+    "firstName": "Liam",
+    "lastName": "Smith",
+    "dateOfBirth": {
+      "$date": "2020-05-22"
+    },
+    "gender": "male",
+    "program": "preschool",
+    "interests": [
+      "building_blocks",
+      "outdoor_play",
+      "sports",
+      "running",
+      "technology"
+    ],
+    "activityPreferences": [
+      {
+        "activityType": "technology",
+        "preferenceLevel": 4,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492335"
+        }
+      },
+      {
+        "activityType": "running",
+        "preferenceLevel": 4,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492340"
+        }
+      },
+      {
+        "activityType": "building_blocks",
+        "preferenceLevel": 5,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492345"
+        }
+      }
+    ],
+    "socialPreferences": {
+      "groupSize": "large",
+      "interactionStyle": "quiet",
+      "leadershipTendency": "leader"
+    },
+    "isActive": true,
+    "createdAt": {
+      "$date": "2025-10-24T23:32:34.492353"
+    },
+    "updatedAt": {
+      "$date": "2025-10-24T23:32:34.492356"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "child_3"
+    },
+    "firstName": "Sophia",
+    "lastName": "Brown",
+    "dateOfBirth": {
+      "$date": "2020-01-10"
+    },
+    "gender": "female",
+    "program": "preschool",
+    "interests": [
+      "arts_crafts",
+      "music",
+      "dancing",
+      "singing",
+      "pretend_play"
+    ],
+    "activityPreferences": [
+      {
+        "activityType": "pretend_play",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492365"
+        }
+      },
+      {
+        "activityType": "singing",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492370"
+        }
+      },
+      {
+        "activityType": "arts_crafts",
+        "preferenceLevel": 5,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492374"
+        }
+      }
+    ],
+    "socialPreferences": {
+      "groupSize": "large",
+      "interactionStyle": "quiet",
+      "leadershipTendency": "follower"
+    },
+    "isActive": true,
+    "createdAt": {
+      "$date": "2025-10-24T23:32:34.492380"
+    },
+    "updatedAt": {
+      "$date": "2025-10-24T23:32:34.492383"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "child_4"
+    },
+    "firstName": "Noah",
+    "lastName": "Davis",
+    "dateOfBirth": {
+      "$date": "2020-07-08"
+    },
+    "gender": "male",
+    "program": "preschool",
+    "interests": [
+      "building_blocks",
+      "puzzles",
+      "science",
+      "technology",
+      "board_games"
+    ],
+    "activityPreferences": [
+      {
+        "activityType": "building_blocks",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492391"
+        }
+      },
+      {
+        "activityType": "technology",
+        "preferenceLevel": 5,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492396"
+        }
+      }
+    ],
+    "socialPreferences": {
+      "groupSize": "medium",
+      "interactionStyle": "active",
+      "leadershipTendency": "leader"
+    },
+    "isActive": true,
+    "createdAt": {
+      "$date": "2025-10-24T23:32:34.492402"
+    },
+    "updatedAt": {
+      "$date": "2025-10-24T23:32:34.492406"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "child_5"
+    },
+    "firstName": "Olivia",
+    "lastName": "Wilson",
+    "dateOfBirth": {
+      "$date": "2020-04-30"
+    },
+    "gender": "female",
+    "program": "preschool",
+    "interests": [
+      "reading",
+      "storytelling",
+      "pretend_play",
+      "animals",
+      "cooking"
+    ],
+    "activityPreferences": [
+      {
+        "activityType": "pretend_play",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492414"
+        }
+      },
+      {
+        "activityType": "storytelling",
+        "preferenceLevel": 4,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492419"
+        }
+      }
+    ],
+    "socialPreferences": {
+      "groupSize": "medium",
+      "interactionStyle": "mixed",
+      "leadershipTendency": "follower"
+    },
+    "isActive": true,
+    "createdAt": {
+      "$date": "2025-10-24T23:32:34.492424"
+    },
+    "updatedAt": {
+      "$date": "2025-10-24T23:32:34.492427"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "child_6"
+    },
+    "firstName": "William",
+    "lastName": "Miller",
+    "dateOfBirth": {
+      "$date": "2020-06-12"
+    },
+    "gender": "male",
+    "program": "preschool",
+    "interests": [
+      "outdoor_play",
+      "sports",
+      "running",
+      "swimming",
+      "gardening"
+    ],
+    "activityPreferences": [
+      {
+        "activityType": "outdoor_play",
+        "preferenceLevel": 5,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492435"
+        }
+      }
+    ],
+    "socialPreferences": {
+      "groupSize": "small",
+      "interactionStyle": "active",
+      "leadershipTendency": "neutral"
+    },
+    "isActive": true,
+    "createdAt": {
+      "$date": "2025-10-24T23:32:34.492441"
+    },
+    "updatedAt": {
+      "$date": "2025-10-24T23:32:34.492445"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "child_7"
+    },
+    "firstName": "Ava",
+    "lastName": "Garcia",
+    "dateOfBirth": {
+      "$date": "2020-02-28"
+    },
+    "gender": "female",
+    "program": "preschool",
+    "interests": [
+      "arts_crafts",
+      "music",
+      "dancing",
+      "drawing",
+      "singing"
+    ],
+    "activityPreferences": [
+      {
+        "activityType": "arts_crafts",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492452"
+        }
+      },
+      {
+        "activityType": "drawing",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492458"
+        }
+      }
+    ],
+    "socialPreferences": {
+      "groupSize": "medium",
+      "interactionStyle": "quiet",
+      "leadershipTendency": "follower"
+    },
+    "isActive": true,
+    "createdAt": {
+      "$date": "2025-10-24T23:32:34.492463"
+    },
+    "updatedAt": {
+      "$date": "2025-10-24T23:32:34.492466"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "child_8"
+    },
+    "firstName": "James",
+    "lastName": "Martinez",
+    "dateOfBirth": {
+      "$date": "2020-08-15"
+    },
+    "gender": "male",
+    "program": "preschool",
+    "interests": [
+      "building_blocks",
+      "puzzles",
+      "science",
+      "technology",
+      "outdoor_play"
+    ],
+    "activityPreferences": [
+      {
+        "activityType": "outdoor_play",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492474"
+        }
+      }
+    ],
+    "socialPreferences": {
+      "groupSize": "large",
+      "interactionStyle": "quiet",
+      "leadershipTendency": "neutral"
+    },
+    "isActive": true,
+    "createdAt": {
+      "$date": "2025-10-24T23:32:34.492480"
+    },
+    "updatedAt": {
+      "$date": "2025-10-24T23:32:34.492483"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "child_9"
+    },
+    "firstName": "Isabella",
+    "lastName": "Anderson",
+    "dateOfBirth": {
+      "$date": "2020-09-03"
+    },
+    "gender": "female",
+    "program": "preschool",
+    "interests": [
+      "reading",
+      "storytelling",
+      "pretend_play",
+      "animals",
+      "cooking"
+    ],
+    "activityPreferences": [
+      {
+        "activityType": "animals",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492491"
+        }
+      }
+    ],
+    "socialPreferences": {
+      "groupSize": "medium",
+      "interactionStyle": "mixed",
+      "leadershipTendency": "leader"
+    },
+    "isActive": true,
+    "createdAt": {
+      "$date": "2025-10-24T23:32:34.492498"
+    },
+    "updatedAt": {
+      "$date": "2025-10-24T23:32:34.492508"
+    }
+  },
+  {
+    "_id": {
+      "$oid": "child_10"
+    },
+    "firstName": "Benjamin",
+    "lastName": "Taylor",
+    "dateOfBirth": {
+      "$date": "2020-10-20"
+    },
+    "gender": "male",
+    "program": "preschool",
+    "interests": [
+      "outdoor_play",
+      "sports",
+      "running",
+      "swimming",
+      "building_blocks"
+    ],
+    "activityPreferences": [
+      {
+        "activityType": "outdoor_play",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492517"
+        }
+      },
+      {
+        "activityType": "running",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492522"
+        }
+      },
+      {
+        "activityType": "building_blocks",
+        "preferenceLevel": 3,
+        "lastEngaged": {
+          "$date": "2025-10-24T23:32:34.492528"
+        }
+      }
+    ],
+    "socialPreferences": {
+      "groupSize": "small",
+      "interactionStyle": "mixed",
+      "leadershipTendency": "follower"
+    },
+    "isActive": true,
+    "createdAt": {
+      "$date": "2025-10-24T23:32:34.492536"
+    },
+    "updatedAt": {
+      "$date": "2025-10-24T23:32:34.492539"
+    }
+  }
+]

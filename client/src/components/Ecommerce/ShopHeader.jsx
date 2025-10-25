@@ -58,17 +58,9 @@ export default function ShopHeader() {
             </Typography>
           </Box>
 
-          {/* Login/Reg section at top right - only show when not logged in */}
+          {/* Login section at top right - only show when not logged in */}
           {!user && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Button
-                variant="outlined"
-                size="small"
-                onClick={() => navigate('/login')}
-                sx={{ textTransform: 'none', borderRadius: '20px' }}
-              >
-                Staff/Parent Login
-              </Button>
               <Button
                 variant="outlined"
                 size="small"
@@ -84,7 +76,7 @@ export default function ShopHeader() {
                 onClick={() => navigate('/customer-register')}
                 sx={{ textTransform: 'none', borderRadius: '20px' }}
               >
-                Sign Up
+                Register
               </Button>
             </Box>
           )}

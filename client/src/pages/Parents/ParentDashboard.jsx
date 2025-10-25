@@ -40,15 +40,18 @@ import {
   PhotoAlbum,
   // Analytics,
   TrendingUp,
-  Assessment,
+  Assessment
   // People,
-  SupervisorAccount,
-  ContactPhone,
-  Email
+  // SupervisorAccount,
+  // ContactPhone,
+  // Email
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
+import RecommendationQuickAccess from '../../components/RecommendationQuickAccess';
+import ParentRecommendationCard from '../../components/ParentRecommendationCard';
 import EduRecommendations from '../../components/Parents/EduRecommendations';
+import MealRecommendation from '../../components/MealRecommendation';
 
 // Simple helper to format date strings
 const formatDate = (d) => {
@@ -103,7 +106,7 @@ const ParentDashboard = ({ initialTab }) => {
     nutrition: { consumption: [], preferences: [] }
   });
   // Staff information
-  const [assignedStaff, setAssignedStaff] = useState([]);
+  const [, setAssignedStaff] = useState([]);
   // Admissions state for adding additional children
   const [admissions, setAdmissions] = useState([]);
   const [admissionForm, setAdmissionForm] = useState({
@@ -732,95 +735,7 @@ const ParentDashboard = ({ initialTab }) => {
     );
   };
 
-  const StaffCard = () => {
-    return (
-      <Card>
-        <CardHeader 
-          title="Assigned Staff" 
-          avatar={<SupervisorAccount />}
-          action={<IconButton onClick={() => fetchChildData(activeChildId)}><Refresh /></IconButton>}
-        />
-        <CardContent>
-          {assignedStaff.length > 0 ? (
-            <Grid container spacing={2}>
-              {assignedStaff.map((staff, index) => (
-                <Grid item xs={12} sm={6} md={4} key={staff._id || index}>
-                  <Card sx={{ height: '100%', border: '1px solid', borderColor: 'primary.main', bgcolor: 'primary.50' }}>
-                    <CardContent>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                        <Avatar sx={{ bgcolor: 'primary.main', mr: 2 }}>
-                          {staff.profileImage ? (
-                            <img 
-                              src={toAbsoluteUrl(staff.profileImage)} 
-                              alt={staff.firstName}
-                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            />
-                          ) : (
-                            <Person />
-                          )}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="h6" component="div">
-                            {staff.firstName} {staff.lastName}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {staff.role || 'Staff Member'}
-                          </Typography>
-                        </Box>
-                      </Box>
-                      
-                      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                        {staff.phone && (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <ContactPhone fontSize="small" color="action" />
-                            <Typography variant="body2">{staff.phone}</Typography>
-                          </Box>
-                        )}
-                        {staff.email && (
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Email fontSize="small" color="action" />
-                            <Typography variant="body2">{staff.email}</Typography>
-                          </Box>
-                        )}
-                      </Box>
-
-                      {staff.specializations && staff.specializations.length > 0 && (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" color="text.secondary" gutterBottom>
-                            Specializations:
-                          </Typography>
-                          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                            {staff.specializations.map((spec, idx) => (
-                              <Chip key={idx} label={spec} size="small" color="primary" variant="outlined" />
-                            ))}
-                          </Box>
-                        </Box>
-                      )}
-
-                      {staff.notes && (
-                        <Box sx={{ mt: 2 }}>
-                          <Typography variant="body2" color="text.secondary">
-                            <strong>Notes:</strong> {staff.notes}
-                          </Typography>
-                        </Box>
-                      )}
-                    </CardContent>
-                  </Card>
-                </Grid>
-              ))}
-            </Grid>
-          ) : (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <SupervisorAccount sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="body2" color="text.secondary">
-                No staff assigned yet. Staff will be assigned by the administration.
-              </Typography>
-            </Box>
-          )}
-        </CardContent>
-      </Card>
-    );
-  };
+  // StaffCard removed - moved to different location
 
   return (
     <Box>
@@ -878,7 +793,7 @@ const ParentDashboard = ({ initialTab }) => {
 
       {/* Tabs - show only up to Meals (index 0..5). Sidebar links open others. */}
       <Paper sx={{ p: 2 }}>
-        {tab <= 5 && (
+        {tab <= 6 && (
           <>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons allowScrollButtonsMobile>
           <Tab label="Profile" icon={<ChildCare />} iconPosition="start" />
@@ -887,6 +802,7 @@ const ParentDashboard = ({ initialTab }) => {
           <Tab label="Attendance" icon={<Event />} iconPosition="start" />
           <Tab label="Activities" icon={<Event />} iconPosition="start" />
           <Tab label="Meals" icon={<LocalDining />} iconPosition="start" />
+          <Tab label="Feedback" icon={<Assessment />} iconPosition="start" />
         </Tabs>
         <Divider sx={{ mb: 2 }} />
           </>
@@ -961,6 +877,11 @@ const ParentDashboard = ({ initialTab }) => {
                       ...((reports?.milestones?.upcoming || []).map(m => ({ ...m, status: 'upcoming' })) || []),
                     ]}
                   />
+                </Grid>
+                
+                {/* Child Grouping Recommendations */}
+                <Grid item xs={12}>
+                  <ParentRecommendationCard child={children.find(c => c._id === activeChildId)} />
                 </Grid>
               </Grid>
             )}
@@ -1164,25 +1085,94 @@ const ParentDashboard = ({ initialTab }) => {
             )}
 
             {tab === 5 && (
-              <Card>
-                <CardHeader title="Meal Plan" />
-                <CardContent>
+              <Box>
+                <Card sx={{ mb: 3 }}>
+                  <CardHeader title="Meal Plan" />
+                  <CardContent>
+                  {meals?.title && (
+                    <Box sx={{ mb: 2 }}>
+                      <Typography variant="h6" gutterBottom>{meals.title}</Typography>
+                      {meals.description && (
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          {meals.description}
+                        </Typography>
+                      )}
+                      {meals.createdBy && (
+                        <Typography variant="caption" color="text.secondary">
+                          Planned by: {meals.createdBy.firstName} {meals.createdBy.lastName}
+                        </Typography>
+                      )}
+                    </Box>
+                  )}
+                  
                   {(meals?.plan || []).length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">No meal plan available.</Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {meals?.message || 'No meal plan available for this week.'}
+                    </Typography>
                   ) : (
-                    (meals.plan).map((m, idx) => (
-                      <Box key={idx} sx={{ mb: 1 }}>
-                        <Typography variant="body2">{m.day || 'Day'}: {m.menu || '-'}</Typography>
-                      </Box>
-                    ))
+                    <Box>
+                      {meals.plan.map((dayPlan, idx) => (
+                        <Box key={idx} sx={{ mb: 3, p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                          <Typography variant="subtitle1" gutterBottom sx={{ textTransform: 'capitalize', fontWeight: 'bold' }}>
+                            {dayPlan.day}
+                          </Typography>
+                          
+                          <Grid container spacing={2}>
+                            {dayPlan.menu.breakfast && (
+                              <Grid item xs={12} sm={6}>
+                                <Typography variant="body2" color="text.secondary">Breakfast:</Typography>
+                                <Typography variant="body2">{dayPlan.menu.breakfast || 'Not specified'}</Typography>
+                              </Grid>
+                            )}
+                            
+                            {dayPlan.menu.morningSnack && (
+                              <Grid item xs={12} sm={6}>
+                                <Typography variant="body2" color="text.secondary">Morning Snack:</Typography>
+                                <Typography variant="body2">{dayPlan.menu.morningSnack || 'Not specified'}</Typography>
+                              </Grid>
+                            )}
+                            
+                            {dayPlan.menu.lunch && (
+                              <Grid item xs={12} sm={6}>
+                                <Typography variant="body2" color="text.secondary">Lunch:</Typography>
+                                <Typography variant="body2">{dayPlan.menu.lunch || 'Not specified'}</Typography>
+                              </Grid>
+                            )}
+                            
+                            {dayPlan.menu.afternoonSnack && (
+                              <Grid item xs={12} sm={6}>
+                                <Typography variant="body2" color="text.secondary">Afternoon Snack:</Typography>
+                                <Typography variant="body2">{dayPlan.menu.afternoonSnack || 'Not specified'}</Typography>
+                              </Grid>
+                            )}
+                            
+                            {dayPlan.menu.dinner && (
+                              <Grid item xs={12} sm={6}>
+                                <Typography variant="body2" color="text.secondary">Dinner:</Typography>
+                                <Typography variant="body2">{dayPlan.menu.dinner || 'Not specified'}</Typography>
+                              </Grid>
+                            )}
+                          </Grid>
+                          
+                          {dayPlan.notes && (
+                            <Box sx={{ mt: 1 }}>
+                              <Typography variant="body2" color="text.secondary">Notes:</Typography>
+                              <Typography variant="body2" sx={{ fontStyle: 'italic' }}>{dayPlan.notes}</Typography>
+                            </Box>
+                          )}
+                        </Box>
+                      ))}
+                    </Box>
                   )}
                 </CardContent>
               </Card>
+              
+              {/* Meal Recommendation System */}
+              <MealRecommendation />
+            </Box>
             )}
 
-            {tab === 6 && (
-              <StaffCard />
-            )}
+            {/* Staff Card moved to different tab */}
 
             {/* Reports & Analytics */}
             {tab === 7 && (
@@ -1625,40 +1615,204 @@ const ParentDashboard = ({ initialTab }) => {
               </Card>
             )}
 
-            {/* Feedback & Complaints */}
-            {tab === 12 && (
-              <Card>
-                <CardHeader title="Feedback & Complaints" subheader="Share your suggestions or concerns" />
-                <CardContent>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                      <TextField select fullWidth label="Category" value={editFields.fbCategory || 'feedback'} onChange={(e) => setEditFields(f => ({ ...f, fbCategory: e.target.value }))}>
-                        <MenuItem value="feedback">Feedback</MenuItem>
-                        <MenuItem value="complaint">Complaint</MenuItem>
-                        <MenuItem value="suggestion">Suggestion</MenuItem>
-                      </TextField>
+            {/* Feedback & Complaints with AI Classification */}
+            {tab === 6 && (
+              <Box>
+                <Card key="feedback-card-2024">
+                  <CardHeader 
+                    title="🧠 Feedback & AI Analysis" 
+                    subheader="Share your feedback and get instant AI-powered sentiment analysis"
+                  />
+                  <CardContent>
+                    <Grid container spacing={3}>
+                      {/* Left Side - Submit Feedback */}
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="h6" gutterBottom color="primary">Submit Feedback</Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={6}>
+                            <FormControl fullWidth>
+                              <InputLabel>Category</InputLabel>
+                              <Select 
+                                value={editFields.fbCategory || 'feedback'} 
+                                onChange={(e) => setEditFields(f => ({ ...f, fbCategory: e.target.value }))}
+                                label="Category"
+                              >
+                                <MenuItem value="feedback">Feedback</MenuItem>
+                                <MenuItem value="complaint">Complaint</MenuItem>
+                                <MenuItem value="suggestion">Suggestion</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <TextField 
+                              fullWidth 
+                              label="Subject" 
+                              value={editFields.fbSubject || ''} 
+                              onChange={(e) => setEditFields(f => ({ ...f, fbSubject: e.target.value }))} 
+                            />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField 
+                              fullWidth 
+                              multiline 
+                              minRows={4} 
+                              label="Details" 
+                              value={editFields.fbDetails || ''} 
+                              onChange={(e) => setEditFields(f => ({ ...f, fbDetails: e.target.value }))} 
+                            />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <Button 
+                              variant="contained" 
+                              color="primary"
+                              fullWidth
+                              onClick={async () => {
+                                try {
+                                  const payload = { 
+                                    category: editFields.fbCategory || 'feedback', 
+                                    subject: editFields.fbSubject || '', 
+                                    details: editFields.fbDetails || '' 
+                                  };
+                                  if (!payload.subject || !payload.details) return;
+                                  await api.post('/api/parents/me/feedback', payload);
+                                  setEditFields(f => ({ ...f, fbSubject: '', fbDetails: '' }));
+                                  alert('Feedback submitted successfully!');
+                                } catch (e) { 
+                                  console.error('Feedback submit error:', e);
+                                  alert('Error submitting feedback. Please try again.');
+                                }
+                              }}
+                            >
+                              Submit Feedback
+                            </Button>
+                          </Grid>
+                        </Grid>
+                      </Grid>
+
+                      {/* Right Side - AI Sentiment Analysis */}
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="h6" gutterBottom color="secondary">AI Sentiment Analysis</Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              multiline
+                              minRows={3}
+                              label="Feedback Text"
+                              placeholder="Enter feedback text to analyze..."
+                              value={editFields.aiFeedbackText || ''}
+                              onChange={(e) => setEditFields(f => ({ ...f, aiFeedbackText: e.target.value }))}
+                            />
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <FormControl fullWidth>
+                              <InputLabel>Service Category</InputLabel>
+                              <Select
+                                value={editFields.aiServiceCategory || 'meal'}
+                                onChange={(e) => setEditFields(f => ({ ...f, aiServiceCategory: e.target.value }))}
+                                label="Service Category"
+                              >
+                                <MenuItem value="meal">Meal</MenuItem>
+                                <MenuItem value="activity">Activity</MenuItem>
+                                <MenuItem value="communication">Communication</MenuItem>
+                                <MenuItem value="safety">Safety</MenuItem>
+                                <MenuItem value="general">General</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <FormControl fullWidth>
+                              <InputLabel>Rating (1-5)</InputLabel>
+                              <Select
+                                value={editFields.aiRating || 5}
+                                onChange={(e) => setEditFields(f => ({ ...f, aiRating: e.target.value }))}
+                                label="Rating (1-5)"
+                              >
+                                <MenuItem value={1}>1 - Very Poor</MenuItem>
+                                <MenuItem value={2}>2 - Poor</MenuItem>
+                                <MenuItem value={3}>3 - Average</MenuItem>
+                                <MenuItem value={4}>4 - Good</MenuItem>
+                                <MenuItem value={5}>5 - Excellent</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12}>
+                            <Button 
+                              variant="contained" 
+                              color="secondary"
+                              fullWidth
+                              onClick={async () => {
+                                try {
+                                  if (!editFields.aiFeedbackText) {
+                                    alert('Please enter feedback text to analyze');
+                                    return;
+                                  }
+                                  
+                                  const response = await api.post('/api/feedback-classification/predict', {
+                                    text: editFields.aiFeedbackText,
+                                    serviceCategory: editFields.aiServiceCategory || 'meal',
+                                    rating: parseInt(editFields.aiRating) || 5
+                                  });
+                                  
+                                  setEditFields(f => ({ 
+                                    ...f, 
+                                    aiResult: response.data.prediction,
+                                    aiConfidence: response.data.confidence,
+                                    aiAnalysis: response.data
+                                  }));
+                                } catch (e) {
+                                  console.error('AI Classification error:', e);
+                                  alert('Error analyzing feedback. Please try again.');
+                                }
+                              }}
+                            >
+                              Classify Sentiment
+                            </Button>
+                          </Grid>
+                          
+                          {/* Results Display */}
+                          {editFields.aiResult && (
+                            <Grid item xs={12}>
+                              <Card variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                                <Typography variant="h6" gutterBottom>
+                                  Analysis Results
+                                </Typography>
+                                <Box sx={{ mb: 2 }}>
+                                  <Chip 
+                                    label={editFields.aiResult === 'Positive' ? '✅ Positive' : '⚠️ Needs Improvement'} 
+                                    color={editFields.aiResult === 'Positive' ? 'success' : 'warning'}
+                                    size="large"
+                                  />
+                                </Box>
+                                <Typography variant="body2" gutterBottom>
+                                  <strong>Confidence:</strong> {(editFields.aiConfidence * 100).toFixed(1)}%
+                                </Typography>
+                                <Typography variant="body2" gutterBottom>
+                                  <strong>Service Category:</strong> {editFields.aiServiceCategory}
+                                </Typography>
+                                <Typography variant="body2" gutterBottom>
+                                  <strong>Rating:</strong> {editFields.aiRating}/5
+                                </Typography>
+                                {editFields.aiAnalysis?.explanation && (
+                                  <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
+                                    {editFields.aiAnalysis.explanation}
+                                  </Typography>
+                                )}
+                              </Card>
+                            </Grid>
+                          )}
+                        </Grid>
+                      </Grid>
                     </Grid>
-                    <Grid item xs={12} md={6}>
-                      <TextField fullWidth label="Subject" value={editFields.fbSubject || ''} onChange={(e) => setEditFields(f => ({ ...f, fbSubject: e.target.value }))} />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField fullWidth multiline minRows={4} label="Details" value={editFields.fbDetails || ''} onChange={(e) => setEditFields(f => ({ ...f, fbDetails: e.target.value }))} />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <Button variant="contained" onClick={async () => {
-                        try {
-                          const payload = { category: editFields.fbCategory || 'feedback', subject: editFields.fbSubject || '', details: editFields.fbDetails || '' };
-                          if (!payload.subject || !payload.details) return;
-                          await api.post('/api/parents/me/feedback', payload);
-                          setEditFields(f => ({ ...f, fbSubject: '', fbDetails: '' }));
-                        } catch (e) { console.error('Feedback submit error:', e); }
-                      }}>Submit</Button>
-                    </Grid>
-                  </Grid>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </Box>
             )}
 
+            {/* AI-Powered Child Grouping Recommendations */}
+            <Box sx={{ mt: 3 }}>
+              <RecommendationQuickAccess />
+            </Box>
 
           </Box>
         )}

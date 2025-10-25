@@ -3,6 +3,7 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const { requireChildProfile } = require('../middleware/auth');
 const Child = require('../models/Child');
+const User = require('../models/User');
 const AdmissionRequest = require('../models/AdmissionRequest');
 const { body, validationResult } = require('express-validator');
 const Attendance = require('../models/Attendance');
@@ -148,14 +149,26 @@ router.post('/me/feedback', auth, [
     if (req.user.role !== 'parent') return res.status(403).json({ message: 'Only parents can submit feedback' });
     const errors = validationResult(req);
     if (!errors.isEmpty()) return res.status(400).json({ message: errors.array()[0].msg });
+    
     const parent = await User.findById(req.user.userId);
+    if (!parent) {
+      return res.status(404).json({ message: 'Parent user not found' });
+    }
+    
     parent.communications = Array.isArray(parent.communications) ? parent.communications : [];
-    parent.communications.push({ channel: req.body.category, subject: req.body.subject, notes: req.body.details, by: req.user.userId, date: new Date() });
+    parent.communications.push({ 
+      channel: 'feedback', 
+      subject: req.body.subject, 
+      notes: req.body.details, 
+      by: req.user.userId, 
+      date: new Date() 
+    });
+    
     await parent.save();
-    res.status(201).json({ message: 'Feedback submitted' });
+    res.status(201).json({ message: 'Feedback submitted successfully' });
   } catch (error) {
     console.error('Feedback error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 router.get('/me/attendance', auth, async (req, res) => {
@@ -194,8 +207,15 @@ router.get('/me/attendance', auth, async (req, res) => {
       if (to) query.date.$lte = new Date(to);
     }
 
+    // Only show attendance records marked by staff members
+    const staffUsers = await User.find({ role: 'staff' }).select('_id');
+    const staffIds = staffUsers.map(u => u._id);
+    
+    query.createdBy = { $in: staffIds }; // Only records created by staff
+
     const attendance = await Attendance.find(query)
       .populate('entityId', 'firstName lastName')
+      .populate('createdBy', 'firstName lastName')
       .sort({ date: -1 })
       .limit(100); // Limit for performance
 

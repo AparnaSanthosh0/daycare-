@@ -58,6 +58,7 @@ app.use('/api/billing', requireDb, require('./routes/billing'));
 app.use('/api/activities', requireDb, require('./routes/activities'));
 app.use('/api/reports', requireDb, require('./routes/reports'));
 // Inventory (Admin-only)
+app.use('/api/meal-plans', requireDb, require('./routes/mealPlans'));
 app.use('/api/inventory', requireDb, require('./routes/inventory'));
 // Vendor (singleton)
 app.use('/api/vendor', requireDb, require('./routes/vendors'));
@@ -74,6 +75,14 @@ app.use('/api/orders', requireDb, require('./routes/orders'));
 app.use('/api/invoices', requireDb, require('./routes/invoices'));
 // Reviews (customer feedback to vendors and admin)
 app.use('/api/reviews', requireDb, require('./routes/reviews'));
+// Recommendations (ML-based child grouping)
+app.use('/api/recommendations', requireDb, require('./routes/recommendations'));
+
+// Feedback Classification (Bayesian ML)
+app.use('/api/feedback-classification', requireDb, require('./routes/feedbackClassification'));
+
+// Meal Recommendations (Decision Tree ML)
+app.use('/api/meal-recommendations', requireDb, require('./routes/mealRecommendations'));
 
 // Serve uploaded files (certificates, child photos, profile images, etc.)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));
