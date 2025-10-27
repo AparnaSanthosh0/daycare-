@@ -195,6 +195,72 @@ router.post(
   }
 );
 
+// Vendor: Suggest a discount (creates a pending discount request)
+router.post('/:id/suggest-discount',
+  auth,
+  authorize('vendor', 'admin'),
+  [
+    body('discount').isFloat({ min: 0, max: 100 }).withMessage('Discount must be between 0 and 100'),
+    body('reason').optional().isString(),
+    body('startDate').optional().isISO8601(),
+    body('endDate').optional().isISO8601()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+      const product = await Product.findById(req.params.id);
+      if (!product) return res.status(404).json({ message: 'Product not found' });
+
+      // Check if vendor owns this product
+      // Allow all vendors to suggest discounts (vendor ownership is optional)
+      // Admins can always suggest discounts for any product
+      
+      // Optional: If you want to enforce vendor ownership, uncomment this:
+      /*
+      if (req.user.role === 'vendor' && product.vendor) {
+        const productVendorId = product.vendor.toString();
+        const userVendorId = req.user.vendorId?.toString();
+        
+        if (productVendorId !== userVendorId) {
+          return res.status(403).json({ message: 'Access denied. You can only suggest discounts for your own products.' });
+        }
+      }
+      */
+
+      const { discount, reason = '', startDate, endDate } = req.body;
+      
+      // Update product with suggested discount
+      product.suggestedDiscount = discount;
+      product.discountReason = reason;
+      product.discountStatus = 'suggested';
+      product.suggestedBy = req.user.vendorId || product.vendor;
+      
+      if (startDate) product.discountStartDate = new Date(startDate);
+      if (endDate) product.discountEndDate = new Date(endDate);
+      
+      // Populate suggestedBy
+      await product.save();
+      await product.populate('suggestedBy', 'vendorName companyName email');
+
+      res.json({
+        message: 'Discount suggestion submitted for admin approval',
+        product: {
+          _id: product._id,
+          name: product.name,
+          suggestedDiscount: product.suggestedDiscount,
+          discountStatus: product.discountStatus,
+          suggestedBy: product.suggestedBy
+        }
+      });
+    } catch (error) {
+      console.error('Error suggesting discount:', error);
+      res.status(500).json({ message: 'Error suggesting discount', error: error.message });
+    }
+  }
+);
+
 // Vendor: update product
 router.put(
   '/:id',
@@ -301,6 +367,138 @@ router.patch('/:id/stock',
     } catch (error) {
       console.error('Error updating stock:', error);
       res.status(500).json({ message: 'Error updating stock', error: error.message });
+    }
+  }
+);
+
+// Admin: Approve or reject discount
+router.post('/:id/discount-approval',
+  auth,
+  authorize('admin'),
+  [
+    body('action').isIn(['approve', 'reject']).withMessage('Action must be approve or reject'),
+    body('reason').optional().isString()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+      const product = await Product.findById(req.params.id);
+      if (!product) return res.status(404).json({ message: 'Product not found' });
+
+      const { action, reason = '' } = req.body;
+
+      if (action === 'approve') {
+        product.activeDiscount = product.suggestedDiscount;
+        product.discountStatus = 'active';
+        product.approvedBy = req.user._id;
+        product.approvedAt = new Date();
+        
+        // If suggested discount is applied, keep dates from suggestion
+        if (product.discountStartDate) {
+          // Keep the dates as-is
+        }
+        
+        res.json({
+          message: 'Discount approved and activated',
+          product: await product.populate(['suggestedBy', 'approvedBy'], 'firstName lastName vendorName companyName email')
+        });
+      } else {
+        product.discountStatus = 'rejected';
+        product.rejectionReason = reason;
+        product.approvedBy = req.user._id;
+        product.approvedAt = new Date();
+        
+        res.json({
+          message: 'Discount rejected',
+          product: await product.populate(['suggestedBy', 'approvedBy'], 'firstName lastName vendorName companyName email')
+        });
+      }
+
+      await product.save();
+    } catch (error) {
+      console.error('Error processing discount approval:', error);
+      res.status(500).json({ message: 'Error processing discount approval', error: error.message });
+    }
+  }
+);
+
+// Admin: Apply discount directly (bypass vendor suggestion)
+router.post('/:id/apply-discount',
+  auth,
+  authorize('admin'),
+  [
+    body('discount').isFloat({ min: 0, max: 100 }).withMessage('Discount must be between 0 and 100'),
+    body('reason').optional().isString(),
+    body('startDate').optional().isISO8601(),
+    body('endDate').optional().isISO8601()
+  ],
+  async (req, res) => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
+
+      const product = await Product.findById(req.params.id);
+      if (!product) return res.status(404).json({ message: 'Product not found' });
+
+      const { discount, reason = '', startDate, endDate } = req.body;
+
+      product.activeDiscount = discount;
+      product.discountStatus = 'active';
+      product.discountReason = reason;
+      product.approvedBy = req.user._id;
+      product.approvedAt = new Date();
+      
+      if (startDate) product.discountStartDate = new Date(startDate);
+      if (endDate) product.discountEndDate = new Date(endDate);
+
+      await product.save();
+      
+      res.json({
+        message: 'Discount applied successfully',
+        product: await product.populate('approvedBy', 'firstName lastName email')
+      });
+    } catch (error) {
+      console.error('Error applying discount:', error);
+      res.status(500).json({ message: 'Error applying discount', error: error.message });
+    }
+  }
+);
+
+// Admin: Remove discount
+router.post('/:id/remove-discount',
+  auth,
+  authorize('admin'),
+  [
+    body('reason').optional().isString()
+  ],
+  async (req, res) => {
+    try {
+      const product = await Product.findById(req.params.id);
+      if (!product) return res.status(404).json({ message: 'Product not found' });
+
+      const { reason = '' } = req.body;
+
+      product.activeDiscount = 0;
+      product.discountStatus = 'none';
+      product.discountReason = reason;
+      product.approvedBy = req.user._id;
+      product.approvedAt = new Date();
+      
+      // Clear dates
+      product.discountStartDate = null;
+      product.discountEndDate = null;
+
+      await product.save();
+      
+      res.json({
+        message: 'Discount removed successfully',
+        product
+      });
+    } catch (error) {
+      console.error('Error removing discount:', error);
+      res.status(500).json({ message: 'Error removing discount', error: error.message });
     }
   }
 );

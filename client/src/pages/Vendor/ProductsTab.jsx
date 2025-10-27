@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Box, Paper, Typography, Stack, TextField, Button, Table, TableHead, TableRow, TableCell, TableBody, Switch, FormControlLabel, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
+import { Box, Paper, Typography, Stack, TextField, Button, Table, TableHead, TableRow, TableCell, TableBody, Switch, FormControlLabel, Dialog, DialogTitle, DialogContent, DialogActions, Alert } from '@mui/material';
+import { LocalOffer } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import api, { API_BASE_URL } from '../../config/api';
 
@@ -27,6 +28,15 @@ export default function ProductsTab() {
   const [loading, setLoading] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [edit, setEdit] = useState(null); // selected product for edit
+  
+  // Discount suggestion states
+  const [discountDialog, setDiscountDialog] = useState({ open: false, product: null });
+  const [discountForm, setDiscountForm] = useState({
+    discount: '',
+    reason: '',
+    startDate: '',
+    endDate: ''
+  });
 
   const load = async () => {
     try {
@@ -106,6 +116,28 @@ export default function ProductsTab() {
       setProducts(prev => prev.map(x => x._id === p._id ? data.product : x));
     } catch (e) {
       toast.error('Update failed');
+    }
+  };
+
+  const handleSuggestDiscount = async () => {
+    if (!discountForm.discount || !discountForm.reason) {
+      toast.error('Discount percentage and reason are required');
+      return;
+    }
+    
+    try {
+      await api.post(`/api/products/${discountDialog.product._id}/suggest-discount`, {
+        discount: parseFloat(discountForm.discount),
+        reason: discountForm.reason,
+        startDate: discountForm.startDate || undefined,
+        endDate: discountForm.endDate || undefined
+      });
+      toast.success('Discount suggestion submitted for admin approval');
+      setDiscountDialog({ open: false, product: null });
+      setDiscountForm({ discount: '', reason: '', startDate: '', endDate: '' });
+      load(); // Reload products to see updated status
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Failed to suggest discount');
     }
   };
 
@@ -246,6 +278,15 @@ export default function ProductsTab() {
               <TableCell>{p.isActive ? 'Active' : 'Inactive'}</TableCell>
               <TableCell align="right">
                 <Stack direction="row" spacing={1} justifyContent="flex-end">
+                  <Button 
+                    size="small" 
+                    startIcon={<LocalOffer />}
+                    onClick={() => {
+                      setDiscountDialog({ open: true, product: p });
+                    }}
+                  >
+                    Suggest Discount
+                  </Button>
                   <Button size="small" onClick={() => {
                     const sizesStr = Array.isArray(p.sizes) ? p.sizes.join(', ') : '';
                     setEdit({ ...p, sizesStr });
@@ -324,6 +365,84 @@ export default function ProductsTab() {
               toast.error(err?.response?.data?.message || 'Update failed');
             }
           }}>Save</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Suggest Discount Dialog */}
+      <Dialog 
+        open={discountDialog.open} 
+        onClose={() => {
+          setDiscountDialog({ open: false, product: null });
+          setDiscountForm({ discount: '', reason: '', startDate: '', endDate: '' });
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>
+          <Stack direction="row" alignItems="center" spacing={1}>
+            <LocalOffer color="primary" />
+            <Typography variant="h6">Suggest Discount</Typography>
+          </Stack>
+        </DialogTitle>
+        <DialogContent>
+          {discountDialog.product && (
+            <Box>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Suggesting a discount for <strong>{discountDialog.product.name}</strong> (₹{discountDialog.product.price})
+              </Alert>
+              <Stack spacing={2} sx={{ mt: 2 }}>
+                <TextField
+                  label="Discount Percentage"
+                  type="number"
+                  inputProps={{ min: 0, max: 100 }}
+                  value={discountForm.discount}
+                  onChange={(e) => setDiscountForm({ ...discountForm, discount: e.target.value })}
+                  helperText="Enter discount percentage (0-100)"
+                  required
+                />
+                <TextField
+                  label="Reason for Discount"
+                  multiline
+                  rows={3}
+                  value={discountForm.reason}
+                  onChange={(e) => setDiscountForm({ ...discountForm, reason: e.target.value })}
+                  helperText="Explain why you're suggesting this discount"
+                  required
+                />
+                <Stack direction="row" spacing={2}>
+                  <TextField
+                    label="Start Date (Optional)"
+                    type="date"
+                    value={discountForm.startDate}
+                    onChange={(e) => setDiscountForm({ ...discountForm, startDate: e.target.value })}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                  <TextField
+                    label="End Date (Optional)"
+                    type="date"
+                    value={discountForm.endDate}
+                    onChange={(e) => setDiscountForm({ ...discountForm, endDate: e.target.value })}
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Stack>
+              </Stack>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => {
+            setDiscountDialog({ open: false, product: null });
+            setDiscountForm({ discount: '', reason: '', startDate: '', endDate: '' });
+          }}>
+            Cancel
+          </Button>
+          <Button 
+            variant="contained" 
+            startIcon={<LocalOffer />}
+            onClick={handleSuggestDiscount}
+          >
+            Submit Suggestion
+          </Button>
         </DialogActions>
       </Dialog>
 

@@ -36,23 +36,40 @@ router.get('/', auth, authorize('admin', 'staff'), async (req, res) => {
 // Create new meal plan (staff and admin)
 router.post('/', auth, authorize('admin', 'staff'), async (req, res) => {
   try {
-    const { title, description, weekOf, program, dailyMeals, notes } = req.body;
+    const { title, description, weekOf, weekEnd, program, dailyMeals, notes } = req.body;
+    
+    console.log('Creating meal plan with data:', JSON.stringify({
+      title,
+      weekOf,
+      weekEnd,
+      program,
+      dailyMealsLength: dailyMeals?.length,
+      notes
+    }));
     
     if (!title || !weekOf || !dailyMeals || !Array.isArray(dailyMeals)) {
+      console.log('Validation failed:', { title, weekOf, dailyMeals });
       return res.status(400).json({ 
         message: 'Title, weekOf, and dailyMeals are required' 
       });
     }
     
     const startOfWeek = new Date(weekOf);
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    let endOfWeekDate;
+    
+    // If weekEnd is provided (for daily plans), use it; otherwise calculate end of week
+    if (weekEnd) {
+      endOfWeekDate = new Date(weekEnd);
+    } else {
+      endOfWeekDate = new Date(startOfWeek);
+      endOfWeekDate.setDate(startOfWeek.getDate() + 6);
+    }
     
     const mealPlan = await MealPlan.create({
       title,
       description,
       weekOf: startOfWeek,
-      weekEnd: endOfWeek,
+      weekEnd: endOfWeekDate,
       program: program || 'all',
       dailyMeals,
       createdBy: req.user.userId,
@@ -67,7 +84,11 @@ router.post('/', auth, authorize('admin', 'staff'), async (req, res) => {
     });
   } catch (error) {
     console.error('Create meal plan error:', error);
-    res.status(500).json({ message: 'Server error creating meal plan' });
+    console.error('Error details:', error.message, error.stack);
+    res.status(500).json({ 
+      message: 'Server error creating meal plan',
+      error: error.message 
+    });
   }
 });
 
@@ -126,6 +147,135 @@ router.delete('/:id', auth, authorize('admin'), async (req, res) => {
   }
 });
 
+// Submit meal plan for approval (staff)
+router.post('/:id/submit', auth, authorize('staff'), async (req, res) => {
+  try {
+    const mealPlan = await MealPlan.findById(req.params.id);
+    if (!mealPlan) {
+      return res.status(404).json({ message: 'Meal plan not found' });
+    }
+    
+    // Staff can only submit their own meal plans
+    if (mealPlan.createdBy.toString() !== req.user.userId) {
+      return res.status(403).json({ message: 'You can only submit your own meal plans' });
+    }
+    
+    // Update status to pending approval
+    mealPlan.status = 'pending_approval';
+    mealPlan.submittedForApproval = true;
+    await mealPlan.save();
+    
+    await mealPlan.populate('createdBy', 'firstName lastName');
+    
+    res.json({
+      message: 'Meal plan submitted for approval',
+      mealPlan
+    });
+  } catch (error) {
+    console.error('Submit meal plan error:', error);
+    res.status(500).json({ message: 'Server error submitting meal plan' });
+  }
+});
+
+// Approve meal plan (admin only)
+router.post('/:id/approve', auth, authorize('admin'), async (req, res) => {
+  try {
+    const mealPlan = await MealPlan.findById(req.params.id);
+    if (!mealPlan) {
+      return res.status(404).json({ message: 'Meal plan not found' });
+    }
+    
+    mealPlan.status = 'approved';
+    mealPlan.approvedBy = req.user.userId;
+    mealPlan.approvedAt = new Date();
+    await mealPlan.save();
+    
+    await mealPlan.populate('createdBy', 'firstName lastName');
+    await mealPlan.populate('approvedBy', 'firstName lastName');
+    
+    res.json({
+      message: 'Meal plan approved successfully',
+      mealPlan
+    });
+  } catch (error) {
+    console.error('Approve meal plan error:', error);
+    res.status(500).json({ message: 'Server error approving meal plan' });
+  }
+});
+
+// Publish meal plan (admin only - makes it visible to parents)
+router.post('/:id/publish', auth, authorize('admin'), async (req, res) => {
+  try {
+    const mealPlan = await MealPlan.findById(req.params.id);
+    if (!mealPlan) {
+      return res.status(404).json({ message: 'Meal plan not found' });
+    }
+    
+    if (mealPlan.status !== 'approved') {
+      return res.status(400).json({ message: 'Only approved meal plans can be published' });
+    }
+    
+    mealPlan.status = 'published';
+    mealPlan.publishedAt = new Date();
+    mealPlan.isActive = true;
+    await mealPlan.save();
+    
+    await mealPlan.populate('createdBy', 'firstName lastName');
+    await mealPlan.populate('approvedBy', 'firstName lastName');
+    
+    res.json({
+      message: 'Meal plan published successfully',
+      mealPlan
+    });
+  } catch (error) {
+    console.error('Publish meal plan error:', error);
+    res.status(500).json({ message: 'Server error publishing meal plan' });
+  }
+});
+
+// Reject meal plan (admin only)
+router.post('/:id/reject', auth, authorize('admin'), async (req, res) => {
+  try {
+    const { reason } = req.body;
+    
+    const mealPlan = await MealPlan.findById(req.params.id);
+    if (!mealPlan) {
+      return res.status(404).json({ message: 'Meal plan not found' });
+    }
+    
+    mealPlan.status = 'rejected';
+    mealPlan.rejectedBy = req.user.userId;
+    mealPlan.rejectedAt = new Date();
+    mealPlan.rejectionReason = reason || 'No reason provided';
+    await mealPlan.save();
+    
+    await mealPlan.populate('createdBy', 'firstName lastName');
+    await mealPlan.populate('rejectedBy', 'firstName lastName');
+    
+    res.json({
+      message: 'Meal plan rejected',
+      mealPlan
+    });
+  } catch (error) {
+    console.error('Reject meal plan error:', error);
+    res.status(500).json({ message: 'Server error rejecting meal plan' });
+  }
+});
+
+// Get pending meal plans for approval (admin only)
+router.get('/pending', auth, authorize('admin'), async (req, res) => {
+  try {
+    const pendingPlans = await MealPlan.find({ status: 'pending_approval' })
+      .populate('createdBy', 'firstName lastName')
+      .sort({ createdAt: -1 });
+    
+    res.json(pendingPlans);
+  } catch (error) {
+    console.error('Get pending meal plans error:', error);
+    res.status(500).json({ message: 'Server error fetching pending meal plans' });
+  }
+});
+
 // Get meal plans for specific child's program (for parents)
 router.get('/child/:childId', auth, async (req, res) => {
   try {
@@ -146,6 +296,7 @@ router.get('/child/:childId', auth, async (req, res) => {
     const { weekOf } = req.query;
     const query = { 
       isActive: true,
+      status: 'published', // Only show published meal plans to parents
       program: { $in: [child.program, 'all'] }
     };
     

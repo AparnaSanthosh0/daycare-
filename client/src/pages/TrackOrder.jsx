@@ -13,7 +13,10 @@ export default function TrackOrder() {
   const [error, setError] = React.useState('');
 
   const handleTrackOrder = useCallback(async (orderIdToTrack = orderId) => {
-    if (!orderIdToTrack.trim()) {
+    // Convert to string and trim, handle null/undefined cases
+    const trimmedOrderId = String(orderIdToTrack || '').trim();
+    
+    if (!trimmedOrderId) {
       setError('Please enter an order ID');
       return;
     }
@@ -21,7 +24,7 @@ export default function TrackOrder() {
     try {
       setLoading(true);
       setError('');
-      const response = await api.get(`/api/orders/track/${orderIdToTrack.trim()}`);
+      const response = await api.get(`/api/orders/track/${trimmedOrderId}`);
       setOrderData(response.data);
     } catch (err) {
       console.error('Error tracking order:', err);

@@ -3,6 +3,7 @@ const { body, validationResult } = require('express-validator');
 const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const Child = require('../models/Child');
+const Product = require('../models/Product');
 const auth = require('../middleware/auth');
 const { authorize } = require('../middleware/auth');
 const { sendMail, parentApprovedEmail, parentRejectedEmail, staffApprovedEmail, staffRejectedEmail, childCreatedEmail, vendorApprovedEmail, vendorRejectedEmail } = require('../utils/mailer');
@@ -412,6 +413,19 @@ router.get('/vendors/pending', adminOnly, async (req, res) => {
   } catch (error) {
     console.error('Get pending vendors error:', error);
     res.status(500).json({ message: 'Server error fetching pending vendors' });
+  }
+});
+
+// Get pending discount suggestions
+router.get('/discounts/pending', adminOnly, async (req, res) => {
+  try {
+    const pendingDiscounts = await Product.find({ discountStatus: 'suggested' })
+      .populate('suggestedBy', 'vendorName companyName email')
+      .populate('vendor', 'vendorName companyName');
+    res.json(pendingDiscounts);
+  } catch (error) {
+    console.error('Get pending discounts error:', error);
+    res.status(500).json({ message: 'Server error fetching pending discounts' });
   }
 });
 
@@ -898,7 +912,7 @@ router.put('/admissions/:id/reject', adminOnly, async (req, res) => {
 // Create child profile for approved parent (admin only)
 router.post('/children', adminOnly, [
   body('firstName').trim().notEmpty().withMessage('First name is required'),
-  body('lastName').trim().notEmpty().withMessage('Last name is required'),
+  body('lastName').optional().trim(),
   body('dateOfBirth').isISO8601().withMessage('Valid date of birth is required'),
   body('gender').isIn(['male', 'female']).withMessage('Gender must be male or female'),
   body('parentId').notEmpty().withMessage('Parent ID is required'),
@@ -915,7 +929,7 @@ router.post('/children', adminOnly, [
 
     const { firstName, lastName, dateOfBirth, gender, parentId, program, allergies, medicalConditions, emergencyContacts, authorizedPickup, notes } = req.body;
 
-    // Validate parent exists and is active
+    // Validate parent exists
     console.log('Looking for parent with ID:', parentId);
     const parent = await User.findById(parentId);
     console.log('Found parent:', parent ? { id: parent._id, role: parent.role, isActive: parent.isActive } : 'Not found');
@@ -926,8 +940,14 @@ router.post('/children', adminOnly, [
     if (parent.role !== 'parent') {
       return res.status(400).json({ message: 'User is not a parent' });
     }
+    
+    // Auto-activate parent if they're creating a child profile
+    // This implicitly approves the parent through admin action
     if (!parent.isActive) {
-      return res.status(400).json({ message: 'Parent account is not active' });
+      console.log('Parent not active. Activating parent account...');
+      parent.isActive = true;
+      await parent.save();
+      console.log('Parent activated successfully');
     }
 
     // Validate child age (1 to 7 years)
@@ -940,9 +960,12 @@ router.post('/children', adminOnly, [
     }
 
     // Create child profile
+    // Handle optional lastName - default to empty string if not provided
+    const childLastName = lastName ? lastName.trim() : '';
+    
     console.log('Creating child with data:', {
       firstName,
-      lastName,
+      lastName: childLastName,
       dateOfBirth,
       gender,
       parents: [parent._id],
@@ -957,7 +980,7 @@ router.post('/children', adminOnly, [
     
     const child = await Child.create({
       firstName,
-      lastName,
+      lastName: childLastName,
       dateOfBirth,
       gender,
       parents: [parent._id],

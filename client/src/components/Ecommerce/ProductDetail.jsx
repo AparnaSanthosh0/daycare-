@@ -69,11 +69,20 @@ export default function ProductDetail() {
         if (mounted && p) {
           const image = toAbsoluteImageUrl(p.image || (Array.isArray(p.images) && p.images[0]));
           const gallery = (Array.isArray(p.images) && p.images.length ? p.images : [p.image]).filter(Boolean).map(toAbsoluteImageUrl);
+          
+          // Calculate discounted price if active discount exists
+          const hasActiveDiscount = p.discountStatus === 'active' && p.activeDiscount > 0;
+          const discountedPrice = hasActiveDiscount 
+            ? Math.round(p.price * (1 - p.activeDiscount / 100) * 100) / 100 
+            : p.price;
+          
           const normalized = {
             id: p._id || p.id,
             name: p.name,
-            price: p.price,
-            originalPrice: p.originalPrice || null,
+            price: discountedPrice,
+            originalPrice: hasActiveDiscount ? p.price : (p.originalPrice || null),
+            activeDiscount: hasActiveDiscount ? p.activeDiscount : 0,
+            discountStatus: p.discountStatus || 'none',
             image,
             images: gallery.length ? gallery : [image || '/logo192.svg'],
             category: p.category || 'General',
@@ -101,11 +110,20 @@ export default function ProductDetail() {
           if (mounted && found) {
             const image = toAbsoluteImageUrl(found.image || (Array.isArray(found.images) && found.images[0]));
             const gallery = (Array.isArray(found.images) && found.images.length ? found.images : [found.image]).filter(Boolean).map(toAbsoluteImageUrl);
+            
+            // Calculate discounted price if active discount exists
+            const hasActiveDiscount = found.discountStatus === 'active' && found.activeDiscount > 0;
+            const discountedPrice = hasActiveDiscount 
+              ? Math.round(found.price * (1 - found.activeDiscount / 100) * 100) / 100 
+              : found.price;
+            
             const normalized = {
               id: found._id || found.id,
               name: found.name,
-              price: found.price,
-              originalPrice: found.originalPrice || null,
+              price: discountedPrice,
+              originalPrice: hasActiveDiscount ? found.price : (found.originalPrice || null),
+              activeDiscount: hasActiveDiscount ? found.activeDiscount : 0,
+              discountStatus: found.discountStatus || 'none',
               image,
               images: gallery.length ? gallery : [image || '/logo192.svg'],
               category: found.category || 'General',
@@ -181,7 +199,12 @@ export default function ProductDetail() {
               </Grid>
             </Grid>
             <Grid item xs={12} md={6}>
-              <Chip label={product.category} size="small" color="success" variant="outlined" sx={{ mb: 1 }} />
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                <Chip label={product.category} size="small" color="success" variant="outlined" />
+                {product.activeDiscount > 0 && (
+                  <Chip label={`${product.activeDiscount}% OFF`} size="small" color="error" sx={{ fontWeight: 700 }} />
+                )}
+              </Box>
               <Typography variant="h5" fontWeight={700} gutterBottom>{product.name}</Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                 <Rating value={product.rating} precision={0.1} readOnly size="small" />

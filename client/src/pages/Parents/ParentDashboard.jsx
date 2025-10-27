@@ -1145,13 +1145,6 @@ const ParentDashboard = ({ initialTab }) => {
                                 <Typography variant="body2">{dayPlan.menu.afternoonSnack || 'Not specified'}</Typography>
                               </Grid>
                             )}
-                            
-                            {dayPlan.menu.dinner && (
-                              <Grid item xs={12} sm={6}>
-                                <Typography variant="body2" color="text.secondary">Dinner:</Typography>
-                                <Typography variant="body2">{dayPlan.menu.dinner || 'Not specified'}</Typography>
-                              </Grid>
-                            )}
                           </Grid>
                           
                           {dayPlan.notes && (

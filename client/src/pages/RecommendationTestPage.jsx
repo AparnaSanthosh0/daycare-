@@ -211,10 +211,10 @@ const RecommendationTestPage = () => {
     ];
     console.log('Setting fallback children:', fallbackChildren);
     setChildren(fallbackChildren);
-    console.log('Children state after setting:', children);
     
     // Also try to fetch real children from the database
     fetchRealChildren();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchRealChildren]);
 
   const calculateAge = (dateOfBirth) => {

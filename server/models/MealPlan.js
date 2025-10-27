@@ -22,7 +22,6 @@ const dailyMealSchema = new mongoose.Schema({
   morningSnack: [mealItemSchema],
   lunch: [mealItemSchema],
   afternoonSnack: [mealItemSchema],
-  dinner: [mealItemSchema],
   notes: String
 }, { _id: false });
 
@@ -42,6 +41,25 @@ const mealPlanSchema = new mongoose.Schema({
     ref: 'User', 
     required: true 
   },
+  // Approval workflow fields
+  status: {
+    type: String,
+    enum: ['draft', 'pending_approval', 'approved', 'published', 'rejected'],
+    default: 'draft'
+  },
+  submittedForApproval: { type: Boolean, default: false },
+  approvedBy: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User' 
+  },
+  approvedAt: { type: Date },
+  rejectedBy: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'User' 
+  },
+  rejectedAt: { type: Date },
+  rejectionReason: { type: String },
+  publishedAt: { type: Date },
   isActive: { type: Boolean, default: true },
   notes: String
 }, { timestamps: true });

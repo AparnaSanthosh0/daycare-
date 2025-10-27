@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { Box, Paper, Typography, Grid, Stack, TextField, Button, Table, TableHead, TableRow, TableCell, TableBody, Select, MenuItem, FormControl, InputLabel, Chip, Alert, Snackbar } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
+import DiscountManagement from '../../components/DiscountManagement';
 
 export default function Inventory() {
   const { user } = useAuth();
@@ -813,6 +814,11 @@ export default function Inventory() {
           ))}
         </TableBody>
       </Table>
+
+      {/* Discount Management Section */}
+      <Box sx={{ mt: 4 }}>
+        <DiscountManagement userRole={user?.role} />
+      </Box>
     </Box>
     <Snackbar open={!!success} autoHideDuration={3000} onClose={() => setSuccess('')} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}>
       <Alert onClose={() => setSuccess('')} severity="success" sx={{ width: '100%' }}>

@@ -309,27 +309,37 @@ router.get('/:id/meals', auth, async (req, res) => {
     const MealPlan = require('../models/MealPlan');
     const mealPlan = await MealPlan.findOne({
       isActive: true,
+      status: 'published', // Only show published meal plans to parents
       program: { $in: [child.program, 'all'] },
-      weekOf: { $gte: startOfWeek, $lte: endOfWeek }
+      $or: [
+        // Weekly plans: week starts between startOfWeek and endOfWeek
+        { weekOf: { $gte: startOfWeek, $lte: endOfWeek } },
+        // Daily plans: date falls within the week
+        { $expr: { $and: [
+          { $gte: ['$weekOf', startOfWeek] },
+          { $lte: ['$weekEnd', endOfWeek] },
+          { $eq: ['$weekOf', '$weekEnd'] } // Same date for daily plans
+        ]}}
+      ]
     }).populate('createdBy', 'firstName lastName');
     
     if (mealPlan) {
       // Format for parent dashboard
-      const formattedPlan = mealPlan.dailyMeals.map(day => ({
+      const formattedPlan = (mealPlan.dailyMeals || []).map(day => ({
         day: day.day,
         menu: {
-          breakfast: day.breakfast.map(item => item.name).join(', '),
-          morningSnack: day.morningSnack.map(item => item.name).join(', '),
-          lunch: day.lunch.map(item => item.name).join(', '),
-          afternoonSnack: day.afternoonSnack.map(item => item.name).join(', '),
-          dinner: day.dinner.map(item => item.name).join(', ')
+          breakfast: (day.breakfast || []).map(item => item?.name || '').filter(Boolean).join(', '),
+          morningSnack: (day.morningSnack || []).map(item => item?.name || '').filter(Boolean).join(', '),
+          lunch: (day.lunch || []).map(item => item?.name || '').filter(Boolean).join(', '),
+          afternoonSnack: (day.afternoonSnack || []).map(item => item?.name || '').filter(Boolean).join(', ')
         },
-        notes: day.notes
+        notes: day.notes || ''
       }));
       
       res.json({ 
         plan: formattedPlan, 
         weekOf: mealPlan.weekOf,
+        weekEnd: mealPlan.weekEnd,
         createdBy: mealPlan.createdBy,
         title: mealPlan.title,
         description: mealPlan.description
@@ -343,6 +353,33 @@ router.get('/:id/meals', auth, async (req, res) => {
     }
   } catch (error) {
     console.error('Meals error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get assigned staff for a child
+router.get('/:id/staff', auth, async (req, res) => {
+  try {
+    const access = await canAccessChild(req, req.params.id);
+    if (!access.ok) return res.status(access.status).json({ message: access.message });
+    
+    const child = await Child.findById(req.params.id)
+      .populate('assignedStaff', 'firstName lastName email phone profileImage')
+      .populate('parents', 'firstName lastName email');
+    
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found' });
+    }
+    
+    // Return assigned staff and parents
+    const staffList = [];
+    if (child.assignedStaff) {
+      staffList.push(child.assignedStaff);
+    }
+    
+    res.json(staffList);
+  } catch (error) {
+    console.error('Staff error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -619,7 +656,7 @@ router.post('/', auth, authorize('admin'), async (req, res) => {
   try {
     const body = req.body || {};
     const firstName = (body.firstName || '').trim();
-    const lastName = (body.lastName || '').trim();
+    const lastName = (body.lastName || '').trim(); // Optional - can be empty
     const dateOfBirth = body.dateOfBirth ? new Date(body.dateOfBirth) : null;
     const gender = (body.gender || '').toLowerCase();
     const parents = Array.isArray(body.parents) ? body.parents : (body.parentId ? [body.parentId] : []);
@@ -647,8 +684,9 @@ router.post('/', auth, authorize('admin'), async (req, res) => {
       : [];
     const schedule = typeof body.schedule === 'object' && body.schedule ? body.schedule : {};
 
-    if (!firstName || !lastName || !dateOfBirth || isNaN(dateOfBirth.getTime()) || !['male','female'].includes(gender) || !program) {
-      return res.status(400).json({ message: 'Missing or invalid required fields' });
+    // lastName is now optional, so only check firstName
+    if (!firstName || !dateOfBirth || isNaN(dateOfBirth.getTime()) || !['male','female'].includes(gender) || !program) {
+      return res.status(400).json({ message: 'Missing or invalid required fields (firstName, dateOfBirth, gender, program required)' });
     }
     if (!Array.isArray(parents) || parents.length === 0) {
       return res.status(400).json({ message: 'At least one parent is required' });

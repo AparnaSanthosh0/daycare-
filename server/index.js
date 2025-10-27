@@ -34,6 +34,7 @@ app.use(helmet({
 // CORS configuration - more secure approach
 const allowedOrigins = [
   'http://localhost:3000',
+  'http://localhost:3001',
   'https://daycare-plmf.vercel.app',
   'https://daycare-plmf-git-main-aparnas-projects-4913ab30.vercel.app',
   'https://daycare-plmf-c8xo0dsxz-aparnas-projects-4913ab30.vercel.app'
@@ -42,6 +43,7 @@ const allowedOrigins = [
 app.use(cors({
   origin: [
     'http://localhost:3000',
+    'http://localhost:3001',
     'https://daycare-plmf.vercel.app',
     'https://daycare-plmf-git-main-aparnas-projects-4913ab30.vercel.app',
     'https://daycare-plmf-c8xo0dsxz-aparnas-projects-4913ab30.vercel.app'
@@ -119,6 +121,12 @@ app.use('/api/feedback-classification', requireDb, require('./routes/feedbackCla
 
 // Meal Recommendations (Decision Tree ML)
 app.use('/api/meal-recommendations', requireDb, require('./routes/mealRecommendations'));
+
+// Purchase Prediction (SVM ML)
+app.use('/api/purchase-prediction', requireDb, require('./routes/purchasePrediction'));
+
+// Demand Prediction (BPNN ML)
+app.use('/api/demand-prediction', requireDb, require('./routes/demandPrediction'));
 
 // Serve uploaded files (certificates, child photos, profile images, etc.)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));

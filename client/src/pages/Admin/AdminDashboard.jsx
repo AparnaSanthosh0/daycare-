@@ -56,6 +56,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
 // import StaffChildAssignment from './StaffChildAssignment';
 import { API_BASE_URL } from '../../config/api';
+import PurchasePrediction from '../../components/PurchasePrediction';
+import DemandPrediction from '../../components/DemandPrediction';
+import MealPlanApprovals from '../../components/MealPlanApprovals';
 // Animated counter for stats
 const CountUp = ({ value, duration = 600 }) => {
   const [display, setDisplay] = React.useState(0);
@@ -210,6 +213,15 @@ const AdminDashboard = () => {
     notes: ''
   });
 
+  // Ensure children are always deduplicated by _id
+  const deduplicatedChildren = useMemo(() => {
+    const unique = Array.from(new Map(allChildren.map(child => [child._id, child])).values());
+    if (unique.length !== allChildren.length) {
+      console.log(`Found ${allChildren.length} children, deduplicated to ${unique.length} unique children`);
+    }
+    return unique;
+  }, [allChildren]);
+
   useEffect(() => {
     if (user?.role === 'admin') {
       fetchDashboardData();
@@ -228,14 +240,19 @@ const AdminDashboard = () => {
       (async () => {
         try {
           setUsersLoading(true);
-          const [staffRes, vendorsRes, childrenRes] = await Promise.all([
+          const [staffRes, vendorsRes, childrenRes, customersRes] = await Promise.all([
             api.get('/api/admin/staff'),
             api.get('/api/admin/vendors'),
-            api.get('/api/children')
+            api.get('/api/children'),
+            api.get('/api/admin/customers')
           ]);
           setAllStaff(staffRes.data || []);
           setAllVendors(vendorsRes.data || []);
-          setAllChildren(childrenRes.data || []);
+          // Deduplicate children by _id to avoid showing the same child multiple times
+          const allChildrenData = childrenRes.data || [];
+          const uniqueChildren = Array.from(new Map(allChildrenData.map(child => [child._id, child])).values());
+          setAllChildren(uniqueChildren);
+          setCustomers(customersRes.data || []);
         } catch (e) {
           console.error('Load all users error:', e);
         } finally {
@@ -245,6 +262,7 @@ const AdminDashboard = () => {
       // Load staff assignments
       fetchStaffAssignments();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const fetchDashboardData = async () => {
@@ -430,6 +448,23 @@ const AdminDashboard = () => {
     }
   };
 
+
+  // Helper function to get initials
+  const getInitials = (firstName, lastName) => {
+    const first = firstName?.charAt(0)?.toUpperCase() || '';
+    const last = lastName?.charAt(0)?.toUpperCase() || '';
+    return `${first}${last}`;
+  };
+
+  // Helper function to format phone number
+  const formatPhone = (phone) => {
+    if (!phone) return 'N/A';
+    // Remove any non-digit characters
+    const cleaned = phone.replace(/\D/g, '');
+    // Format as needed
+    return cleaned.length === 10 ? cleaned : phone;
+  };
+
   const handleAssignStaff = async () => {
     try {
       const childId = assignmentDialog.child?._id || assignmentDialog.selectedChildId;
@@ -439,8 +474,13 @@ const AdminDashboard = () => {
         staffId: assignmentDialog.selectedStaffId
       });
 
+      setSuccess('Staff assignment successful');
       setAssignmentDialog({ open: false, child: null, selectedStaffId: '', selectedChildId: '' });
       fetchStaffAssignments();
+      fetchDashboardData();
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(''), 3000);
     } catch (error) {
       console.error('Error assigning staff:', error);
       setError('Failed to assign staff');
@@ -502,15 +542,15 @@ const AdminDashboard = () => {
         }
       }
 
-      // Validate parent exists and is active
+      // Validate parent exists (backend will auto-activate if needed)
       try {
         const parentRes = await api.get(`/api/admin/parents/${parentId}`);
-        if (!parentRes.data || !parentRes.data.isActive) {
-          setError('Selected parent is not active. Please activate the parent first.');
+        if (!parentRes.data) {
+          setError('Parent not found. Please select a valid parent.');
           return;
         }
       } catch (e) {
-        setError('Parent not found or inactive. Please select a valid parent.');
+        setError('Parent not found. Please select a valid parent.');
         return;
       }
 
@@ -527,7 +567,7 @@ const AdminDashboard = () => {
 
       const payload = {
         firstName: childForm.firstName.trim(),
-        lastName: childForm.lastName.trim(),
+        lastName: (childForm.lastName || '').trim(), // Optional - defaults to empty string
         dateOfBirth: childForm.dateOfBirth,
         gender: childForm.gender,
         parentId: parentId, // Send parentId instead of parents array for admin route
@@ -922,7 +962,9 @@ const AdminDashboard = () => {
                 api.get('/api/children')
               ]);
               const parents = Array.isArray(parentsRes.data) ? parentsRes.data : (parentsRes.data || []);
-              const children = Array.isArray(childrenRes.data) ? childrenRes.data : (childrenRes.data.children || []);
+              const childrenData = Array.isArray(childrenRes.data) ? childrenRes.data : (childrenRes.data.children || []);
+              // Deduplicate children by _id
+              const children = Array.from(new Map(childrenData.map(child => [child._id, child])).values());
               const byParent = new Map();
               for (const p of parents) byParent.set(p._id, { parent: p, children: [] });
               for (const c of children) (c.parents || []).forEach((pid) => {
@@ -962,7 +1004,7 @@ const AdminDashboard = () => {
                     <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                       {f.children.length === 0 && <Chip size="small" label="No children" variant="outlined" />}
                       {f.children.map((c) => (
-                        <Chip key={c._id} size="small" label={`${c.firstName} ${c.lastName} • ${c.program}`} />
+                        <Chip key={c._id} size="small" label={`${c.firstName} ${c.lastName || ''} • ${c.program}`} />
                       ))}
                     </Box>
                   </TableCell>
@@ -1020,9 +1062,11 @@ const AdminDashboard = () => {
             }
           />
           <Tab label="Staff Console" />
+          <Tab label="Meal Plan Approvals" />
           <Tab label="Customers" />
-          <Tab label="Billing & Payments" />
           <Tab label="All Users" />
+          <Tab label="Billing & Payments" />
+          <Tab label="AI Predictions" />
         </Tabs>
 
         <Box sx={{ mt: 3 }}>
@@ -1036,7 +1080,11 @@ const AdminDashboard = () => {
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <Button 
                     variant="outlined" 
-                    onClick={fetchStaffAssignments} 
+                    startIcon={<Refresh />}
+                    onClick={() => {
+                      fetchStaffAssignments();
+                      fetchDashboardData();
+                    }}
                     disabled={loadingAssignments}
                     sx={{ borderColor: 'primary.main', color: 'primary.main' }}
                   >
@@ -1048,7 +1096,7 @@ const AdminDashboard = () => {
                     onClick={() => setAssignmentDialog({ open: true, child: null, selectedStaffId: '', selectedChildId: '' })}
                     sx={{ bgcolor: 'primary.main' }}
                   >
-                    Assign Child to Staff
+                    + Assign Child to Staff
                   </Button>
                   <Button 
                     variant="contained" 
@@ -1062,10 +1110,149 @@ const AdminDashboard = () => {
               </Box>
 
               {loadingAssignments ? (
-                <Typography>Loading staff assignments...</Typography>
+                <Typography>Loading staff...</Typography>
               ) : (
                 <Grid container spacing={3}>
-                  {/* Staff with Assigned Children */}
+                  {/* Staff Member Cards */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 3 }}>
+                      <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
+                        Staff Directory ({allStaff.length} staff members)
+                      </Typography>
+                      <Grid container spacing={2}>
+                        {allStaff.map((staff) => (
+                          <Grid item xs={12} sm={6} md={4} key={staff._id}>
+                            <Card 
+                              sx={{ 
+                                height: '100%',
+                                borderRadius: 2,
+                                boxShadow: 2,
+                                transition: 'transform 0.2s, box-shadow 0.2s',
+                                '&:hover': {
+                                  transform: 'translateY(-4px)',
+                                  boxShadow: 4
+                                }
+                              }}
+                            >
+                              <CardContent>
+                                <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                                  <Avatar 
+                                    sx={{ 
+                                      bgcolor: 'teal', 
+                                      width: 56, 
+                                      height: 56,
+                                      fontSize: '1.25rem',
+                                      fontWeight: 'bold'
+                                    }}
+                                  >
+                                    {getInitials(staff.firstName, staff.lastName)}
+                                  </Avatar>
+                                  <Box sx={{ ml: 2, flex: 1 }}>
+                                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                      {staff.firstName} {staff.lastName}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                      staff • {staff.staff?.qualification || staff.role}
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                  <strong>Email:</strong> {staff.email}
+                                </Typography>
+                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                  <strong>Phone:</strong> {formatPhone(staff.phone)}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                  <strong>Experience:</strong> {staff.staff?.yearsOfExperience || 0} years
+                                </Typography>
+                                <Box sx={{ mt: 2 }}>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    startIcon={<PersonAdd />}
+                                    fullWidth
+                                    onClick={() => setAssignmentDialog({ open: true, child: null, selectedStaffId: '', selectedChildId: '' })}
+                                    sx={{ bgcolor: 'primary.main' }}
+                                  >
+                                    Assign Child
+                                  </Button>
+                                </Box>
+                              </CardContent>
+                            </Card>
+                          </Grid>
+                        ))}
+                        {allStaff.length === 0 && (
+                          <Grid item xs={12}>
+                            <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                              No staff members found
+                            </Typography>
+                          </Grid>
+                        )}
+                      </Grid>
+                    </Paper>
+                  </Grid>
+
+                  {/* Staff Overview Cards */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 3, mb: 3 }}>
+                      <Typography variant="h6" gutterBottom>Staff Overview</Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Card sx={{ bgcolor: 'primary.main', color: 'white' }}>
+                            <CardContent>
+                              <Typography variant="h4" gutterBottom>
+                                {allStaff.length}
+                              </Typography>
+                              <Typography variant="body2">
+                                Total Staff Members
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Card sx={{ bgcolor: 'success.main', color: 'white' }}>
+                            <CardContent>
+                              <Typography variant="h4" gutterBottom>
+                                {staffAssignments.reduce((acc, assignment) => acc + assignment.totalChildren, 0)}
+                              </Typography>
+                              <Typography variant="body2">
+                                Total Assigned Children
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Card sx={{ bgcolor: 'warning.main', color: 'white' }}>
+                            <CardContent>
+                              <Typography variant="h4" gutterBottom>
+                                {(() => {
+                                  const allAssignedChildren = staffAssignments.flatMap(a => a.children.map(c => c._id));
+                                  return families.flatMap(f => f.children).filter(c => !allAssignedChildren.includes(c._id)).length;
+                                })()}
+                              </Typography>
+                              <Typography variant="body2">
+                                Unassigned Children
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={3}>
+                          <Card sx={{ bgcolor: 'info.main', color: 'white' }}>
+                            <CardContent>
+                              <Typography variant="h4" gutterBottom>
+                                {Math.round(staffAssignments.reduce((acc, assignment) => acc + assignment.totalChildren, 0) / Math.max(staffAssignments.length, 1))}
+                              </Typography>
+                              <Typography variant="body2">
+                                Avg Children per Staff
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  </Grid>
+
+                  {/* Staff with Assigned Children Section */}
                   <Grid item xs={12}>
                     <Paper sx={{ p: 3 }}>
                       <Typography variant="h6" gutterBottom>Staff and Assigned Children</Typography>
@@ -1173,71 +1360,115 @@ const AdminDashboard = () => {
                     </Paper>
                   </Grid>
 
-                  {/* Staff Overview Cards */}
-                  <Grid item xs={12}>
-                    <Paper sx={{ p: 3, mb: 3 }}>
-                      <Typography variant="h6" gutterBottom>Staff Overview</Typography>
-                      <Grid container spacing={2}>
-                        <Grid item xs={12} sm={6} md={3}>
-                          <Card sx={{ bgcolor: 'primary.main', color: 'white' }}>
-                            <CardContent>
-                              <Typography variant="h4" gutterBottom>
-                                {staffAssignments.length}
-                              </Typography>
-                              <Typography variant="body2">
-                                Total Staff Members
-                              </Typography>
-                            </CardContent>
-                          </Card>
-                        </Grid>
-                        <Grid item xs={12} sm={6} md={3}>
-                          <Card sx={{ bgcolor: 'success.main', color: 'white' }}>
-                            <CardContent>
-                              <Typography variant="h4" gutterBottom>
-                                {staffAssignments.reduce((acc, assignment) => acc + assignment.totalChildren, 0)}
-                              </Typography>
-                              <Typography variant="body2">
-                                Total Assigned Children
-                              </Typography>
-                            </CardContent>
-                          </Card>
-                        </Grid>
-                        <Grid item xs={12} sm={6} md={3}>
-                          <Card sx={{ bgcolor: 'warning.main', color: 'white' }}>
-                            <CardContent>
-                              <Typography variant="h4" gutterBottom>
-                                {(() => {
-                                  const allAssignedChildren = staffAssignments.flatMap(a => a.children.map(c => c._id));
-                                  return families.flatMap(f => f.children).filter(c => !allAssignedChildren.includes(c._id)).length;
-                                })()}
-                              </Typography>
-                              <Typography variant="body2">
-                                Unassigned Children
-                              </Typography>
-                            </CardContent>
-                          </Card>
-                        </Grid>
-                        <Grid item xs={12} sm={6} md={3}>
-                          <Card sx={{ bgcolor: 'info.main', color: 'white' }}>
-                            <CardContent>
-                              <Typography variant="h4" gutterBottom>
-                                {Math.round(staffAssignments.reduce((acc, assignment) => acc + assignment.totalChildren, 0) / Math.max(staffAssignments.length, 1))}
-                              </Typography>
-                              <Typography variant="body2">
-                                Avg Children per Staff
-                              </Typography>
-                            </CardContent>
-                          </Card>
-                        </Grid>
-                      </Grid>
-                    </Paper>
-                  </Grid>
-
                 </Grid>
               )}
             </Box>
           )}
           {tabValue === 4 && (
+            <MealPlanApprovals />
+          )}
+          {tabValue === 5 && (
+            <Box>
+              <Typography variant="h6" gutterBottom>E-commerce Customers</Typography>
+              
+              {/* Customer Statistics */}
+              <Grid container spacing={3} sx={{ mb: 3 }}>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'primary.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">{customers.length}</Typography>
+                      <Typography variant="body2">Total Customers</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'success.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">{customers.filter(c => c.isActive).length}</Typography>
+                      <Typography variant="body2">Active Customers</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'info.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">{customers.filter(c => c.parentId).length}</Typography>
+                      <Typography variant="body2">Linked to Parents</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={6} md={3}>
+                  <Card sx={{ bgcolor: 'warning.main', color: 'white' }}>
+                    <CardContent>
+                      <Typography variant="h4">{customers.filter(c => !c.parentId).length}</Typography>
+                      <Typography variant="body2">E-commerce Only</Typography>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
+
+              <Grid container spacing={2}>
+                {customers.map((customer) => (
+                  <Grid item xs={12} sm={6} md={4} key={customer._id}>
+                    <Card variant="outlined" sx={{ height: '100%' }}>
+                      <CardContent>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                          <Typography variant="h6" gutterBottom>
+                            {customer.firstName} {customer.lastName}
+                          </Typography>
+                          <Chip 
+                            label={customer.isActive ? 'Active' : 'Inactive'} 
+                            color={customer.isActive ? 'success' : 'error'} 
+                            size="small" 
+                          />
+                        </Box>
+                        
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          <strong>Email:</strong> {customer.email}
+                        </Typography>
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          <strong>Phone:</strong> {customer.phone || 'N/A'}
+                        </Typography>
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          <strong>Account Type:</strong> {customer.parentId ? 'Linked to Parent' : 'E-commerce Only'}
+                        </Typography>
+                        <Typography variant="body2" sx={{ mb: 1 }}>
+                          <strong>Joined:</strong> {new Date(customer.createdAt).toLocaleDateString()}
+                        </Typography>
+                        
+                        {customer.address && (
+                          <Typography variant="body2" sx={{ mb: 1 }}>
+                            <strong>Address:</strong> {customer.address.street}, {customer.address.city}
+                          </Typography>
+                        )}
+                        
+                        {customer.preferredProducts && customer.preferredProducts.length > 0 && (
+                          <Typography variant="body2" sx={{ mb: 1 }}>
+                            <strong>Preferred Products:</strong> {customer.preferredProducts.length} items
+                          </Typography>
+                        )}
+                        
+                        <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
+                          <Button size="small" variant="outlined">
+                            View Details
+                          </Button>
+                          <Button size="small" variant="outlined">
+                            Edit
+                          </Button>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+                {customers.length === 0 && (
+                  <Grid item xs={12}>
+                    <Typography variant="body2" color="text.secondary">No customers registered yet</Typography>
+                  </Grid>
+                )}
+              </Grid>
+            </Box>
+          )}
+          {tabValue === 8 && (
             <Box>
               <Typography variant="h6" gutterBottom>All Users Overview</Typography>
 
@@ -1257,7 +1488,10 @@ const AdminDashboard = () => {
                         ]);
                         setAllStaff(staffRes.data || []);
                         setAllVendors(vendorsRes.data || []);
-                        setAllChildren(childrenRes.data || []);
+                        // Deduplicate children by _id
+                        const allChildrenData = childrenRes.data || [];
+                        const uniqueChildren = Array.from(new Map(allChildrenData.map(child => [child._id, child])).values());
+                        setAllChildren(uniqueChildren);
                       } catch (e) {
                         console.error('Refresh all users error:', e);
                       } finally {
@@ -1368,12 +1602,12 @@ const AdminDashboard = () => {
                   <Typography>Loading children...</Typography>
                 ) : (
                   <Grid container spacing={2}>
-                    {allChildren.map((child) => (
+                    {deduplicatedChildren.map((child) => (
                       <Grid item xs={12} sm={6} md={4} key={child._id}>
                         <Card variant="outlined">
                           <CardContent>
                             <Typography variant="h6" gutterBottom>
-                              {child.firstName} {child.lastName}
+                              {child.firstName} {child.lastName || ''}
                             </Typography>
                             <Typography variant="body2">
                               <strong>Age:</strong> {child.age || 'N/A'}
@@ -1401,7 +1635,7 @@ const AdminDashboard = () => {
                         </Card>
                       </Grid>
                     ))}
-                    {allChildren.length === 0 && (
+                    {deduplicatedChildren.length === 0 && (
                       <Grid item xs={12}>
                         <Typography variant="body2" color="text.secondary">No children found</Typography>
                       </Grid>
@@ -1409,112 +1643,6 @@ const AdminDashboard = () => {
                   </Grid>
                 )}
               </Paper>
-            </Box>
-          )}
-          {tabValue === 5 && (
-            <Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-                <Typography variant="h6">E-commerce Customers</Typography>
-                <Button variant="contained" startIcon={<PersonAdd />} onClick={() => setCreateCustomerDialog(true)}>
-                  Register New Customer
-                </Button>
-              </Box>
-              
-              {/* Customer Statistics */}
-              <Grid container spacing={3} sx={{ mb: 3 }}>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ bgcolor: 'primary.main', color: 'white' }}>
-                    <CardContent>
-                      <Typography variant="h4">{customers.length}</Typography>
-                      <Typography variant="body2">Total Customers</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ bgcolor: 'success.main', color: 'white' }}>
-                    <CardContent>
-                      <Typography variant="h4">{customers.filter(c => c.isActive).length}</Typography>
-                      <Typography variant="body2">Active Customers</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ bgcolor: 'info.main', color: 'white' }}>
-                    <CardContent>
-                      <Typography variant="h4">{customers.filter(c => c.parentId).length}</Typography>
-                      <Typography variant="body2">Linked to Parents</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={12} sm={6} md={3}>
-                  <Card sx={{ bgcolor: 'warning.main', color: 'white' }}>
-                    <CardContent>
-                      <Typography variant="h4">{customers.filter(c => !c.parentId).length}</Typography>
-                      <Typography variant="body2">E-commerce Only</Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-
-              <Grid container spacing={2}>
-                {customers.map((customer) => (
-                  <Grid item xs={12} sm={6} md={4} key={customer._id}>
-                    <Card variant="outlined" sx={{ height: '100%' }}>
-                      <CardContent>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                          <Typography variant="h6" gutterBottom>
-                            {customer.firstName} {customer.lastName}
-                          </Typography>
-                          <Chip 
-                            label={customer.isActive ? 'Active' : 'Inactive'} 
-                            color={customer.isActive ? 'success' : 'error'} 
-                            size="small" 
-                          />
-                        </Box>
-                        
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>Email:</strong> {customer.email}
-                        </Typography>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>Phone:</strong> {customer.phone || 'N/A'}
-                        </Typography>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>Account Type:</strong> {customer.parentId ? 'Linked to Parent' : 'E-commerce Only'}
-                        </Typography>
-                        <Typography variant="body2" sx={{ mb: 1 }}>
-                          <strong>Joined:</strong> {new Date(customer.createdAt).toLocaleDateString()}
-                        </Typography>
-                        
-                        {customer.address && (
-                          <Typography variant="body2" sx={{ mb: 1 }}>
-                            <strong>Address:</strong> {customer.address.street}, {customer.address.city}
-                          </Typography>
-                        )}
-                        
-                        {customer.preferredProducts && customer.preferredProducts.length > 0 && (
-                          <Typography variant="body2" sx={{ mb: 1 }}>
-                            <strong>Preferred Products:</strong> {customer.preferredProducts.length} items
-                          </Typography>
-                        )}
-                        
-                        <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-                          <Button size="small" variant="outlined">
-                            View Details
-                          </Button>
-                          <Button size="small" variant="outlined">
-                            Edit
-                          </Button>
-                        </Box>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                ))}
-                {customers.length === 0 && (
-                  <Grid item xs={12}>
-                    <Typography variant="body2" color="text.secondary">No customers registered yet</Typography>
-                  </Grid>
-                )}
-              </Grid>
             </Box>
           )}
           {tabValue === 6 && (
@@ -1808,6 +1936,15 @@ const AdminDashboard = () => {
               </Card>
             </Box>
           )}
+          {tabValue === 7 && (
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ mb: 3 }}>
+                AI-Powered Predictions
+              </Typography>
+              <PurchasePrediction />
+              <DemandPrediction />
+            </Box>
+          )}
         </Box>
       </Paper>
 
@@ -1981,68 +2118,72 @@ const AdminDashboard = () => {
       </Dialog>
 
       {/* Staff Assignment Dialog */}
-      <Dialog open={assignmentDialog.open} onClose={() => setAssignmentDialog({ open: false, child: null, selectedStaffId: '', selectedChildId: '' })} maxWidth="sm" fullWidth>
-        <DialogTitle>Assign Staff to Child</DialogTitle>
+      <Dialog 
+        open={assignmentDialog.open} 
+        onClose={() => setAssignmentDialog({ open: false, child: null, selectedStaffId: '', selectedChildId: '' })} 
+        maxWidth="sm" 
+        fullWidth
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.12)'
+          }
+        }}
+      >
+        <DialogTitle sx={{ pb: 1, fontSize: '1.5rem', fontWeight: 600 }}>Assign Staff to Child</DialogTitle>
         <DialogContent>
-          <Box>
-            {/* Child selector (defaults to currently viewed child if provided) */}
-            {!assignmentDialog.child && (
-              <FormControl fullWidth sx={{ mt: 1 }}>
-                <InputLabel>Select Child</InputLabel>
+          <Box sx={{ pt: 2 }}>
+            {/* Child selector */}
+            <FormControl fullWidth sx={{ mb: 3 }}>
+              <InputLabel id="child-select-label">Select Child</InputLabel>
                 <Select
+                labelId="child-select-label"
                   value={assignmentDialog.selectedChildId}
                   onChange={(e) => setAssignmentDialog({ ...assignmentDialog, selectedChildId: e.target.value })}
                   label="Select Child"
                 >
-                  {(() => {
-                    const assignedIds = new Set((staffAssignments || []).flatMap(a => (a.children || []).map(c => c._id)));
-                    const children = (allChildren || []).filter(c => !assignedIds.has(c._id));
-                    return children.map((child) => (
+                {deduplicatedChildren.map((child) => (
                       <MenuItem key={child._id} value={child._id}>
-                        {child.firstName} {child.lastName} • {child.program}
+                    {child.firstName} {child.lastName || ''} • {child.program || 'preschool'}
                       </MenuItem>
-                    ));
-                  })()}
+                ))}
                 </Select>
               </FormControl>
-            )}
-
-            {assignmentDialog.child && (
-              <Box sx={{ mb: 2 }}>
-                <Typography variant="h6" gutterBottom>
-                  {assignmentDialog.child.firstName} {assignmentDialog.child.lastName}
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Age {assignmentDialog.child.age} • {assignmentDialog.child.gender} • {assignmentDialog.child.program}
-                </Typography>
-              </Box>
-            )}
 
             {/* Staff selector */}
-            <FormControl fullWidth sx={{ mt: 2 }}>
-              <InputLabel>Select Staff Member</InputLabel>
+            <FormControl fullWidth>
+              <InputLabel id="staff-select-label">Select Staff Member</InputLabel>
               <Select
+                labelId="staff-select-label"
                 value={assignmentDialog.selectedStaffId}
                 onChange={(e) => setAssignmentDialog({ ...assignmentDialog, selectedStaffId: e.target.value })}
                 label="Select Staff Member"
               >
                 {availableStaff.map((staff) => (
                   <MenuItem key={staff._id} value={staff._id}>
-                    {staff.firstName} {staff.lastName} ({staff.assignedChildrenCount} children assigned)
+                    {staff.firstName} {staff.lastName} 
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setAssignmentDialog({ open: false, child: null, selectedStaffId: '', selectedChildId: '' })}>
+        <DialogActions sx={{ px: 3, pb: 3, pt: 2 }}>
+          <Button 
+            onClick={() => setAssignmentDialog({ open: false, child: null, selectedStaffId: '', selectedChildId: '' })}
+            sx={{ color: 'text.secondary', textTransform: 'none' }}
+          >
             Cancel
           </Button>
           <Button
             onClick={handleAssignStaff}
             variant="contained"
-            disabled={!(assignmentDialog.selectedStaffId && (assignmentDialog.child?._id || assignmentDialog.selectedChildId))}
+            disabled={!(assignmentDialog.selectedStaffId && assignmentDialog.selectedChildId)}
+            sx={{ 
+              bgcolor: assignmentDialog.selectedStaffId && assignmentDialog.selectedChildId ? 'primary.main' : 'grey.300',
+              textTransform: 'none',
+              px: 3
+            }}
           >
             Assign Staff
           </Button>
@@ -2092,13 +2233,10 @@ const AdminDashboard = () => {
             <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
-                label="Last Name"
+                label="Last Name (Optional)"
                 value={childForm.lastName}
                 onChange={(e) => setChildForm({ ...childForm, lastName: e.target.value })}
-                required
                 disabled={prefilledLocked}
-                error={!childForm.lastName && childForm.lastName !== ''}
-                helperText={!childForm.lastName && childForm.lastName !== '' ? 'Last name is required' : ''}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -2471,9 +2609,9 @@ const AdminDashboard = () => {
                   value={invoiceForm.childId}
                   onChange={(e) => setInvoiceForm({ ...invoiceForm, childId: e.target.value })}
                 >
-                  {allChildren.map((child) => (
+                  {deduplicatedChildren.map((child) => (
                     <MenuItem key={child._id} value={child._id}>
-                      {child.firstName} {child.lastName}
+                      {child.firstName} {child.lastName || ''}
                     </MenuItem>
                   ))}
                 </Select>

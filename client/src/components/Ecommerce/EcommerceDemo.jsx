@@ -154,23 +154,33 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
         };
 
         // Normalize fields expected by UI and compute image URL
-        const mapped = (data.products || []).map((p) => ({
-          id: p._id,
-          name: p.name,
-          price: p.price,
-          originalPrice: p.originalPrice || null,
-          image: toAbsoluteImageUrl(p.image || (Array.isArray(p.images) && p.images.length ? p.images[0] : null)) || '/logo192.svg',
-          imageFit: p.imageFit || 'cover',
-          imageFocalX: typeof p.imageFocalX === 'number' ? p.imageFocalX : 50,
-          imageFocalY: typeof p.imageFocalY === 'number' ? p.imageFocalY : 50,
-          category: p.category || 'General',
-          rating: p.rating || 4.5,
-          reviews: p.reviews || 0,
-          inStock: p.inStock !== false,
-          isNew: !!p.isNew,
-          isBestseller: !!p.isBestseller,
-          description: p.description || '',
-        }));
+        const mapped = (data.products || []).map((p) => {
+          // Calculate discounted price if active discount exists
+          const hasActiveDiscount = p.discountStatus === 'active' && p.activeDiscount > 0;
+          const discountedPrice = hasActiveDiscount 
+            ? Math.round(p.price * (1 - p.activeDiscount / 100) * 100) / 100 
+            : p.price;
+          
+          return {
+            id: p._id,
+            name: p.name,
+            price: discountedPrice,
+            originalPrice: hasActiveDiscount ? p.price : (p.originalPrice || null),
+            activeDiscount: hasActiveDiscount ? p.activeDiscount : 0,
+            discountStatus: p.discountStatus || 'none',
+            image: toAbsoluteImageUrl(p.image || (Array.isArray(p.images) && p.images.length ? p.images[0] : null)) || '/logo192.svg',
+            imageFit: p.imageFit || 'cover',
+            imageFocalX: typeof p.imageFocalX === 'number' ? p.imageFocalX : 50,
+            imageFocalY: typeof p.imageFocalY === 'number' ? p.imageFocalY : 50,
+            category: p.category || 'General',
+            rating: p.rating || 4.5,
+            reviews: p.reviews || 0,
+            inStock: p.inStock !== false,
+            isNew: !!p.isNew,
+            isBestseller: !!p.isBestseller,
+            description: p.description || '',
+          };
+        });
         setProducts(mapped);
       } catch (e) {
         console.error('Failed to load /api/products', e?.response?.status, e?.message);
@@ -410,6 +420,14 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                   
                   {/* Product Badges */}
                   <Box sx={{ position: 'absolute', top: 12, left: 12, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                    {product.activeDiscount > 0 && (
+                      <Chip 
+                        label={`${product.activeDiscount}% OFF`} 
+                        color="error" 
+                        size="small" 
+                        sx={{ fontWeight: 700, fontSize: '0.85rem' }} 
+                      />
+                    )}
                     {product.isNew && (
                       <Chip label="New" color="success" size="small" sx={{ fontWeight: 600 }} />
                     )}

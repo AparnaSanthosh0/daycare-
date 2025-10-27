@@ -7,6 +7,21 @@ const productSchema = new mongoose.Schema(
     category: { type: String, default: 'General', trim: true },
     price: { type: Number, required: true, min: 0 },
     originalPrice: { type: Number, default: null, min: 0 },
+    // Discount Management
+    suggestedDiscount: { type: Number, default: 0, min: 0, max: 100 }, // Vendor suggested discount percentage
+    activeDiscount: { type: Number, default: 0, min: 0, max: 100 }, // Admin approved discount percentage
+    discountReason: { type: String, default: '' }, // Reason for discount (optional)
+    discountStartDate: { type: Date, default: null }, // When discount starts
+    discountEndDate: { type: Date, default: null }, // When discount expires
+    discountStatus: { 
+      type: String, 
+      enum: ['none', 'suggested', 'pending', 'active', 'expired', 'rejected'], 
+      default: 'none' 
+    }, // Discount status
+    suggestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' }, // Vendor who suggested
+    approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' }, // Admin who approved
+    approvedAt: { type: Date, default: null }, // When admin approved/rejected
+    rejectionReason: { type: String, default: '' }, // Why discount was rejected
     image: { type: String, default: null }, // URL to image
     images: [{ type: String }],
     // Image presentation options
@@ -36,5 +51,21 @@ const productSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Virtual for discounted price
+productSchema.virtual('discountedPrice').get(function() {
+  if (this.activeDiscount > 0) {
+    return Math.round(this.price * (1 - this.activeDiscount / 100) * 100) / 100;
+  }
+  return this.price;
+});
+
+// Virtual for savings amount
+productSchema.virtual('savingsAmount').get(function() {
+  if (this.activeDiscount > 0) {
+    return Math.round((this.price - this.discountedPrice) * 100) / 100;
+  }
+  return 0;
+});
 
 module.exports = mongoose.model('Product', productSchema);
