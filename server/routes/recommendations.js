@@ -298,7 +298,7 @@ router.get('/child/:childId', async (req, res) => {
       }));
       
       // Create group recommendations
-      const recommendedGroups = createGroupRecommendations(nearestNeighbors, parseInt(minGroupSize), parseInt(maxGroupSize));
+      const recommendedGroups = createGroups(nearestNeighbors, parseInt(minGroupSize), parseInt(maxGroupSize));
       
       return res.json({
         targetChild: formattedTarget,
@@ -618,6 +618,129 @@ router.get('/stats', auth, async (req, res) => {
     
   } catch (error) {
     console.error('Error getting recommendation stats:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   POST /api/recommendations/send/:childId
+// @desc    Send recommendations to the child's parent dashboard
+// @access  Private (Staff/Admin)
+router.post('/send/:childId', auth, async (req, res) => {
+  try {
+    const { childId } = req.params;
+    const { recommendations } = req.body;
+
+    // Validate input
+    if (!recommendations) {
+      return res.status(400).json({ message: 'Recommendations data is required' });
+    }
+
+    // Find the child
+    const child = await Child.findById(childId).populate('parents');
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found' });
+    }
+
+    // Get child's parents
+    const parents = child.parents || [];
+    if (parents.length === 0) {
+      return res.status(400).json({ message: 'No parents found for this child' });
+    }
+
+    // Prepare recommendation notification
+    const recommendationNotification = {
+      type: 'recommendation',
+      childId: childId,
+      childName: `${child.firstName} ${child.lastName}`,
+      recommendations: recommendations,
+      sentAt: new Date(),
+      sentBy: req.user.userId,
+      read: false
+    };
+
+    // Add recommendation to each parent's communications
+    const updatePromises = parents.map(parent => {
+      return User.findByIdAndUpdate(
+        parent._id,
+        {
+          $push: {
+            communications: {
+              date: new Date(),
+              channel: 'in-app',
+              subject: `AI Grouping Recommendations for ${child.firstName}`,
+              notes: `Recommendations for ${child.firstName} ${child.lastName} have been generated and are available in your dashboard.`,
+              by: req.user.userId,
+              metadata: recommendationNotification
+            }
+          }
+        },
+        { new: true }
+      );
+    });
+
+    await Promise.all(updatePromises);
+
+    res.json({
+      message: `Recommendations sent to ${parents.length} parent(s)`,
+      parentsNotified: parents.map(p => ({ id: p._id, name: `${p.firstName} ${p.lastName}` }))
+    });
+
+  } catch (error) {
+    console.error('Error sending recommendations:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   GET /api/recommendations/received
+// @desc    Get recommendations received by the logged-in parent
+// @access  Private (Parent)
+router.get('/received', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (user.role !== 'parent') {
+      return res.status(403).json({ message: 'Only parents can access this' });
+    }
+
+    // Get communications that are recommendations
+    const recommendations = user.communications
+      .filter(comm => comm.metadata && comm.metadata.type === 'recommendation')
+      .map(comm => ({
+        id: comm._id,
+        childId: comm.metadata.childId,
+        childName: comm.metadata.childName,
+        recommendations: comm.metadata.recommendations,
+        sentAt: comm.date,
+        read: comm.metadata.read || false
+      }))
+      .sort((a, b) => new Date(b.sentAt) - new Date(a.sentAt));
+
+    res.json(recommendations);
+  } catch (error) {
+    console.error('Error getting received recommendations:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   PUT /api/recommendations/received/:recommendationId/read
+// @desc    Mark a recommendation as read
+// @access  Private (Parent)
+router.put('/received/:recommendationId/read', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId);
+    if (user.role !== 'parent') {
+      return res.status(403).json({ message: 'Only parents can access this' });
+    }
+
+    const comm = user.communications.id(req.params.recommendationId);
+    if (comm && comm.metadata) {
+      comm.metadata.read = true;
+      await user.save();
+      res.json({ message: 'Recommendation marked as read' });
+    } else {
+      res.status(404).json({ message: 'Recommendation not found' });
+    }
+  } catch (error) {
+    console.error('Error marking recommendation as read:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

@@ -800,13 +800,13 @@ router.put('/admissions/:id/approve', adminOnly, async (req, res) => {
     if (!ar) return res.status(404).json({ message: 'Admission request not found' });
     if (ar.status !== 'pending') return res.status(400).json({ message: 'Admission request already handled' });
 
-    // Validate DOB (1 to 7 years)
+    // Validate DOB (6 months to 8 years) - match parent submission validation
     const dob = new Date(ar.child.dateOfBirth);
     const today = new Date();
-    const minDob = new Date(today.getFullYear() - 7, today.getMonth(), today.getDate());
-    const maxDob = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+    const minDob = new Date(today.getFullYear() - 8, today.getMonth(), today.getDate());
+    const maxDob = new Date(today.getFullYear(), today.getMonth() - 6, today.getDate());
     if (!(dob >= minDob && dob <= maxDob)) {
-      return res.status(400).json({ message: 'Child age must be between 1 and 7 years' });
+      return res.status(400).json({ message: 'Child age must be between 6 months and 8 years old' });
     }
 
     // Ensure parent exists and activate parent
@@ -819,6 +819,15 @@ router.put('/admissions/:id/approve', adminOnly, async (req, res) => {
     const [firstName = '', ...restName] = (ar.child.name || '').trim().split(' ');
     const lastName = restName.join(' ') || '-';
 
+    // Set tuition rate based on program
+    const programRates = {
+      'infant': 600,
+      'toddler': 550,
+      'preschool': 500,
+      'prekindergarten': 450
+    };
+    const defaultTuitionRate = programRates[ar.child.program] || 500;
+
     const child = await Child.create({
       firstName,
       lastName,
@@ -826,7 +835,7 @@ router.put('/admissions/:id/approve', adminOnly, async (req, res) => {
       gender: ar.child.gender || 'male',
       parents: [parent._id],
       program: ar.child.program || 'preschool',
-      tuitionRate: 0,
+      tuitionRate: defaultTuitionRate,
       allergies: [],
       medicalConditions: ar.child.medicalInfo ? [{ condition: ar.child.medicalInfo }] : [],
       emergencyContacts: ar.child.emergencyContactName ? [{
@@ -927,7 +936,7 @@ router.post('/children', adminOnly, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { firstName, lastName, dateOfBirth, gender, parentId, program, allergies, medicalConditions, emergencyContacts, authorizedPickup, notes } = req.body;
+    const { firstName, lastName, dateOfBirth, gender, parentId, program, tuitionRate, medicalInfo, emergencyContactName, emergencyContactPhone, allergies, medicalConditions, emergencyContacts, authorizedPickup, notes } = req.body;
 
     // Validate parent exists
     console.log('Looking for parent with ID:', parentId);
@@ -950,14 +959,23 @@ router.post('/children', adminOnly, [
       console.log('Parent activated successfully');
     }
 
-    // Validate child age (1 to 7 years)
+    // Validate child age (6 months to 8 years) - more flexible for daycare
     const dob = new Date(dateOfBirth);
     const today = new Date();
-    const minDob = new Date(today.getFullYear() - 7, today.getMonth(), today.getDate());
-    const maxDob = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+    const minDob = new Date(today.getFullYear() - 8, today.getMonth(), today.getDate());
+    const maxDob = new Date(today.getFullYear(), today.getMonth() - 6, today.getDate()); // 6 months old minimum
     if (!(dob >= minDob && dob <= maxDob)) {
-      return res.status(400).json({ message: 'Child age must be between 1 and 7 years' });
+      return res.status(400).json({ message: 'Child age must be between 6 months and 8 years old' });
     }
+
+    // Set tuition rate based on program if not provided
+    const programRates = {
+      'infant': 600,
+      'toddler': 550,
+      'preschool': 500,
+      'prekindergarten': 450
+    };
+    const finalTuitionRate = tuitionRate ? parseFloat(tuitionRate) : programRates[program] || 500;
 
     // Create child profile
     // Handle optional lastName - default to empty string if not provided
@@ -978,6 +996,30 @@ router.post('/children', adminOnly, [
       isActive: true
     });
     
+    // Prepare medical conditions and emergency contacts from form data
+    const processedMedicalConditions = medicalConditions && Array.isArray(medicalConditions) 
+      ? medicalConditions 
+      : medicalInfo 
+        ? [{ condition: medicalInfo }] 
+        : [];
+
+    const processedEmergencyContacts = emergencyContacts && Array.isArray(emergencyContacts)
+      ? emergencyContacts
+      : (emergencyContactName || emergencyContactPhone)
+        ? [{
+            name: emergencyContactName || 'Emergency Contact',
+            phone: emergencyContactPhone || '',
+            relationship: 'Emergency'
+          }]
+        : [];
+
+    // Process allergies - handle both string and array formats
+    const processedAllergies = Array.isArray(allergies) 
+      ? allergies 
+      : typeof allergies === 'string' && allergies.trim()
+        ? allergies.split(',').map(a => a.trim()).filter(a => a)
+        : [];
+
     const child = await Child.create({
       firstName,
       lastName: childLastName,
@@ -985,9 +1027,10 @@ router.post('/children', adminOnly, [
       gender,
       parents: [parent._id],
       program,
-      allergies: Array.isArray(allergies) ? allergies : [],
-      medicalConditions: Array.isArray(medicalConditions) ? medicalConditions : [],
-      emergencyContacts: Array.isArray(emergencyContacts) ? emergencyContacts : [],
+      tuitionRate: finalTuitionRate,
+      allergies: processedAllergies,
+      medicalConditions: processedMedicalConditions,
+      emergencyContacts: processedEmergencyContacts,
       authorizedPickup: Array.isArray(authorizedPickup) ? authorizedPickup : [],
       notes: notes || '',
       isActive: true

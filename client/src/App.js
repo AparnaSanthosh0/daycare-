@@ -15,6 +15,7 @@ import Dashboard from './pages/Dashboard/Dashboard';
 // import Parents from './pages/Parents/Parents';
 import Staff from './pages/Staff/Staff';
 import MealPlanning from './pages/Staff/MealPlanning';
+import MealPlanApproval from './pages/MealPlan/MealPlanApproval';
 import Visitors from './pages/Staff/Visitors';
 import Emergency from './pages/Staff/Emergency';
 import Transport from './pages/Staff/Transport';
@@ -292,6 +293,10 @@ function App() {
           <Route 
             path="/meal-planning" 
             element={user && (user.role === 'admin' || user.role === 'staff') ? <Layout><MealPlanning /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
+          />
+          <Route 
+            path="/meal-plan-approval" 
+            element={user && (user.role === 'admin' || user.role === 'staff') ? <Layout><MealPlanApproval /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
           />
           <Route 
             path="/visitors" 

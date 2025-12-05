@@ -443,30 +443,6 @@ const ChildRecommendations = ({ childId, onClose }) => {
         </Tabs>
       )}
 
-      {/* Model Information */}
-      {recommendations && recommendations.modelInfo && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Model Information</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="font-medium">Algorithm:</span> {recommendations.modelInfo.algorithm}
-              </div>
-              <div>
-                <span className="font-medium">K Value:</span> {recommendations.modelInfo.parameters.k}
-              </div>
-              <div>
-                <span className="font-medium">Group Size Range:</span> {recommendations.modelInfo.parameters.minGroupSize} - {recommendations.modelInfo.parameters.maxGroupSize}
-              </div>
-              <div>
-                <span className="font-medium">Last Updated:</span> {new Date(recommendations.modelInfo.lastUpdated).toLocaleString()}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
     </div>
   );
 };

@@ -54,6 +54,17 @@ const Billing = () => {
   const [parentsList, setParentsList] = useState([]);
   const [childrenList, setChildrenList] = useState([]);
   
+  // Tuition management states
+  const [tuitionRates, setTuitionRates] = useState([]);
+  const [tuitionDialog, setTuitionDialog] = useState({ open: false, mode: 'create', child: null });
+  const [tuitionForm, setTuitionForm] = useState({
+    childId: '',
+    monthlyRate: '',
+    program: '',
+    effectiveDate: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
+  
   // Dialog states
   const [invoiceDialog, setInvoiceDialog] = useState({ open: false });
   const [paymentDialog, setPaymentDialog] = useState({ open: false });
@@ -81,22 +92,30 @@ const Billing = () => {
   const fetchBillingData = async () => {
     try {
       setLoading(true);
-      const [statsRes, invoicesRes, paymentsRes, parentsRes, childrenRes] = await Promise.all([
-        api.get('/api/billing/stats'),
-        api.get('/api/billing/invoices'),
-        api.get('/api/billing/payments'),
-        api.get('/api/admin/parents'),
-        api.get('/api/children')
+      const [statsRes, invoicesRes, paymentsRes, parentsRes, childrenRes, tuitionRes] = await Promise.all([
+        api.get('/api/billing/stats').catch(() => ({ data: { totalRevenue: 0, paidInvoices: 0, pendingPayments: 0, overdueAmount: 0 } })),
+        api.get('/api/billing/invoices').catch(() => ({ data: [] })),
+        api.get('/api/billing/payments').catch(() => ({ data: [] })),
+        api.get('/api/admin/parents').catch(() => ({ data: [] })),
+        api.get('/api/children').catch(() => ({ data: [] })),
+        api.get('/api/billing/tuition-rates').catch(() => ({ data: [] }))
       ]);
       
       setBillingStats(statsRes.data || { totalRevenue: 0, paidInvoices: 0, pendingPayments: 0, overdueAmount: 0 });
-      setInvoices(invoicesRes.data || []);
-      setPayments(paymentsRes.data || []);
-      setParentsList(parentsRes.data || []);
-      setChildrenList(childrenRes.data || []);
+      setInvoices(Array.isArray(invoicesRes.data) ? invoicesRes.data : []);
+      setPayments(Array.isArray(paymentsRes.data) ? paymentsRes.data : []);
+      setTuitionRates(Array.isArray(tuitionRes.data) ? tuitionRes.data : []);
+      setParentsList(Array.isArray(parentsRes.data) ? parentsRes.data : []);
+      setChildrenList(Array.isArray(childrenRes.data) ? childrenRes.data : []);
     } catch (error) {
       console.error('Error fetching billing data:', error);
       setError('Failed to load billing data');
+      // Ensure all arrays are properly initialized even on error
+      setInvoices([]);
+      setPayments([]);
+      setTuitionRates([]);
+      setParentsList([]);
+      setChildrenList([]);
     } finally {
       setLoading(false);
     }
@@ -105,7 +124,7 @@ const Billing = () => {
   const generateInvoice = async () => {
     try {
       const response = await api.post('/api/billing/invoices', invoiceForm);
-      setInvoices([...invoices, response.data]);
+      setInvoices(prevInvoices => [...(Array.isArray(prevInvoices) ? prevInvoices : []), response.data]);
       setInvoiceDialog({ open: false });
       setInvoiceForm({
         parentId: '',
@@ -162,6 +181,52 @@ const Billing = () => {
       console.error('Generate report error:', error);
       setError('Failed to generate financial report');
     }
+  };
+
+  // Tuition management functions
+  const handleTuitionSubmit = async () => {
+    try {
+      const endpoint = tuitionDialog.mode === 'create' ? '/api/billing/tuition-rates' : `/api/billing/tuition-rates/${tuitionForm.childId}`;
+      const method = tuitionDialog.mode === 'create' ? 'post' : 'put';
+      
+      await api[method](endpoint, tuitionForm);
+      
+      setSuccess(`Tuition rate ${tuitionDialog.mode === 'create' ? 'created' : 'updated'} successfully`);
+      setTuitionDialog({ open: false, mode: 'create', child: null });
+      setTuitionForm({
+        childId: '',
+        monthlyRate: '',
+        program: '',
+        effectiveDate: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+      fetchBillingData();
+    } catch (error) {
+      console.error('Error managing tuition rate:', error);
+      setError('Failed to manage tuition rate');
+    }
+  };
+
+  const openTuitionDialog = (mode = 'create', child = null) => {
+    if (mode === 'edit' && child) {
+      const existingRate = tuitionRates.find(rate => rate.childId === child._id);
+      setTuitionForm({
+        childId: child._id,
+        monthlyRate: existingRate?.monthlyRate || child.tuitionRate || '',
+        program: child.program || '',
+        effectiveDate: existingRate?.effectiveDate?.split('T')[0] || new Date().toISOString().split('T')[0],
+        notes: existingRate?.notes || ''
+      });
+    } else {
+      setTuitionForm({
+        childId: '',
+        monthlyRate: '',
+        program: '',
+        effectiveDate: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+    }
+    setTuitionDialog({ open: true, mode, child });
   };
 
   if (loading) {
@@ -280,7 +345,7 @@ const Billing = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {invoices.length > 0 ? (
+                {Array.isArray(invoices) && invoices.length > 0 ? (
                   invoices.map((invoice) => (
                     <TableRow key={invoice._id}>
                       <TableCell>#{invoice.invoiceNumber}</TableCell>
@@ -338,7 +403,7 @@ const Billing = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {payments.length > 0 ? (
+                {Array.isArray(payments) && payments.length > 0 ? (
                   payments.map((payment) => (
                     <TableRow key={payment._id}>
                       <TableCell>#{payment.paymentNumber}</TableCell>
@@ -385,7 +450,7 @@ const Billing = () => {
                 variant="outlined" 
                 fullWidth 
                 startIcon={<Add />}
-                onClick={() => {/* Set tuition rates */}}
+                onClick={() => openTuitionDialog('create')}
               >
                 Set Tuition Rates
               </Button>
@@ -395,7 +460,13 @@ const Billing = () => {
                 variant="outlined" 
                 fullWidth 
                 startIcon={<Edit />}
-                onClick={() => {/* Update rates */}}
+                onClick={() => {
+                  if (Array.isArray(childrenList) && childrenList.length > 0) {
+                    openTuitionDialog('edit', childrenList[0]);
+                  } else {
+                    setError('No children found to update rates for');
+                  }
+                }}
               >
                 Update Rates
               </Button>
@@ -405,12 +476,95 @@ const Billing = () => {
                 variant="outlined" 
                 fullWidth 
                 startIcon={<Visibility />}
-                onClick={() => {/* View rates */}}
+                onClick={() => {
+                  // Scroll to the tuition rates table below
+                  document.getElementById('tuition-rates-table')?.scrollIntoView({ behavior: 'smooth' });
+                }}
               >
                 View Current Rates
               </Button>
             </Grid>
           </Grid>
+
+          {/* Current Tuition Rates Table */}
+          <Box sx={{ mt: 4 }} id="tuition-rates-table">
+            <Typography variant="h6" gutterBottom>
+              Current Tuition Rates
+            </Typography>
+            <TableContainer>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Child Name</TableCell>
+                    <TableCell>Program</TableCell>
+                    <TableCell>Monthly Rate</TableCell>
+                    <TableCell>Parent</TableCell>
+                    <TableCell>Effective Date</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell>Actions</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {Array.isArray(childrenList) ? childrenList.map((child) => {
+                    const tuitionRate = Array.isArray(tuitionRates) ? tuitionRates.find(rate => rate.childId === child._id) || {} : {};
+                    const parent = Array.isArray(parentsList) ? parentsList.find(p => child.parents?.includes(p._id)) : null;
+                    
+                    return (
+                      <TableRow key={child._id}>
+                        <TableCell>
+                          <Typography variant="body1" fontWeight="bold">
+                            {child.firstName} {child.lastName}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={child.program || 'N/A'} size="small" color="primary" />
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="h6" color="success.main">
+                            ${tuitionRate.monthlyRate || child.tuitionRate || 0}/month
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          {parent ? `${parent.firstName} ${parent.lastName}` : 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          {tuitionRate.effectiveDate ? 
+                            new Date(tuitionRate.effectiveDate).toLocaleDateString() : 
+                            'Not Set'
+                          }
+                        </TableCell>
+                        <TableCell>
+                          <Chip 
+                            label={tuitionRate.monthlyRate || child.tuitionRate ? 'Active' : 'Not Set'}
+                            color={tuitionRate.monthlyRate || child.tuitionRate ? 'success' : 'warning'}
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            startIcon={<Edit />}
+                            onClick={() => openTuitionDialog('edit', child)}
+                            sx={{ mr: 1 }}
+                          >
+                            Edit Rate
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  }) : []}
+                  {(!Array.isArray(childrenList) || childrenList.length === 0) && (
+                    <TableRow>
+                      <TableCell colSpan={7} align="center">
+                        <Typography color="text.secondary">No children found</Typography>
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </Box>
         </CardContent>
       </Card>
 
@@ -477,11 +631,11 @@ const Billing = () => {
                   value={invoiceForm.parentId}
                   onChange={(e) => setInvoiceForm({ ...invoiceForm, parentId: e.target.value })}
                 >
-                  {parentsList.map((parent) => (
+                  {Array.isArray(parentsList) ? parentsList.map((parent) => (
                     <MenuItem key={parent._id} value={parent._id}>
                       {parent.firstName} {parent.lastName}
                     </MenuItem>
-                  ))}
+                  )) : []}
                 </Select>
               </FormControl>
             </Grid>
@@ -492,11 +646,11 @@ const Billing = () => {
                   value={invoiceForm.childId}
                   onChange={(e) => setInvoiceForm({ ...invoiceForm, childId: e.target.value })}
                 >
-                  {childrenList.map((child) => (
+                  {Array.isArray(childrenList) ? childrenList.map((child) => (
                     <MenuItem key={child._id} value={child._id}>
                       {child.firstName} {child.lastName}
                     </MenuItem>
-                  ))}
+                  )) : []}
                 </Select>
               </FormControl>
             </Grid>
@@ -553,11 +707,11 @@ const Billing = () => {
                   value={paymentForm.invoiceId}
                   onChange={(e) => setPaymentForm({ ...paymentForm, invoiceId: e.target.value })}
                 >
-                  {invoices.filter(inv => inv.status !== 'paid').map((invoice) => (
+                  {Array.isArray(invoices) ? invoices.filter(inv => inv.status !== 'paid').map((invoice) => (
                     <MenuItem key={invoice._id} value={invoice._id}>
                       #{invoice.invoiceNumber} - ${invoice.amount}
                     </MenuItem>
-                  ))}
+                  )) : []}
                 </Select>
               </FormControl>
             </Grid>
@@ -612,6 +766,89 @@ const Billing = () => {
           </Button>
           <Button onClick={recordPayment} variant="contained">
             Record Payment
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Tuition Rate Management Dialog */}
+      <Dialog open={tuitionDialog.open} onClose={() => setTuitionDialog({ open: false, mode: 'create', child: null })} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {tuitionDialog.mode === 'create' ? 'Set Tuition Rate' : 'Update Tuition Rate'}
+          {tuitionDialog.child && ` - ${tuitionDialog.child.firstName} ${tuitionDialog.child.lastName}`}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Child</InputLabel>
+                <Select
+                  value={tuitionForm.childId}
+                  onChange={(e) => {
+                    const selectedChild = childrenList.find(child => child._id === e.target.value);
+                    setTuitionForm({ 
+                      ...tuitionForm, 
+                      childId: e.target.value,
+                      program: selectedChild?.program || ''
+                    });
+                  }}
+                  disabled={tuitionDialog.mode === 'edit'}
+                >
+                  {Array.isArray(childrenList) ? childrenList.map((child) => (
+                    <MenuItem key={child._id} value={child._id}>
+                      {child.firstName} {child.lastName} ({child.program})
+                    </MenuItem>
+                  )) : []}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Monthly Rate ($)"
+                type="number"
+                value={tuitionForm.monthlyRate}
+                onChange={(e) => setTuitionForm({ ...tuitionForm, monthlyRate: e.target.value })}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Program"
+                value={tuitionForm.program}
+                onChange={(e) => setTuitionForm({ ...tuitionForm, program: e.target.value })}
+                disabled
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Effective Date"
+                type="date"
+                value={tuitionForm.effectiveDate}
+                onChange={(e) => setTuitionForm({ ...tuitionForm, effectiveDate: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+                required
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Notes (Optional)"
+                value={tuitionForm.notes}
+                onChange={(e) => setTuitionForm({ ...tuitionForm, notes: e.target.value })}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTuitionDialog({ open: false, mode: 'create', child: null })}>
+            Cancel
+          </Button>
+          <Button onClick={handleTuitionSubmit} variant="contained">
+            {tuitionDialog.mode === 'create' ? 'Set Rate' : 'Update Rate'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -37,7 +37,6 @@ const getMenuItems = (userRole) => {
     return [
       { text: 'Admin Home', icon: <SupervisorAccount />, path: '/admin' },
       { text: 'Users', icon: <ManageAccounts />, path: '/admin/users' },
-      { text: 'Staff Console', icon: <SupervisorAccount />, path: '/admin/staff-console' },
       { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
       { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
       { text: 'Billing', icon: <Payment />, path: '/billing' },
@@ -49,7 +48,7 @@ const getMenuItems = (userRole) => {
       { text: 'Reports', icon: <Assessment />, path: '/reports' },
       { text: 'Inventory', icon: <Inventory2 />, path: '/admin/inventory' },
       { text: 'Order Management', icon: <ShoppingCart />, path: '/admin/orders' },
-      { text: 'Customers', icon: <People />, path: '/admin/customers' },
+      { text: 'Meal Plan Approval', icon: <LocalActivity />, path: '/meal-plan-approval' },
       { text: 'Profile', icon: <Person />, path: '/profile' },
     ];
   }
@@ -78,6 +77,7 @@ const getMenuItems = (userRole) => {
       { text: 'Transport & Pickup', icon: <Group />, path: '/transport' },
       { text: 'Communication', icon: <Email />, path: '/communication' },
       { text: 'Reports', icon: <Assessment />, path: '/reports' },
+      { text: 'Feedback', icon: <Assessment />, path: '/parent/feedback' },
       { text: 'Profile', icon: <Person />, path: '/profile' },
     ];
   }
@@ -90,9 +90,7 @@ const getMenuItems = (userRole) => {
       { text: 'Notifications', icon: <Assessment />, path: '/parent/notifications' },
       { text: 'Messaging', icon: <Email />, path: '/parent/messaging' },
       { text: 'Billing & Payments', icon: <Payment />, path: '/parent/billing' },
-      { text: 'Feedback', icon: <Assessment />, path: '/parent/feedback' },
       { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
-      { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
       { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
       { text: 'Profile', icon: <Person />, path: '/profile' },
     ];

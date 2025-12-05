@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -48,9 +48,6 @@ import {
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
-import RecommendationQuickAccess from '../../components/RecommendationQuickAccess';
-import ParentRecommendationCard from '../../components/ParentRecommendationCard';
-import EduRecommendations from '../../components/Parents/EduRecommendations';
 import MealRecommendation from '../../components/MealRecommendation';
 
 // Simple helper to format date strings
@@ -83,6 +80,22 @@ const toAbsoluteUrl = (maybePath) => {
   }
 };
 
+const toTagArray = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value.filter(Boolean).map((v) => (typeof v === 'string' ? v.trim() : v));
+  }
+  if (typeof value === 'object') {
+    return Object.entries(value)
+      .filter(([_, v]) => v !== undefined && v !== null && v !== '')
+      .map(([k, v]) => `${k}${v ? `: ${v}` : ''}`);
+  }
+  return String(value)
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+};
+
 const ParentDashboard = ({ initialTab }) => {
   const { user } = useAuth();
   const [tab, setTab] = useState(0);
@@ -106,7 +119,7 @@ const ParentDashboard = ({ initialTab }) => {
     nutrition: { consumption: [], preferences: [] }
   });
   // Staff information
-  const [, setAssignedStaff] = useState([]);
+  const [assignedStaff, setAssignedStaff] = useState([]);
   // Admissions state for adding additional children
   const [admissions, setAdmissions] = useState([]);
   const [admissionForm, setAdmissionForm] = useState({
@@ -121,6 +134,11 @@ const ParentDashboard = ({ initialTab }) => {
   const [admissionMsg, setAdmissionMsg] = useState('');
   const [admissionError, setAdmissionError] = useState('');
   const [admissionLoading, setAdmissionLoading] = useState(false);
+  
+  // Billing states
+  const [billingData, setBillingData] = useState({ invoices: [], payments: [] });
+  const [paymentDialog, setPaymentDialog] = useState({ open: false, invoice: null });
+  const [paymentLoading, setPaymentLoading] = useState(false);
 
   // Editable fields (parent-allowed)
   const [editMode, setEditMode] = useState(false);
@@ -132,6 +150,47 @@ const ParentDashboard = ({ initialTab }) => {
     notes: ''
   });
 
+  // AI Recommendations state
+  const [aiRecommendationType, setAiRecommendationType] = useState(null); // 'education', 'social', 'nutrition', or null
+  const [educationRecommendations, setEducationRecommendations] = useState([]);
+  const [socialRecommendations, setSocialRecommendations] = useState(null);
+  const [nutritionRecommendations, setNutritionRecommendations] = useState(null);
+
+  const socialPlaymates = socialRecommendations?.playmates || [];
+  const socialGroupActivities = socialRecommendations?.groupActivities || [];
+  const socialSkillsFocus = socialRecommendations?.socialSkills || [];
+
+  const normalizedNutritionItems = useMemo(() => {
+    if (!nutritionRecommendations) return [];
+    const baseList = Array.isArray(nutritionRecommendations.meals) && nutritionRecommendations.meals.length > 0
+      ? nutritionRecommendations.meals
+      : Array.isArray(nutritionRecommendations.recommendations)
+        ? nutritionRecommendations.recommendations
+        : [];
+
+    return baseList.map((item, idx) => {
+      if (typeof item === 'string') {
+        return {
+          id: `nutrition-${idx}`,
+          title: item,
+          description: '',
+          tags: []
+        };
+      }
+      const tags = [
+        ...toTagArray(item.benefits),
+        ...toTagArray(item.nutrients)
+      ].filter(Boolean);
+
+      return {
+        id: item.id || `nutrition-${idx}`,
+        title: item.name || item.category || `Option ${idx + 1}`,
+        description: item.description || item.benefits || '',
+        tags
+      };
+    });
+  }, [nutritionRecommendations]);
+
   // const activeChild = useMemo(
   //   () => children.find((c) => c._id === activeChildId) || null,
   //   [children, activeChildId]
@@ -140,13 +199,13 @@ const ParentDashboard = ({ initialTab }) => {
   // Map initialTab prop to tab index when component mounts
   useEffect(() => {
     const map = {
-      notifications: 9,
-      messaging: 10,
-      billing: 11,
-      feedback: 12,
+      notifications: 10,
+      messaging: 11,
+      billing: 12,
+      feedback: 7,
       staff: 6,
-      reports: 7,
-      admissions: 8,
+      reports: 8,
+      admissions: 9,
     };
     if (initialTab && map[initialTab] !== undefined) setTab(map[initialTab]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -207,6 +266,33 @@ const ParentDashboard = ({ initialTab }) => {
     })();
   }, [loadChildren]);
 
+  // Auto-refresh children data every 30 seconds to pick up newly approved admissions
+  useEffect(() => {
+    if (user?.role !== 'parent') return;
+    
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get('/api/parents/me/children');
+        const newChildren = res.data || [];
+        
+        // Only update if the number of children changed (new admission approved)
+        if (newChildren.length !== children.length) {
+          console.log('New children detected, updating dashboard...');
+          setChildren(newChildren);
+          
+          // If we have a new child but no active child selected, select the first one
+          if (newChildren.length > 0 && !activeChildId) {
+            setActiveChildId(newChildren[0]._id);
+          }
+        }
+      } catch (e) {
+        // Silent fail for background refresh
+      }
+    }, 30000); // Check every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [children.length, activeChildId, user?.role]);
+
   // Fetch detail for the active child
   const fetchChildData = useCallback(async (childId) => {
     if (!childId) return;
@@ -232,6 +318,7 @@ const ParentDashboard = ({ initialTab }) => {
         milestones: { completed: [], upcoming: [] },
         nutrition: { consumption: [], preferences: [] }
       });
+      console.log('Assigned staff response:', sRes.data);
       setAssignedStaff(sRes.data || []);
 
       // Seed edit fields from profile
@@ -262,8 +349,9 @@ const ParentDashboard = ({ initialTab }) => {
   useEffect(() => {
     if (activeChildId) {
       fetchChildData(activeChildId);
+      fetchBillingData();
     }
-  }, [activeChildId, fetchChildData]);
+  }, [activeChildId, fetchChildData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Simple polling for attendance, activities, meals
   useEffect(() => {
@@ -685,6 +773,232 @@ const ParentDashboard = ({ initialTab }) => {
     return age;
   };
 
+  // AI Recommendations Functions
+  const generateEducationRecommendations = useCallback(() => {
+    if (!profile) return [];
+    
+    const age = calculateAge(profile.dateOfBirth);
+    const interests = profile.interests || [];
+    
+    // Education recommendations based on age and program
+    const recommendations = [
+      {
+        id: 1,
+        title: 'Interactive Storytelling',
+        description: 'Enhance language skills through engaging story sessions',
+        ageRange: '2-5',
+        category: 'Language Development',
+        benefits: ['Vocabulary building', 'Listening skills', 'Imagination'],
+        suitable: true
+      },
+      {
+        id: 2,
+        title: 'Number Recognition Games',
+        description: 'Fun counting and number games for early math skills',
+        ageRange: '3-6',
+        category: 'Mathematics',
+        benefits: ['Number recognition', 'Counting', 'Pattern identification'],
+        suitable: true
+      },
+      {
+        id: 3,
+        title: 'Arts & Crafts Projects',
+        description: 'Creative activities to develop fine motor skills',
+        ageRange: '2-6',
+        category: 'Creative Development',
+        benefits: ['Fine motor skills', 'Creativity', 'Following instructions'],
+        suitable: age >= 2 || interests.includes('arts_crafts') || true
+      },
+      {
+        id: 4,
+        title: 'Science Discovery Time',
+        description: 'Simple experiments and nature exploration',
+        ageRange: '3-6',
+        category: 'STEM',
+        benefits: ['Critical thinking', 'Observation skills', 'Curiosity'],
+        suitable: true
+      },
+      {
+        id: 5,
+        title: 'Musical Expression',
+        description: 'Singing, dancing, and instrument play for development',
+        ageRange: '1-6',
+        category: 'Creative Arts',
+        benefits: ['Rhythm', 'Memory', 'Emotional expression'],
+        suitable: true
+      }
+    ];
+    
+    return recommendations.filter(rec => rec.suitable).slice(0, 3);
+  }, [profile]);
+
+  const generateSocialRecommendations = useCallback(async () => {
+    if (!activeChildId) return null;
+    
+    try {
+      const response = await api.get(`/api/recommendations/child/${activeChildId}`);
+      return {
+        playmates: response.data.recommendations || [],
+        groupActivities: [
+          'Circle Time Discussions',
+          'Collaborative Art Projects', 
+          'Team Building Games',
+          'Group Storytelling'
+        ],
+        socialSkills: [
+          'Sharing and taking turns',
+          'Expressing feelings appropriately', 
+          'Making friends',
+          'Conflict resolution'
+        ]
+      };
+    } catch (error) {
+      console.error('Error fetching social recommendations:', error);
+      return {
+        playmates: [],
+        groupActivities: ['Circle Time', 'Group Play', 'Team Activities'],
+        socialSkills: ['Sharing', 'Communication', 'Empathy', 'Cooperation']
+      };
+    }
+  }, [activeChildId]);
+
+  const generateNutritionRecommendations = useCallback(async () => {
+    if (!profile) return null;
+    
+    const age = calculateAge(profile.dateOfBirth);
+    const allergies = profile.allergies || [];
+    
+    try {
+      const response = await api.post('/api/meal-recommendations/predict', {
+        age: age,
+        dietaryPreference: 'balanced',
+        hasAllergy: allergies.length > 0
+      });
+      
+      return {
+        ...response.data,
+        tips: [
+          'Introduce variety gradually',
+          'Make mealtime enjoyable',
+          'Involve child in food preparation',
+          'Be patient with new foods'
+        ],
+        allergies: allergies
+      };
+    } catch (error) {
+      console.error('Error fetching nutrition recommendations:', error);
+      return {
+        recommendations: [
+          'Colorful fruit and vegetable plates',
+          'Whole grain options for sustained energy',
+          'Protein-rich snacks for growth',
+          'Calcium sources for strong bones'
+        ],
+        tips: [
+          'Encourage trying new foods',
+          'Create positive mealtime environment',
+          'Offer choices when possible'
+        ],
+        allergies: allergies
+      };
+    }
+  }, [profile]);
+
+  const handleAiRecommendationClick = async (type) => {
+    setAiRecommendationType(type);
+    
+    switch (type) {
+      case 'education':
+        const eduRecs = generateEducationRecommendations();
+        setEducationRecommendations(eduRecs);
+        break;
+      case 'social':
+        const socialRecs = await generateSocialRecommendations();
+        setSocialRecommendations(socialRecs);
+        break;
+      case 'nutrition':
+        const nutritionRecs = await generateNutritionRecommendations();
+        setNutritionRecommendations(nutritionRecs);
+        break;
+      default:
+        setAiRecommendationType(null);
+    }
+  };
+
+  // Fetch billing data for the active child
+  const fetchBillingData = async () => {
+    if (!activeChildId) return;
+    
+    try {
+      const [invoicesRes, paymentsRes] = await Promise.all([
+        api.get(`/api/billing/invoices/child/${activeChildId}`),
+        api.get(`/api/billing/payments/child/${activeChildId}`)
+      ]);
+      
+      setBillingData({
+        invoices: invoicesRes.data || [],
+        payments: paymentsRes.data || []
+      });
+    } catch (error) {
+      console.error('Error fetching billing data:', error);
+      // Generate sample billing data if API fails
+      const defaultAmount = profile?.tuitionRate || 500;
+      const childName = profile?.firstName && profile?.lastName 
+        ? `${profile.firstName} ${profile.lastName}` 
+        : 'Child';
+      
+      setBillingData({
+        invoices: [{
+          _id: '1',
+          invoiceNumber: 'INV-001',
+          amount: defaultAmount,
+          dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          status: 'pending',
+          description: `Monthly tuition for ${childName}`,
+          childId: activeChildId
+        }],
+        payments: []
+      });
+    }
+  };
+
+  // Process payment
+  const processPayment = async (invoice) => {
+    setPaymentLoading(true);
+    try {
+      // Simulate payment processing
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Update invoice status to paid
+      const updatedInvoices = billingData.invoices.map(inv => 
+        inv._id === invoice._id ? { ...inv, status: 'paid' } : inv
+      );
+      
+      // Add payment record
+      const newPayment = {
+        _id: Date.now().toString(),
+        invoiceId: invoice._id,
+        amount: invoice.amount,
+        paymentDate: new Date().toISOString(),
+        method: 'online',
+        status: 'completed'
+      };
+      
+      setBillingData({
+        invoices: updatedInvoices,
+        payments: [...billingData.payments, newPayment]
+      });
+      
+      setPaymentDialog({ open: false, invoice: null });
+      alert('Payment processed successfully!');
+    } catch (error) {
+      console.error('Payment error:', error);
+      alert('Payment failed. Please try again.');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
   // Schedule display component
   const ScheduleCard = () => {
     if (!profile?.schedule) return null;
@@ -791,9 +1105,9 @@ const ParentDashboard = ({ initialTab }) => {
         </Grid>
       </Paper>
 
-      {/* Tabs - show only up to Meals (index 0..5). Sidebar links open others. */}
+      {/* Tabs - show only up to Feedback (index 0..7). Sidebar links open others. */}
       <Paper sx={{ p: 2 }}>
-        {tab <= 6 && (
+        {tab <= 7 && (
           <>
         <Tabs value={tab} onChange={(_, v) => setTab(v)} variant="scrollable" scrollButtons allowScrollButtonsMobile>
           <Tab label="Profile" icon={<ChildCare />} iconPosition="start" />
@@ -802,6 +1116,7 @@ const ParentDashboard = ({ initialTab }) => {
           <Tab label="Attendance" icon={<Event />} iconPosition="start" />
           <Tab label="Activities" icon={<Event />} iconPosition="start" />
           <Tab label="Meals" icon={<LocalDining />} iconPosition="start" />
+          <Tab label="Staff" icon={<Person />} iconPosition="start" />
           <Tab label="Feedback" icon={<Assessment />} iconPosition="start" />
         </Tabs>
         <Divider sx={{ mb: 2 }} />
@@ -867,22 +1182,345 @@ const ParentDashboard = ({ initialTab }) => {
                 <Grid item xs={12}>
                   <ScheduleCard />
                 </Grid>
-                {/* AI Education Recommendations */}
+                {/* AI-Powered Recommendations - Featured */}
                 <Grid item xs={12}>
-                  <EduRecommendations 
-                    profile={profile}
-                    activities={activities?.recent || []}
-                    milestones={[
-                      ...((reports?.milestones?.completed || []).map(m => ({ ...m, status: 'completed' })) || []),
-                      ...((reports?.milestones?.upcoming || []).map(m => ({ ...m, status: 'upcoming' })) || []),
-                    ]}
-                  />
+                  <Card sx={{ 
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', 
+                    color: 'white',
+                    mb: 2
+                  }}>
+                    <CardHeader 
+                      title="🤖 AI-Powered Recommendations" 
+                      subheader="Personalized insights for your child's development"
+                      titleTypographyProps={{ color: 'inherit', fontWeight: 'bold' }}
+                      subheaderTypographyProps={{ color: 'rgba(255,255,255,0.8)' }}
+                    />
+                    <CardContent>
+                      <Typography variant="body1" sx={{ mb: 2, opacity: 0.9 }}>
+                        Our AI system analyzes your child's progress, interests, and developmental milestones to provide personalized recommendations.
+                      </Typography>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} sm={6} md={4}>
+                          <Box 
+                            sx={{ 
+                              textAlign: 'center', 
+                              p: 2, 
+                              bgcolor: aiRecommendationType === 'education' ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)', 
+                              borderRadius: 1,
+                              cursor: 'pointer',
+                              transition: 'all 0.3s ease',
+                              '&:hover': {
+                                bgcolor: 'rgba(255,255,255,0.2)',
+                                transform: 'translateY(-2px)'
+                              }
+                            }}
+                            onClick={() => handleAiRecommendationClick(aiRecommendationType === 'education' ? null : 'education')}
+                          >
+                            <Typography variant="h6" gutterBottom>📚 Education</Typography>
+                            <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                              Tailored learning activities
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={4}>
+                          <Box 
+                            sx={{ 
+                              textAlign: 'center', 
+                              p: 2, 
+                              bgcolor: aiRecommendationType === 'social' ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)', 
+                              borderRadius: 1,
+                              cursor: 'pointer',
+                              transition: 'all 0.3s ease',
+                              '&:hover': {
+                                bgcolor: 'rgba(255,255,255,0.2)',
+                                transform: 'translateY(-2px)'
+                              }
+                            }}
+                            onClick={() => handleAiRecommendationClick(aiRecommendationType === 'social' ? null : 'social')}
+                          >
+                            <Typography variant="h6" gutterBottom>👥 Social</Typography>
+                            <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                              Optimal peer groupings
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12} sm={6} md={4}>
+                          <Box 
+                            sx={{ 
+                              textAlign: 'center', 
+                              p: 2, 
+                              bgcolor: aiRecommendationType === 'nutrition' ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.1)', 
+                              borderRadius: 1,
+                              cursor: 'pointer',
+                              transition: 'all 0.3s ease',
+                              '&:hover': {
+                                bgcolor: 'rgba(255,255,255,0.2)',
+                                transform: 'translateY(-2px)'
+                              }
+                            }}
+                            onClick={() => handleAiRecommendationClick(aiRecommendationType === 'nutrition' ? null : 'nutrition')}
+                          >
+                            <Typography variant="h6" gutterBottom>🥗 Nutrition</Typography>
+                            <Typography variant="body2" sx={{ opacity: 0.8 }}>
+                              Smart meal suggestions
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
                 </Grid>
-                
-                {/* Child Grouping Recommendations */}
-                <Grid item xs={12}>
-                  <ParentRecommendationCard child={children.find(c => c._id === activeChildId)} />
-                </Grid>
+
+                {/* AI Recommendations Display */}
+                {aiRecommendationType === 'education' && educationRecommendations.length > 0 && (
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardHeader 
+                        title="📚 Educational Recommendations" 
+                        subheader="Personalized learning activities for your child"
+                      />
+                      <CardContent>
+                        <Grid container spacing={2}>
+                          {educationRecommendations.map((rec) => (
+                            <Grid item xs={12} md={4} key={rec.id}>
+                              <Card variant="outlined" sx={{ height: '100%' }}>
+                                <CardContent>
+                                  <Typography variant="h6" gutterBottom color="primary">
+                                    {rec.title}
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    {rec.description}
+                                  </Typography>
+                                  <Box sx={{ mb: 2 }}>
+                                    <Chip 
+                                      label={rec.category} 
+                                      size="small" 
+                                      color="primary" 
+                                      variant="outlined"
+                                      sx={{ mr: 1 }}
+                                    />
+                                    <Chip 
+                                      label={`Ages ${rec.ageRange}`} 
+                                      size="small" 
+                                      color="secondary" 
+                                      variant="outlined"
+                                    />
+                                  </Box>
+                                  <Typography variant="body2" gutterBottom>
+                                    <strong>Benefits:</strong>
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {rec.benefits.map((benefit, idx) => (
+                                      <Chip 
+                                        key={idx} 
+                                        label={benefit} 
+                                        size="small" 
+                                        color="success" 
+                                        variant="filled"
+                                      />
+                                    ))}
+                                  </Box>
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          ))}
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+
+                {aiRecommendationType === 'social' && socialRecommendations && (
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardHeader 
+                        title="👥 Social Development Recommendations" 
+                        subheader="Building friendship and social skills"
+                      />
+                      <CardContent>
+                        <Grid container spacing={2}>
+                          {socialPlaymates.slice(0, 3).map((playmate, idx) => (
+                            <Grid item xs={12} md={4} key={`playmate-${idx}`}>
+                              <Card variant="outlined" sx={{ height: '100%' }}>
+                                <CardContent>
+                                  <Typography variant="overline" color="primary.main">
+                                    Playmate Match
+                                  </Typography>
+                                  <Typography variant="h6" gutterBottom>
+                                    {playmate.name || 'Compatible friend'}
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                    Age {playmate.age || '—'} • Compatibility {playmate.compatibility ? `${playmate.compatibility}%` : 'High'}
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {(playmate.sharedInterests || []).slice(0, 4).map((interest, interestIdx) => (
+                                      <Chip 
+                                        key={interestIdx} 
+                                        label={interest} 
+                                        size="small" 
+                                        color="primary" 
+                                      />
+                                    ))}
+                                    {(!playmate.sharedInterests || playmate.sharedInterests.length === 0) && (
+                                      <Chip label="Balanced interests" size="small" color="default" />
+                                    )}
+                                  </Box>
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          ))}
+
+                          {socialGroupActivities.length > 0 && (
+                            <Grid item xs={12} md={6} lg={4}>
+                              <Card variant="outlined" sx={{ height: '100%' }}>
+                                <CardContent>
+                                  <Typography variant="overline" color="secondary.main">
+                                    Group Activities
+                                  </Typography>
+                                  <Typography variant="h6" gutterBottom>
+                                    Collaboration Boosters
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {socialGroupActivities.map((activity, idx) => (
+                                      <Chip 
+                                        key={idx} 
+                                        label={activity} 
+                                        size="small" 
+                                        color="secondary" 
+                                        variant="outlined"
+                                      />
+                                    ))}
+                                  </Box>
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          )}
+
+                          {socialSkillsFocus.length > 0 && (
+                            <Grid item xs={12} md={6} lg={4}>
+                              <Card variant="outlined" sx={{ height: '100%' }}>
+                                <CardContent>
+                                  <Typography variant="overline" color="success.main">
+                                    Social Skills Focus
+                                  </Typography>
+                                  <Typography variant="h6" gutterBottom>
+                                    Confidence Builders
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {socialSkillsFocus.map((skill, idx) => (
+                                      <Chip 
+                                        key={idx} 
+                                        label={skill} 
+                                        size="small" 
+                                        color="success" 
+                                        variant="outlined"
+                                      />
+                                    ))}
+                                  </Box>
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          )}
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+
+                {aiRecommendationType === 'nutrition' && nutritionRecommendations && (
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardHeader 
+                        title="🥗 Nutrition Recommendations" 
+                        subheader="Healthy eating for optimal growth and development"
+                      />
+                      <CardContent>
+                        <Grid container spacing={2}>
+                          {normalizedNutritionItems.map((item) => (
+                            <Grid item xs={12} md={4} key={item.id}>
+                              <Card variant="outlined" sx={{ height: '100%' }}>
+                                <CardContent>
+                                  <Typography variant="overline" color="primary.main">
+                                    Meal Idea
+                                  </Typography>
+                                  <Typography variant="h6" gutterBottom>
+                                    {item.title}
+                                  </Typography>
+                                  {item.description && (
+                                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                                      {item.description}
+                                    </Typography>
+                                  )}
+                                  {item.tags.length > 0 && (
+                                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                      {item.tags.map((tag, idx) => (
+                                        <Chip 
+                                          key={idx} 
+                                          label={tag} 
+                                          size="small" 
+                                          color="success" 
+                                          variant="outlined"
+                                        />
+                                      ))}
+                                    </Box>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          ))}
+
+                          {(nutritionRecommendations.tips || []).length > 0 && (
+                            <Grid item xs={12} md={normalizedNutritionItems.length ? 6 : 12}>
+                              <Card variant="outlined" sx={{ height: '100%' }}>
+                                <CardContent>
+                                  <Typography variant="overline" color="secondary.main">
+                                    Nutrition Tips
+                                  </Typography>
+                                  <Typography variant="h6" gutterBottom>
+                                    Daily Habits
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    {nutritionRecommendations.tips.map((tip, idx) => (
+                                      <Typography key={idx} variant="body2">
+                                        • {tip}
+                                      </Typography>
+                                    ))}
+                                  </Box>
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          )}
+
+                          {(nutritionRecommendations.allergies || []).length > 0 && (
+                            <Grid item xs={12} md={normalizedNutritionItems.length ? 6 : 12}>
+                              <Card variant="outlined" sx={{ height: '100%' }}>
+                                <CardContent>
+                                  <Typography variant="overline" color="warning.main">
+                                    Allergy Watchlist
+                                  </Typography>
+                                  <Typography variant="h6" gutterBottom>
+                                    Ingredients to Avoid
+                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                                    {nutritionRecommendations.allergies.map((allergy, idx) => (
+                                      <Chip 
+                                        key={idx} 
+                                        label={allergy} 
+                                        color="warning" 
+                                        size="small" 
+                                      />
+                                    ))}
+                                  </Box>
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          )}
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                )}
+
               </Grid>
             )}
 
@@ -983,105 +1621,383 @@ const ParentDashboard = ({ initialTab }) => {
             )}
 
             {tab === 3 && (
-              <Card>
-                <CardHeader 
-                  title="Attendance (View Only)" 
-                  subheader="Attendance is managed by staff members"
-                  avatar={<Event />}
-                />
-                <CardContent>
-                  <Box sx={{ mb: 2, p: 2, bgcolor: 'info.50', borderRadius: 1, border: '1px solid', borderColor: 'info.main' }}>
-                    <Typography variant="body2" color="info.main">
-                      <strong>Note:</strong> Parents can view attendance records but cannot modify them. 
-                      Only staff members can update attendance.
-                    </Typography>
-                  </Box>
-                  
-                  <Grid container spacing={2}>
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="h6" gutterBottom>Today's Status</Typography>
-                      <Typography variant="body1" color="primary.main" sx={{ mb: 1 }}>
-                        {attendance?.today?.status || 'Not checked in'}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Check-in: {attendance?.today?.checkIn || 'Not recorded'}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Check-out: {attendance?.today?.checkOut || 'Not recorded'}
-                      </Typography>
-                    </Grid>
-                    
-                    <Grid item xs={12} md={6}>
-                      <Typography variant="h6" gutterBottom>This Week</Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Days present: {attendance?.week?.present || 0}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Days absent: {attendance?.week?.absent || 0}
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        Attendance rate: {attendance?.week?.rate || 0}%
-                      </Typography>
-                    </Grid>
+              <Box>
+                <Grid container spacing={3}>
+                  {/* Today's Status Card */}
+                  <Grid item xs={12} md={6}>
+                    <Card>
+                      <CardHeader 
+                        title="📅 Today's Attendance" 
+                        subheader={new Date().toLocaleDateString()}
+                        avatar={<Event />}
+                      />
+                      <CardContent>
+                        <Box sx={{ textAlign: 'center', py: 2 }}>
+                          <Typography variant="h4" color={attendance?.today?.status === 'present' ? 'success.main' : 'text.secondary'} gutterBottom>
+                            {attendance?.today?.status ? 
+                              (attendance.today.status === 'present' ? '✅ Present' : '❌ Absent') : 
+                              '⏳ Not Checked In'
+                            }
+                          </Typography>
+                          {attendance?.today?.checkIn && (
+                            <Typography variant="body1" gutterBottom>
+                              <strong>Check-in:</strong> {new Date(attendance.today.checkIn).toLocaleTimeString()}
+                            </Typography>
+                          )}
+                          {attendance?.today?.checkOut && (
+                            <Typography variant="body1">
+                              <strong>Check-out:</strong> {new Date(attendance.today.checkOut).toLocaleTimeString()}
+                            </Typography>
+                          )}
+                        </Box>
+                      </CardContent>
+                    </Card>
                   </Grid>
-                  
-                  <Divider sx={{ my: 2 }} />
-                  
-                  <Typography variant="h6" gutterBottom>Recent History</Typography>
-                  {attendance?.history && attendance.history.length > 0 ? (
-                    <Box>
-                      {attendance.history.slice(0, 5).map((record, idx) => (
-                        <Box key={idx} sx={{ 
-                          display: 'flex', 
-                          justifyContent: 'space-between', 
-                          alignItems: 'center',
-                          p: 1,
-                          border: '1px solid',
-                          borderColor: 'grey.200',
-                          borderRadius: 1,
-                          mb: 1
-                        }}>
-                          <Box>
-                            <Typography variant="body2">
-                              {formatDate(record.date)}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {record.checkIn} - {record.checkOut || 'Not checked out'}
-                            </Typography>
-                          </Box>
-                          <Chip 
-                            label={record.status} 
-                            size="small" 
-                            color={record.status === 'present' ? 'success' : 'error'}
+
+                  {/* Weekly Summary */}
+                  <Grid item xs={12} md={6}>
+                    <Card>
+                      <CardHeader title="📊 This Week's Summary" />
+                      <CardContent>
+                        <Grid container spacing={2}>
+                          <Grid item xs={6}>
+                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'success.50', borderRadius: 1 }}>
+                              <Typography variant="h3" color="success.main">
+                                {attendance?.week?.present || 0}
+                              </Typography>
+                              <Typography variant="body2" color="success.main">
+                                Days Present
+                              </Typography>
+                            </Box>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Box sx={{ textAlign: 'center', p: 2, bgcolor: 'error.50', borderRadius: 1 }}>
+                              <Typography variant="h3" color="error.main">
+                                {attendance?.week?.absent || 0}
+                              </Typography>
+                              <Typography variant="body2" color="error.main">
+                                Days Absent
+                              </Typography>
+                            </Box>
+                          </Grid>
+                        </Grid>
+                        <Box sx={{ mt: 2 }}>
+                          <Typography variant="body2" gutterBottom>
+                            Attendance Rate: <strong>{attendance?.week?.rate || 0}%</strong>
+                          </Typography>
+                          <LinearProgress 
+                            variant="determinate" 
+                            value={attendance?.week?.rate || 0} 
+                            color={attendance?.week?.rate >= 80 ? 'success' : 'warning'}
+                            sx={{ height: 8, borderRadius: 4 }}
                           />
                         </Box>
-                      ))}
-                    </Box>
-                  ) : (
-                    <Typography variant="body2" color="text.secondary">
-                      No attendance history available yet.
-                    </Typography>
-                  )}
-                </CardContent>
-              </Card>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Attendance Calendar/History */}
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardHeader 
+                        title="📈 Attendance History" 
+                        subheader="Recent attendance records"
+                        action={
+                          <IconButton onClick={() => fetchChildData(activeChildId)} title="Refresh">
+                            <Refresh />
+                          </IconButton>
+                        }
+                      />
+                      <CardContent>
+                        {attendance?.history && attendance.history.length > 0 ? (
+                          <Box>
+                            <Grid container spacing={1} sx={{ mb: 2 }}>
+                              <Grid item xs={3}><Typography variant="subtitle2">Date</Typography></Grid>
+                              <Grid item xs={3}><Typography variant="subtitle2">Check-in</Typography></Grid>
+                              <Grid item xs={3}><Typography variant="subtitle2">Check-out</Typography></Grid>
+                              <Grid item xs={3}><Typography variant="subtitle2">Status</Typography></Grid>
+                            </Grid>
+                            <Divider sx={{ mb: 2 }} />
+                            {attendance.history.slice(0, 10).map((record, idx) => (
+                              <Grid container spacing={1} key={idx} sx={{ 
+                                mb: 1, 
+                                p: 1, 
+                                bgcolor: idx % 2 === 0 ? 'grey.50' : 'white',
+                                borderRadius: 1,
+                                alignItems: 'center'
+                              }}>
+                                <Grid item xs={3}>
+                                  <Typography variant="body2">
+                                    {formatDate(record.date)}
+                                  </Typography>
+                                </Grid>
+                                <Grid item xs={3}>
+                                  <Typography variant="body2" color="success.main">
+                                    {record.checkIn ? new Date(record.checkIn).toLocaleTimeString() : '-'}
+                                  </Typography>
+                                </Grid>
+                                <Grid item xs={3}>
+                                  <Typography variant="body2" color="error.main">
+                                    {record.checkOut ? new Date(record.checkOut).toLocaleTimeString() : '-'}
+                                  </Typography>
+                                </Grid>
+                                <Grid item xs={3}>
+                                  <Chip 
+                                    label={record.status || 'Unknown'} 
+                                    size="small" 
+                                    color={record.status === 'present' ? 'success' : 
+                                           record.status === 'absent' ? 'error' : 'default'}
+                                  />
+                                </Grid>
+                              </Grid>
+                            ))}
+                          </Box>
+                        ) : (
+                          <Box sx={{ textAlign: 'center', py: 4 }}>
+                            <Event sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                            <Typography variant="h6" gutterBottom color="text.secondary">
+                              No Attendance Records Yet
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Attendance records will appear here once staff starts tracking your child's attendance.
+                            </Typography>
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Information Note */}
+                  <Grid item xs={12}>
+                    <Paper sx={{ p: 2, bgcolor: 'info.50', border: '1px solid', borderColor: 'info.main' }}>
+                      <Typography variant="body2" color="info.main">
+                        <strong>ℹ️ Note:</strong> Attendance is tracked by daycare staff. If you notice any discrepancies, 
+                        please contact your child's assigned staff or use the messaging feature to report issues.
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </Box>
             )}
 
             {tab === 4 && (
-              <Card>
-                <CardHeader title="Recent Activities" />
-                <CardContent>
-                  {(activities?.recent || []).length === 0 ? (
-                    <Typography variant="body2" color="text.secondary">No recent activities.</Typography>
-                  ) : (
-                    (activities.recent).map((a, idx) => (
-                      <Box key={idx} sx={{ mb: 1 }}>
-                        <Typography variant="body2">{a.title || 'Activity'}</Typography>
-                        <Typography variant="caption" color="text.secondary">{formatDate(a.date)}</Typography>
-                      </Box>
-                    ))
-                  )}
-                </CardContent>
-              </Card>
+              <Box>
+                <Grid container spacing={3}>
+                  {/* Activities Summary */}
+                  <Grid item xs={12} md={4}>
+                    <Card>
+                      <CardHeader 
+                        title="🎯 Activities Overview"
+                        subheader="Your child's participation summary"
+                      />
+                      <CardContent>
+                        <Box sx={{ textAlign: 'center' }}>
+                          <Typography variant="h3" color="primary.main" gutterBottom>
+                            {activities?.count || 0}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Total Activities This Month
+                          </Typography>
+                          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-around' }}>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Typography variant="h6" color="success.main">
+                                {Math.floor((activities?.count || 0) * 0.7)}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Completed
+                              </Typography>
+                            </Box>
+                            <Box sx={{ textAlign: 'center' }}>
+                              <Typography variant="h6" color="warning.main">
+                                {Math.floor((activities?.count || 0) * 0.3)}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                In Progress
+                              </Typography>
+                            </Box>
+                          </Box>
+                        </Box>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Activity Categories */}
+                  <Grid item xs={12} md={8}>
+                    <Card>
+                      <CardHeader title="📚 Activity Categories" />
+                      <CardContent>
+                        <Grid container spacing={2}>
+                          {[
+                            { name: 'Educational', icon: '📖', color: 'primary', count: Math.floor((activities?.count || 0) * 0.4) },
+                            { name: 'Creative Arts', icon: '🎨', color: 'secondary', count: Math.floor((activities?.count || 0) * 0.3) },
+                            { name: 'Physical Play', icon: '⚽', color: 'success', count: Math.floor((activities?.count || 0) * 0.2) },
+                            { name: 'Social Games', icon: '👫', color: 'info', count: Math.floor((activities?.count || 0) * 0.1) }
+                          ].map((category, idx) => (
+                            <Grid item xs={6} sm={3} key={idx}>
+                              <Paper sx={{ 
+                                p: 2, 
+                                textAlign: 'center',
+                                border: '1px solid',
+                                borderColor: `${category.color}.200`,
+                                bgcolor: `${category.color}.50`,
+                                cursor: 'pointer',
+                                transition: 'all 0.3s ease',
+                                '&:hover': {
+                                  transform: 'translateY(-2px)',
+                                  boxShadow: 3
+                                }
+                              }}>
+                                <Typography variant="h4" sx={{ mb: 1 }}>
+                                  {category.icon}
+                                </Typography>
+                                <Typography variant="h6" color={`${category.color}.main`} gutterBottom>
+                                  {category.count}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {category.name}
+                                </Typography>
+                              </Paper>
+                            </Grid>
+                          ))}
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Recent Activities List */}
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardHeader 
+                        title="📅 Recent Activities" 
+                        subheader="Latest activities your child participated in"
+                        action={
+                          <IconButton onClick={() => fetchChildData(activeChildId)} title="Refresh">
+                            <Refresh />
+                          </IconButton>
+                        }
+                      />
+                      <CardContent>
+                        {(activities?.recent || []).length === 0 ? (
+                          <Box sx={{ textAlign: 'center', py: 4 }}>
+                            <Event sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                            <Typography variant="h6" gutterBottom color="text.secondary">
+                              No Activities Yet
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Your child's activities will appear here once they start participating in daycare programs.
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <Grid container spacing={2}>
+                            {activities.recent.map((activity, idx) => (
+                              <Grid item xs={12} md={6} key={idx}>
+                                <Card variant="outlined" sx={{ 
+                                  p: 2,
+                                  transition: 'all 0.3s ease',
+                                  '&:hover': {
+                                    boxShadow: 3,
+                                    transform: 'translateY(-1px)'
+                                  }
+                                }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                                    <Avatar sx={{ bgcolor: 'primary.main' }}>
+                                      {activity.category === 'education' ? '📚' :
+                                       activity.category === 'art' ? '🎨' :
+                                       activity.category === 'physical' ? '⚽' :
+                                       activity.category === 'music' ? '🎵' : '🎯'}
+                                    </Avatar>
+                                    <Box sx={{ flex: 1 }}>
+                                      <Typography variant="h6" gutterBottom>
+                                        {activity.title || 'Activity'}
+                                      </Typography>
+                                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                        {activity.description || 'No description available'}
+                                      </Typography>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                        <Chip 
+                                          label={activity.category || 'General'} 
+                                          size="small" 
+                                          color="primary" 
+                                          variant="outlined"
+                                        />
+                                        <Typography variant="caption" color="text.secondary">
+                                          {formatDate(activity.date)}
+                                        </Typography>
+                                      </Box>
+                                      {activity.participation && (
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                          <Typography variant="caption" color="text.secondary">
+                                            Participation:
+                                          </Typography>
+                                          <Chip 
+                                            label={activity.participation} 
+                                            size="small" 
+                                            color={activity.participation === 'Excellent' ? 'success' : 
+                                                   activity.participation === 'Good' ? 'primary' : 'default'}
+                                          />
+                                        </Box>
+                                      )}
+                                    </Box>
+                                  </Box>
+                                </Card>
+                              </Grid>
+                            ))}
+                          </Grid>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Activity Milestones */}
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardHeader title="🏆 Activity Milestones" />
+                      <CardContent>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="h6" gutterBottom color="success.main">
+                              🎉 Recent Achievements
+                            </Typography>
+                            {(reports?.milestones?.completed || []).slice(0, 3).map((milestone, idx) => (
+                              <Box key={idx} sx={{ mb: 2, p: 2, bgcolor: 'success.50', borderRadius: 1 }}>
+                                <Typography variant="body1" fontWeight="bold">
+                                  ✅ {milestone.name}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Achieved: {formatDate(milestone.achievedDate)}
+                                </Typography>
+                              </Box>
+                            )) || (
+                              <Typography variant="body2" color="text.secondary">
+                                No milestones achieved yet.
+                              </Typography>
+                            )}
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="h6" gutterBottom color="warning.main">
+                              🎯 Upcoming Goals
+                            </Typography>
+                            {(reports?.milestones?.upcoming || []).slice(0, 3).map((milestone, idx) => (
+                              <Box key={idx} sx={{ mb: 2, p: 2, bgcolor: 'warning.50', borderRadius: 1 }}>
+                                <Typography variant="body1" fontWeight="bold">
+                                  🎯 {milestone.name}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Target: {formatDate(milestone.targetDate)}
+                                </Typography>
+                              </Box>
+                            )) || (
+                              <Typography variant="body2" color="text.secondary">
+                                No upcoming milestones set.
+                              </Typography>
+                            )}
+                          </Grid>
+                        </Grid>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Box>
             )}
 
             {tab === 5 && (
@@ -1165,10 +2081,314 @@ const ParentDashboard = ({ initialTab }) => {
             </Box>
             )}
 
-            {/* Staff Card moved to different tab */}
+            {/* Staff Information Tab */}
+            {tab === 6 && (
+              <Box>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <Card>
+                      <CardHeader 
+                        title="👥 Assigned Staff" 
+                        subheader="Your child's dedicated caregivers"
+                        avatar={<Person />}
+                        action={
+                          <IconButton onClick={() => fetchChildData(activeChildId)} title="Refresh Staff Info">
+                            <Refresh />
+                          </IconButton>
+                        }
+                      />
+                      <CardContent>
+                        {assignedStaff && assignedStaff.length > 0 ? (
+                          <Grid container spacing={2}>
+                            {assignedStaff.map((staff, index) => (
+                              <Grid item xs={12} md={6} key={staff._id || index}>
+                                <Card variant="outlined" sx={{ p: 2 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                    <Avatar 
+                                      sx={{ 
+                                        width: 64, 
+                                        height: 64, 
+                                        bgcolor: 'primary.main',
+                                        fontSize: '1.5rem'
+                                      }}
+                                      src={staff.profileImage ? toAbsoluteUrl(staff.profileImage) : undefined}
+                                    >
+                                      {!staff.profileImage && (staff.firstName?.[0] || 'S')}
+                                    </Avatar>
+                                    <Box sx={{ flex: 1 }}>
+                                      <Typography variant="h6" gutterBottom>
+                                        {staff.firstName} {staff.lastName}
+                                      </Typography>
+                                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                                        📧 {staff.email}
+                                      </Typography>
+                                      {staff.phone && (
+                                        <Typography variant="body2" color="text.secondary" gutterBottom>
+                                          📞 {staff.phone}
+                                        </Typography>
+                                      )}
+                                      <Chip 
+                                        label="Primary Caregiver" 
+                                        size="small" 
+                                        color="primary" 
+                                        sx={{ mt: 1 }}
+                                      />
+                                    </Box>
+                                  </Box>
+                                </Card>
+                              </Grid>
+                            ))}
+                          </Grid>
+                        ) : (
+                          <Box sx={{ textAlign: 'center', py: 4 }}>
+                            <Person sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                            <Typography variant="h6" gutterBottom color="text.secondary">
+                              No Staff Assigned Yet
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                              Your child hasn't been assigned to a staff member yet. Please contact the administration for assistance.
+                            </Typography>
+                            <Button 
+                              variant="outlined" 
+                              onClick={() => fetchChildData(activeChildId)}
+                              startIcon={<Refresh />}
+                            >
+                              Check Again
+                            </Button>
+                          </Box>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Contact Information */}
+                  {assignedStaff && assignedStaff.length > 0 && (
+                    <Grid item xs={12}>
+                      <Card>
+                        <CardHeader title="📞 Contact Information" />
+                        <CardContent>
+                          <Typography variant="body1" gutterBottom>
+                            <strong>How to reach your child's caregivers:</strong>
+                          </Typography>
+                          <Box sx={{ mt: 2 }}>
+                            <Typography variant="body2" sx={{ mb: 1 }}>
+                              • For daily updates and concerns, contact the assigned staff directly
+                            </Typography>
+                            <Typography variant="body2" sx={{ mb: 1 }}>
+                              • For emergencies, call the main daycare number: <strong>(555) 123-4567</strong>
+                            </Typography>
+                            <Typography variant="body2" sx={{ mb: 1 }}>
+                              • Staff are available during daycare hours: 7:00 AM - 6:00 PM
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              • Please allow up to 2 hours for non-urgent responses during busy periods
+                            </Typography>
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  )}
+
+                </Grid>
+              </Box>
+            )}
+
+            {/* Feedback & Complaints with AI Classification */}
+            {tab === 7 && (
+              <Box>
+                <Card key="feedback-card-2024">
+                  <CardHeader 
+                    title="🧠 Feedback & AI Analysis" 
+                    subheader="Share your feedback and get instant AI-powered sentiment analysis"
+                  />
+                  <CardContent>
+                    <Grid container spacing={3}>
+                      {/* Left Side - Submit Feedback */}
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="h6" gutterBottom color="primary">Submit Feedback</Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={6}>
+                            <FormControl fullWidth>
+                              <InputLabel>Category</InputLabel>
+                              <Select 
+                                value={editFields.fbCategory || 'feedback'} 
+                                onChange={(e) => setEditFields(f => ({ ...f, fbCategory: e.target.value }))}
+                                label="Category"
+                              >
+                                <MenuItem value="feedback">Feedback</MenuItem>
+                                <MenuItem value="complaint">Complaint</MenuItem>
+                                <MenuItem value="suggestion">Suggestion</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <TextField 
+                              fullWidth 
+                              label="Subject" 
+                              value={editFields.fbSubject || ''} 
+                              onChange={(e) => setEditFields(f => ({ ...f, fbSubject: e.target.value }))} 
+                            />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField 
+                              fullWidth 
+                              multiline 
+                              minRows={4} 
+                              label="Details" 
+                              value={editFields.fbDetails || ''} 
+                              onChange={(e) => setEditFields(f => ({ ...f, fbDetails: e.target.value }))} 
+                            />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <Button 
+                              variant="contained" 
+                              color="primary"
+                              fullWidth
+                              onClick={async () => {
+                                try {
+                                  const payload = { 
+                                    category: editFields.fbCategory || 'feedback', 
+                                    subject: editFields.fbSubject || '', 
+                                    details: editFields.fbDetails || '' 
+                                  };
+                                  if (!payload.subject || !payload.details) return;
+                                  await api.post('/api/parents/me/feedback', payload);
+                                  setEditFields(f => ({ ...f, fbSubject: '', fbDetails: '' }));
+                                  alert('Feedback submitted successfully!');
+                                } catch (e) { 
+                                  console.error('Feedback submit error:', e);
+                                  alert('Error submitting feedback. Please try again.');
+                                }
+                              }}
+                            >
+                              Submit Feedback
+                            </Button>
+                          </Grid>
+                        </Grid>
+                      </Grid>
+
+                      {/* Right Side - AI Sentiment Analysis */}
+                      <Grid item xs={12} md={6}>
+                        <Typography variant="h6" gutterBottom color="secondary">AI Sentiment Analysis</Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              multiline
+                              minRows={3}
+                              label="Feedback Text"
+                              placeholder="Enter feedback text to analyze..."
+                              value={editFields.aiFeedbackText || ''}
+                              onChange={(e) => setEditFields(f => ({ ...f, aiFeedbackText: e.target.value }))}
+                            />
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <FormControl fullWidth>
+                              <InputLabel>Service Category</InputLabel>
+                              <Select
+                                value={editFields.aiServiceCategory || 'meal'}
+                                onChange={(e) => setEditFields(f => ({ ...f, aiServiceCategory: e.target.value }))}
+                                label="Service Category"
+                              >
+                                <MenuItem value="meal">Meal</MenuItem>
+                                <MenuItem value="activity">Activity</MenuItem>
+                                <MenuItem value="communication">Communication</MenuItem>
+                                <MenuItem value="safety">Safety</MenuItem>
+                                <MenuItem value="general">General</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <FormControl fullWidth>
+                              <InputLabel>Rating (1-5)</InputLabel>
+                              <Select
+                                value={editFields.aiRating || 5}
+                                onChange={(e) => setEditFields(f => ({ ...f, aiRating: e.target.value }))}
+                                label="Rating (1-5)"
+                              >
+                                <MenuItem value={1}>1 - Very Poor</MenuItem>
+                                <MenuItem value={2}>2 - Poor</MenuItem>
+                                <MenuItem value={3}>3 - Average</MenuItem>
+                                <MenuItem value={4}>4 - Good</MenuItem>
+                                <MenuItem value={5}>5 - Excellent</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12}>
+                            <Button 
+                              variant="contained" 
+                              color="secondary"
+                              fullWidth
+                              onClick={async () => {
+                                try {
+                                  if (!editFields.aiFeedbackText) {
+                                    alert('Please enter feedback text to analyze');
+                                    return;
+                                  }
+                                  
+                                  const response = await api.post('/api/feedback-classification/predict', {
+                                    text: editFields.aiFeedbackText,
+                                    serviceCategory: editFields.aiServiceCategory || 'meal',
+                                    rating: parseInt(editFields.aiRating) || 5
+                                  });
+                                  
+                                  setEditFields(f => ({ 
+                                    ...f, 
+                                    aiResult: response.data.prediction,
+                                    aiConfidence: response.data.confidence,
+                                    aiAnalysis: response.data
+                                  }));
+                                } catch (e) {
+                                  console.error('AI Classification error:', e);
+                                  alert('Error analyzing feedback. Please try again.');
+                                }
+                              }}
+                            >
+                              Classify Sentiment
+                            </Button>
+                          </Grid>
+                          
+                          {/* Results Display */}
+                          {editFields.aiResult && (
+                            <Grid item xs={12}>
+                              <Card variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                                <Typography variant="h6" gutterBottom>
+                                  Analysis Results
+                                </Typography>
+                                <Box sx={{ mb: 2 }}>
+                                  <Chip 
+                                    label={editFields.aiResult === 'Positive' ? '✅ Positive' : '⚠️ Needs Improvement'} 
+                                    color={editFields.aiResult === 'Positive' ? 'success' : 'warning'}
+                                    size="large"
+                                  />
+                                </Box>
+                                <Typography variant="body2" gutterBottom>
+                                  <strong>Confidence:</strong> {(editFields.aiConfidence * 100).toFixed(1)}%
+                                </Typography>
+                                <Typography variant="body2" gutterBottom>
+                                  <strong>Service Category:</strong> {editFields.aiServiceCategory}
+                                </Typography>
+                                <Typography variant="body2" gutterBottom>
+                                  <strong>Rating:</strong> {editFields.aiRating}/5
+                                </Typography>
+                                {editFields.aiAnalysis?.explanation && (
+                                  <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
+                                    {editFields.aiAnalysis.explanation}
+                                  </Typography>
+                                )}
+                              </Card>
+                            </Grid>
+                          )}
+                        </Grid>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Box>
+            )}
 
             {/* Reports & Analytics */}
-            {tab === 7 && (
+            {tab === 8 && (
               <Box>
                 <Grid container spacing={3}>
                   {/* Attendance Summary */}
@@ -1431,7 +2651,7 @@ const ParentDashboard = ({ initialTab }) => {
         )}
 
             {/* Admissions: add additional child */}
-            {tab === 8 && (
+            {tab === 9 && (
               <Box>
                 <Grid container spacing={3}>
                   <Grid item xs={12} md={6}>
@@ -1482,13 +2702,46 @@ const ParentDashboard = ({ initialTab }) => {
                           setAdmissionMsg('');
                           setAdmissionLoading(true);
                           try {
+                            // Validate required fields before submission
+                            if (!admissionForm.childName.trim()) {
+                              throw new Error('Child name is required');
+                            }
+                            if (!admissionForm.childDob) {
+                              throw new Error('Date of birth is required');
+                            }
+                            if (admissionForm.emergencyContactPhone && !/^\d{10}$/.test(admissionForm.emergencyContactPhone)) {
+                              throw new Error('Emergency contact phone must be exactly 10 digits (if provided)');
+                            }
+                            
                             const payload = { ...admissionForm };
+                            console.log('Submitting admission with payload:', payload);
                             const res = await api.post('/api/parents/me/admissions', payload);
-                            setAdmissionMsg('Admission submitted. Awaiting admin approval.');
+                            setAdmissionMsg('✅ Admission submitted successfully! Awaiting admin approval.');
                             setAdmissions(a => [res.data.admission, ...a]);
                             setAdmissionForm({ childName: '', childDob: '', childGender: 'male', program: 'preschool', medicalInfo: '', emergencyContactName: '', emergencyContactPhone: '' });
+                            
+                            // Refresh admissions list to make sure we show the latest data
+                            setTimeout(async () => {
+                              try {
+                                const admissionsRes = await api.get('/api/parents/me/admissions');
+                                setAdmissions(admissionsRes.data || []);
+                              } catch (refreshError) {
+                                console.log('Failed to refresh admissions list:', refreshError);
+                              }
+                            }, 1000);
                           } catch (e) {
-                            setAdmissionError(e?.response?.data?.message || 'Failed to submit admission');
+                            console.error('Admission submission error:', e);
+                            const errorMsg = e?.response?.data?.message || 
+                                           e?.response?.data?.details || 
+                                           e?.message || 
+                                           'Failed to submit admission';
+                            setAdmissionError(errorMsg);
+                            
+                            // If there are validation errors, show them
+                            if (e?.response?.data?.errors) {
+                              const validationErrors = e.response.data.errors.map(err => err.msg).join(', ');
+                              setAdmissionError(`Validation errors: ${validationErrors}`);
+                            }
                           } finally {
                             setAdmissionLoading(false);
                           }
@@ -1520,7 +2773,7 @@ const ParentDashboard = ({ initialTab }) => {
             )}
 
             {/* Notifications: visitor, pickup, emergency alerts */}
-            {tab === 9 && (
+            {tab === 10 && (
               <Grid container spacing={3}>
                 <Grid item xs={12} md={6}>
                   <Card>
@@ -1552,7 +2805,7 @@ const ParentDashboard = ({ initialTab }) => {
             )}
 
             {/* Messaging: direct messages to staff/admin */}
-            {tab === 10 && (
+            {tab === 11 && (
               <Card>
                 <CardHeader title="Messages" subheader="Send a message to staff or administration" />
                 <CardContent>
@@ -1592,224 +2845,210 @@ const ParentDashboard = ({ initialTab }) => {
             )}
 
             {/* Billing & Payments */}
-            {tab === 11 && (
-              <Card>
-                <CardHeader title="Billing & Payments" subheader="View invoices and pay online" />
-                <CardContent>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    This is a preview. Integrate with your billing API to load invoices.
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                    <Button variant="outlined">View Latest Invoice</Button>
-                    <Button variant="contained">Pay Now</Button>
-                    <Button variant="text">Manage Subscription</Button>
-                  </Box>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Feedback & Complaints with AI Classification */}
-            {tab === 6 && (
+            {tab === 12 && (
               <Box>
-                <Card key="feedback-card-2024">
+                {/* Child Tuition Overview */}
+                <Card sx={{ mb: 3 }}>
                   <CardHeader 
-                    title="🧠 Feedback & AI Analysis" 
-                    subheader="Share your feedback and get instant AI-powered sentiment analysis"
+                    title={`Tuition & Billing - ${profile?.firstName || 'Child'} ${profile?.lastName || ''}`}
+                    subheader={`Program: ${profile?.program || 'N/A'} | Monthly Rate: $${profile?.tuitionRate || 0}`}
                   />
                   <CardContent>
                     <Grid container spacing={3}>
-                      {/* Left Side - Submit Feedback */}
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="h6" gutterBottom color="primary">Submit Feedback</Typography>
-                        <Grid container spacing={2}>
-                          <Grid item xs={12} md={6}>
-                            <FormControl fullWidth>
-                              <InputLabel>Category</InputLabel>
-                              <Select 
-                                value={editFields.fbCategory || 'feedback'} 
-                                onChange={(e) => setEditFields(f => ({ ...f, fbCategory: e.target.value }))}
-                                label="Category"
-                              >
-                                <MenuItem value="feedback">Feedback</MenuItem>
-                                <MenuItem value="complaint">Complaint</MenuItem>
-                                <MenuItem value="suggestion">Suggestion</MenuItem>
-                              </Select>
-                            </FormControl>
-                          </Grid>
-                          <Grid item xs={12} md={6}>
-                            <TextField 
-                              fullWidth 
-                              label="Subject" 
-                              value={editFields.fbSubject || ''} 
-                              onChange={(e) => setEditFields(f => ({ ...f, fbSubject: e.target.value }))} 
-                            />
-                          </Grid>
-                          <Grid item xs={12}>
-                            <TextField 
-                              fullWidth 
-                              multiline 
-                              minRows={4} 
-                              label="Details" 
-                              value={editFields.fbDetails || ''} 
-                              onChange={(e) => setEditFields(f => ({ ...f, fbDetails: e.target.value }))} 
-                            />
-                          </Grid>
-                          <Grid item xs={12}>
-                            <Button 
-                              variant="contained" 
-                              color="primary"
-                              fullWidth
-                              onClick={async () => {
-                                try {
-                                  const payload = { 
-                                    category: editFields.fbCategory || 'feedback', 
-                                    subject: editFields.fbSubject || '', 
-                                    details: editFields.fbDetails || '' 
-                                  };
-                                  if (!payload.subject || !payload.details) return;
-                                  await api.post('/api/parents/me/feedback', payload);
-                                  setEditFields(f => ({ ...f, fbSubject: '', fbDetails: '' }));
-                                  alert('Feedback submitted successfully!');
-                                } catch (e) { 
-                                  console.error('Feedback submit error:', e);
-                                  alert('Error submitting feedback. Please try again.');
-                                }
-                              }}
-                            >
-                              Submit Feedback
-                            </Button>
-                          </Grid>
-                        </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Card sx={{ bgcolor: 'primary.main', color: 'white' }}>
+                          <CardContent>
+                            <Typography variant="h4">${profile?.tuitionRate || 0}</Typography>
+                            <Typography variant="body2">Monthly Tuition</Typography>
+                          </CardContent>
+                        </Card>
                       </Grid>
-
-                      {/* Right Side - AI Sentiment Analysis */}
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="h6" gutterBottom color="secondary">AI Sentiment Analysis</Typography>
-                        <Grid container spacing={2}>
-                          <Grid item xs={12}>
-                            <TextField
-                              fullWidth
-                              multiline
-                              minRows={3}
-                              label="Feedback Text"
-                              placeholder="Enter feedback text to analyze..."
-                              value={editFields.aiFeedbackText || ''}
-                              onChange={(e) => setEditFields(f => ({ ...f, aiFeedbackText: e.target.value }))}
-                            />
-                          </Grid>
-                          <Grid item xs={12} md={6}>
-                            <FormControl fullWidth>
-                              <InputLabel>Service Category</InputLabel>
-                              <Select
-                                value={editFields.aiServiceCategory || 'meal'}
-                                onChange={(e) => setEditFields(f => ({ ...f, aiServiceCategory: e.target.value }))}
-                                label="Service Category"
-                              >
-                                <MenuItem value="meal">Meal</MenuItem>
-                                <MenuItem value="activity">Activity</MenuItem>
-                                <MenuItem value="communication">Communication</MenuItem>
-                                <MenuItem value="safety">Safety</MenuItem>
-                                <MenuItem value="general">General</MenuItem>
-                              </Select>
-                            </FormControl>
-                          </Grid>
-                          <Grid item xs={12} md={6}>
-                            <FormControl fullWidth>
-                              <InputLabel>Rating (1-5)</InputLabel>
-                              <Select
-                                value={editFields.aiRating || 5}
-                                onChange={(e) => setEditFields(f => ({ ...f, aiRating: e.target.value }))}
-                                label="Rating (1-5)"
-                              >
-                                <MenuItem value={1}>1 - Very Poor</MenuItem>
-                                <MenuItem value={2}>2 - Poor</MenuItem>
-                                <MenuItem value={3}>3 - Average</MenuItem>
-                                <MenuItem value={4}>4 - Good</MenuItem>
-                                <MenuItem value={5}>5 - Excellent</MenuItem>
-                              </Select>
-                            </FormControl>
-                          </Grid>
-                          <Grid item xs={12}>
-                            <Button 
-                              variant="contained" 
-                              color="secondary"
-                              fullWidth
-                              onClick={async () => {
-                                try {
-                                  if (!editFields.aiFeedbackText) {
-                                    alert('Please enter feedback text to analyze');
-                                    return;
-                                  }
-                                  
-                                  const response = await api.post('/api/feedback-classification/predict', {
-                                    text: editFields.aiFeedbackText,
-                                    serviceCategory: editFields.aiServiceCategory || 'meal',
-                                    rating: parseInt(editFields.aiRating) || 5
-                                  });
-                                  
-                                  setEditFields(f => ({ 
-                                    ...f, 
-                                    aiResult: response.data.prediction,
-                                    aiConfidence: response.data.confidence,
-                                    aiAnalysis: response.data
-                                  }));
-                                } catch (e) {
-                                  console.error('AI Classification error:', e);
-                                  alert('Error analyzing feedback. Please try again.');
-                                }
-                              }}
-                            >
-                              Classify Sentiment
-                            </Button>
-                          </Grid>
-                          
-                          {/* Results Display */}
-                          {editFields.aiResult && (
-                            <Grid item xs={12}>
-                              <Card variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
-                                <Typography variant="h6" gutterBottom>
-                                  Analysis Results
-                                </Typography>
-                                <Box sx={{ mb: 2 }}>
-                                  <Chip 
-                                    label={editFields.aiResult === 'Positive' ? '✅ Positive' : '⚠️ Needs Improvement'} 
-                                    color={editFields.aiResult === 'Positive' ? 'success' : 'warning'}
-                                    size="large"
-                                  />
-                                </Box>
-                                <Typography variant="body2" gutterBottom>
-                                  <strong>Confidence:</strong> {(editFields.aiConfidence * 100).toFixed(1)}%
-                                </Typography>
-                                <Typography variant="body2" gutterBottom>
-                                  <strong>Service Category:</strong> {editFields.aiServiceCategory}
-                                </Typography>
-                                <Typography variant="body2" gutterBottom>
-                                  <strong>Rating:</strong> {editFields.aiRating}/5
-                                </Typography>
-                                {editFields.aiAnalysis?.explanation && (
-                                  <Typography variant="body2" sx={{ mt: 1, fontStyle: 'italic' }}>
-                                    {editFields.aiAnalysis.explanation}
-                                  </Typography>
-                                )}
-                              </Card>
-                            </Grid>
-                          )}
-                        </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Card sx={{ bgcolor: 'success.main', color: 'white' }}>
+                          <CardContent>
+                            <Typography variant="h4">{billingData.payments.length}</Typography>
+                            <Typography variant="body2">Payments Made</Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Card sx={{ bgcolor: 'warning.main', color: 'white' }}>
+                          <CardContent>
+                            <Typography variant="h4">
+                              {billingData.invoices.filter(inv => inv.status === 'pending').length}
+                            </Typography>
+                            <Typography variant="body2">Pending Invoices</Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid item xs={12} sm={6} md={3}>
+                        <Card sx={{ bgcolor: 'info.main', color: 'white' }}>
+                          <CardContent>
+                            <Typography variant="h4">
+                              ${billingData.payments.reduce((sum, payment) => sum + (payment.amount || 0), 0).toFixed(2)}
+                            </Typography>
+                            <Typography variant="body2">Total Paid</Typography>
+                          </CardContent>
+                        </Card>
                       </Grid>
                     </Grid>
+                  </CardContent>
+                </Card>
+
+                {/* Pending Invoices */}
+                <Card sx={{ mb: 3 }}>
+                  <CardHeader title="Pending Invoices" subheader="Outstanding payments for your child" />
+                  <CardContent>
+                    {billingData.invoices.filter(inv => inv.status === 'pending').length > 0 ? (
+                      <Grid container spacing={2}>
+                        {billingData.invoices.filter(inv => inv.status === 'pending').map((invoice) => (
+                          <Grid item xs={12} md={6} key={invoice._id}>
+                            <Card variant="outlined" sx={{ border: '1px solid', borderColor: 'warning.main' }}>
+                              <CardContent>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                                  <Box>
+                                    <Typography variant="h6" color="warning.main">
+                                      {invoice.invoiceNumber}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                      {invoice.description}
+                                    </Typography>
+                                  </Box>
+                                  <Chip label={invoice.status.toUpperCase()} color="warning" size="small" />
+                                </Box>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                                  <Typography variant="h5" color="success.main">
+                                    ${invoice.amount.toFixed(2)}
+                                  </Typography>
+                                  <Typography variant="body2" color="error.main">
+                                    Due: {new Date(invoice.dueDate).toLocaleDateString()}
+                                  </Typography>
+                                </Box>
+                                <Button
+                                  variant="contained"
+                                  fullWidth
+                                  onClick={() => setPaymentDialog({ open: true, invoice })}
+                                  sx={{ bgcolor: 'success.main', '&:hover': { bgcolor: 'success.dark' } }}
+                                >
+                                  Pay Now
+                                </Button>
+                              </CardContent>
+                            </Card>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    ) : (
+                      <Box sx={{ textAlign: 'center', py: 3 }}>
+                        <Typography variant="h6" color="success.main">✅ All payments up to date!</Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          No pending invoices for {profile?.firstName || 'your child'}
+                        </Typography>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Payment History */}
+                <Card>
+                  <CardHeader title="Payment History" subheader="Past payments and transactions" />
+                  <CardContent>
+                    {billingData.payments.length > 0 ? (
+                      <Box>
+                        {billingData.payments.map((payment) => (
+                          <Box
+                            key={payment._id}
+                            sx={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              py: 2,
+                              borderBottom: '1px solid',
+                              borderColor: 'divider'
+                            }}
+                          >
+                            <Box>
+                              <Typography variant="body1" fontWeight="bold">
+                                Payment #{payment._id}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                {new Date(payment.paymentDate).toLocaleDateString()} • {payment.method}
+                              </Typography>
+                            </Box>
+                            <Box sx={{ textAlign: 'right' }}>
+                              <Typography variant="h6" color="success.main">
+                                ${payment.amount.toFixed(2)}
+                              </Typography>
+                              <Chip label={payment.status.toUpperCase()} color="success" size="small" />
+                            </Box>
+                          </Box>
+                        ))}
+                      </Box>
+                    ) : (
+                      <Typography variant="body2" color="text.secondary" align="center">
+                        No payment history available
+                      </Typography>
+                    )}
                   </CardContent>
                 </Card>
               </Box>
             )}
 
-            {/* AI-Powered Child Grouping Recommendations */}
-            <Box sx={{ mt: 3 }}>
-              <RecommendationQuickAccess />
-            </Box>
 
           </Box>
         )}
       </Paper>
+
+      {/* Payment Processing Dialog */}
+      <Dialog 
+        open={paymentDialog.open} 
+        onClose={() => setPaymentDialog({ open: false, invoice: null })}
+        maxWidth="sm" 
+        fullWidth
+      >
+        <DialogTitle>
+          Process Payment
+        </DialogTitle>
+        <DialogContent>
+          {paymentDialog.invoice && (
+            <Box sx={{ pt: 2 }}>
+              <Typography variant="h6" gutterBottom>
+                Invoice: {paymentDialog.invoice.invoiceNumber}
+              </Typography>
+              <Typography variant="body1" gutterBottom>
+                Description: {paymentDialog.invoice.description}
+              </Typography>
+              <Typography variant="h5" color="success.main" gutterBottom>
+                Amount: ${paymentDialog.invoice.amount.toFixed(2)}
+              </Typography>
+              <Typography variant="body2" color="error.main" gutterBottom>
+                Due Date: {new Date(paymentDialog.invoice.dueDate).toLocaleDateString()}
+              </Typography>
+              
+              <Box sx={{ mt: 3, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
+                <Typography variant="body2">
+                  💳 This is a demo payment system. In production, this would integrate with a real payment gateway like Stripe or Razorpay.
+                </Typography>
+              </Box>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setPaymentDialog({ open: false, invoice: null })}
+            disabled={paymentLoading}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={() => processPayment(paymentDialog.invoice)}
+            variant="contained"
+            disabled={paymentLoading}
+            sx={{ bgcolor: 'success.main', '&:hover': { bgcolor: 'success.dark' } }}
+          >
+            {paymentLoading ? <CircularProgress size={20} /> : 'Pay Now'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

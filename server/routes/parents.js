@@ -9,7 +9,7 @@ const { body, validationResult } = require('express-validator');
 const Attendance = require('../models/Attendance');
 
 // Get children for logged-in parent
-router.get('/me/children', auth, requireChildProfile, async (req, res) => {
+router.get('/me/children', auth, async (req, res) => {
   try {
     if (req.user.role !== 'parent') {
       return res.status(403).json({ message: 'Only parents can access their children' });
@@ -18,6 +18,14 @@ router.get('/me/children', auth, requireChildProfile, async (req, res) => {
     const children = await Child.find({ parents: req.user.userId })
       .select('-__v')
       .sort({ createdAt: -1 });
+
+    // Handle case where parent has no children
+    if (children.length === 0) {
+      return res.status(403).json({ 
+        message: 'No child profiles found. Please contact administration to create your child profile before accessing the dashboard.',
+        code: 'NO_CHILD_PROFILE'
+      });
+    }
 
     res.json(children);
   } catch (error) {
@@ -34,7 +42,13 @@ router.post('/me/admissions', auth, [
   body('program').optional().isIn(['infant', 'toddler', 'preschool', 'prekindergarten']).withMessage('Invalid program'),
   body('medicalInfo').optional().isString(),
   body('emergencyContactName').optional().isString(),
-  body('emergencyContactPhone').optional().matches(/^\d{10}$/).withMessage('Emergency contact phone must be 10 digits')
+  body('emergencyContactPhone').optional().custom((value) => {
+    if (!value || value === '') return true; // Allow empty
+    if (!/^\d{10}$/.test(value)) {
+      throw new Error('Emergency contact phone must be exactly 10 digits');
+    }
+    return true;
+  })
 ], async (req, res) => {
   try {
     if (req.user.role !== 'parent') {
@@ -43,20 +57,33 @@ router.post('/me/admissions', auth, [
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      console.log('Validation errors:', errors.array());
+      return res.status(400).json({ 
+        message: 'Validation failed',
+        errors: errors.array(),
+        details: errors.array().map(e => `${e.path}: ${e.msg}`).join(', ')
+      });
     }
 
     const { childName, childDob, childGender, program, medicalInfo, emergencyContactName, emergencyContactPhone } = req.body || {};
+    
+    console.log('Admission request data:', { childName, childDob, childGender, program, medicalInfo, emergencyContactName, emergencyContactPhone });
 
     const dob = new Date(childDob);
     if (isNaN(dob.getTime())) {
-      return res.status(400).json({ message: 'Invalid date of birth' });
+      return res.status(400).json({ message: 'Invalid date of birth format' });
     }
+    
+    // More flexible age validation - allow children from 0.5 to 8 years old
     const today = new Date();
-    const minDob = new Date(today.getFullYear() - 7, today.getMonth(), today.getDate());
-    const maxDob = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+    const minDob = new Date(today.getFullYear() - 8, today.getMonth(), today.getDate());
+    const maxDob = new Date(today.getFullYear(), today.getMonth() - 6, today.getDate()); // 6 months old minimum
     if (!(dob >= minDob && dob <= maxDob)) {
-      return res.status(400).json({ message: 'Child age must be between 1 and 7 years' });
+      return res.status(400).json({ 
+        message: 'Child age must be between 6 months and 8 years old',
+        receivedDob: childDob,
+        calculatedAge: Math.floor((today - dob) / (365.25 * 24 * 60 * 60 * 1000))
+      });
     }
 
     const admission = await AdmissionRequest.create({
