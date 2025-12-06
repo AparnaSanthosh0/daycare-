@@ -45,9 +45,18 @@ const Register = ({ fixedRole }) => {
     username: '',
 
     // Staff-only details
+    staffType: 'teacher',
     yearsOfExperience: '',
     qualification: '',
     certificateFile: null,
+    // Driver-specific
+    licenseNumber: '',
+    vehicleType: '',
+    // Delivery-specific
+    deliveryArea: '',
+    // Nanny-specific
+    serviceArea: '',
+    availability: '',
 
     // Child admission details (for parents)
     childName: '',
@@ -135,19 +144,82 @@ const Register = ({ fixedRole }) => {
       }
     }
 
-    // Staff-specific validations (removed requirement for years of experience for child admission)
+    // Staff-specific validations
     if (formData.role === 'staff') {
-      if (!formData.qualification) {
-        setError('Qualification is required for staff');
+      if (!formData.staffType) {
+        setError('Please select a staff type');
         setLoading(false);
         return;
       }
-      if (!formData.certificateFile) {
-        setError('Certificate upload is required for staff');
-        setLoading(false);
-        return;
+      
+      // Teacher-specific validations
+      if (formData.staffType === 'teacher') {
+        if (!formData.qualification) {
+          setError('Qualification is required for teachers');
+          setLoading(false);
+          return;
+        }
+        if (!formData.certificateFile) {
+          setError('Certificate upload is required for teachers');
+          setLoading(false);
+          return;
+        }
       }
-      if (formData.certificateFile.size > 10 * 1024 * 1024) {
+      
+      // Driver-specific validations
+      if (formData.staffType === 'driver') {
+        if (!formData.licenseNumber) {
+          setError('Driver\'s license number is required');
+          setLoading(false);
+          return;
+        }
+        if (!formData.vehicleType) {
+          setError('Vehicle type is required');
+          setLoading(false);
+          return;
+        }
+        if (!formData.certificateFile) {
+          setError('License/certificate upload is required for drivers');
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Delivery-specific validations
+      if (formData.staffType === 'delivery') {
+        if (!formData.deliveryArea) {
+          setError('Delivery area is required');
+          setLoading(false);
+          return;
+        }
+        if (!formData.certificateFile) {
+          setError('ID/certificate upload is required for delivery staff');
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // Nanny-specific validations
+      if (formData.staffType === 'nanny') {
+        if (!formData.serviceArea) {
+          setError('Service area is required');
+          setLoading(false);
+          return;
+        }
+        if (!formData.availability) {
+          setError('Availability is required');
+          setLoading(false);
+          return;
+        }
+        if (!formData.certificateFile) {
+          setError('Certificate/background check upload is required for nannies');
+          setLoading(false);
+          return;
+        }
+      }
+      
+      // File size validation for all staff types
+      if (formData.certificateFile && formData.certificateFile.size > 10 * 1024 * 1024) {
         setError('Certificate must be under 10MB');
         setLoading(false);
         return;
@@ -165,16 +237,26 @@ const Register = ({ fixedRole }) => {
         } else if (key !== 'confirmPassword') {
           // Do not send empty yearsOfExperience
           if (key === 'yearsOfExperience' && (value === '' || value === null || value === undefined)) return;
+          // Only send staff-specific fields if they have values
+          if (['licenseNumber', 'vehicleType', 'deliveryArea', 'serviceArea', 'availability'].includes(key) && (!value || value === '')) return;
           payload.append(key, value ?? '');
         }
       });
     } else {
-      const { confirmPassword, certificateFile, yearsOfExperience, ...rest } = formData;
+      const { confirmPassword, certificateFile, yearsOfExperience, licenseNumber, vehicleType, deliveryArea, serviceArea, availability, ...rest } = formData;
       // Drop empty yearsOfExperience from JSON payload too
       if (rest.role === 'staff' && (yearsOfExperience === '' || yearsOfExperience === null || yearsOfExperience === undefined)) {
         // nothing to add
       } else if (yearsOfExperience !== undefined) {
         rest.yearsOfExperience = yearsOfExperience;
+      }
+      // Add staff-specific fields if they have values
+      if (rest.role === 'staff') {
+        if (licenseNumber) rest.licenseNumber = licenseNumber;
+        if (vehicleType) rest.vehicleType = vehicleType;
+        if (deliveryArea) rest.deliveryArea = deliveryArea;
+        if (serviceArea) rest.serviceArea = serviceArea;
+        if (availability) rest.availability = availability;
       }
       payload = rest;
     }
@@ -244,7 +326,13 @@ const Register = ({ fixedRole }) => {
         >
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Typography component="h1" variant="h5" sx={{ color: 'text.secondary', mb: 0.5 }}>
-              {formData.role === 'staff' ? 'Staff Registration' : 'Parent Registration'}
+              {formData.role === 'staff' 
+                ? formData.staffType === 'teacher' ? 'Teacher Registration'
+                  : formData.staffType === 'driver' ? 'Driver Registration'
+                  : formData.staffType === 'delivery' ? 'Delivery Staff Registration'
+                  : formData.staffType === 'nanny' ? 'Nanny at Home Service Registration'
+                  : 'Staff Registration'
+                : 'Parent Registration'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Your registration will be reviewed by our admin team
@@ -406,53 +494,246 @@ const Register = ({ fixedRole }) => {
               {/* Staff-only fields */}
               {formData.role === 'staff' && (
                 <>
-                  {/* Years of Experience removed as per requirement */}
-                  <Grid item xs={12} sm={6}>
+                  <Grid item xs={12}>
                     <TextField
+                      select
                       required
                       fullWidth
-                      name="qualification"
-                      label="Qualification"
-                      placeholder="Early Childhood Education, Child Development, etc."
-                      value={formData.qualification}
+                      name="staffType"
+                      label="Staff Type"
+                      value={formData.staffType}
                       onChange={handleChange}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <School />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <Box
-                      sx={{
-                        border: '2px dashed',
-                        borderColor: 'divider',
-                        borderRadius: 2,
-                        p: 3,
-                        textAlign: 'center',
-                        color: 'text.secondary',
-                        cursor: 'pointer'
-                      }}
+                      helperText="Select your staff role"
                     >
-                      <input
-                        id="certificateFile"
-                        name="certificateFile"
-                        type="file"
-                        accept=".pdf,.jpg,.jpeg,.png"
-                        onChange={handleChange}
-                        style={{ display: 'none' }}
-                      />
-                      <label htmlFor="certificateFile" style={{ cursor: 'pointer' }}>
-                        <CloudUpload style={{ verticalAlign: 'middle', marginRight: 8 }} />
-                        {formData.certificateFile ? 'File selected: ' + formData.certificateFile.name : 'Click to upload certificate'}
-                        <Typography variant="body2" color="text.secondary">PDF, JPG, PNG up to 10MB</Typography>
-                      </label>
-                    </Box>
+                      <MenuItem value="teacher">Teacher</MenuItem>
+                      <MenuItem value="driver">Driver</MenuItem>
+                      <MenuItem value="delivery">Delivery</MenuItem>
+                      <MenuItem value="nanny">Nanny at Home Service</MenuItem>
+                    </TextField>
                   </Grid>
+                  
+                  {/* Teacher-specific fields */}
+                  {formData.staffType === 'teacher' && (
+                    <>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="qualification"
+                          label="Qualification"
+                          placeholder="Early Childhood Education, Child Development, etc."
+                          value={formData.qualification}
+                          onChange={handleChange}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <School />
+                              </InputAdornment>
+                            ),
+                          }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Box
+                          sx={{
+                            border: '2px dashed',
+                            borderColor: 'divider',
+                            borderRadius: 2,
+                            p: 3,
+                            textAlign: 'center',
+                            color: 'text.secondary',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <input
+                            id="certificateFile"
+                            name="certificateFile"
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={handleChange}
+                            style={{ display: 'none' }}
+                          />
+                          <label htmlFor="certificateFile" style={{ cursor: 'pointer' }}>
+                            <CloudUpload style={{ verticalAlign: 'middle', marginRight: 8 }} />
+                            {formData.certificateFile ? 'File selected: ' + formData.certificateFile.name : 'Click to upload certificate'}
+                            <Typography variant="body2" color="text.secondary">PDF, JPG, PNG up to 10MB</Typography>
+                          </label>
+                        </Box>
+                      </Grid>
+                    </>
+                  )}
+
+                  {/* Driver-specific fields */}
+                  {formData.staffType === 'driver' && (
+                    <>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="licenseNumber"
+                          label="Driver's License Number"
+                          value={formData.licenseNumber}
+                          onChange={handleChange}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="vehicleType"
+                          label="Vehicle Type"
+                          placeholder="Car, Van, Bus, etc."
+                          value={formData.vehicleType}
+                          onChange={handleChange}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Box
+                          sx={{
+                            border: '2px dashed',
+                            borderColor: 'divider',
+                            borderRadius: 2,
+                            p: 3,
+                            textAlign: 'center',
+                            color: 'text.secondary',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <input
+                            id="certificateFile"
+                            name="certificateFile"
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={handleChange}
+                            style={{ display: 'none' }}
+                          />
+                          <label htmlFor="certificateFile" style={{ cursor: 'pointer' }}>
+                            <CloudUpload style={{ verticalAlign: 'middle', marginRight: 8 }} />
+                            {formData.certificateFile ? 'File selected: ' + formData.certificateFile.name : 'Click to upload license/certificate'}
+                            <Typography variant="body2" color="text.secondary">PDF, JPG, PNG up to 10MB</Typography>
+                          </label>
+                        </Box>
+                      </Grid>
+                    </>
+                  )}
+
+                  {/* Delivery-specific fields */}
+                  {formData.staffType === 'delivery' && (
+                    <>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="deliveryArea"
+                          label="Delivery Area"
+                          placeholder="City, Region, etc."
+                          value={formData.deliveryArea}
+                          onChange={handleChange}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Box
+                          sx={{
+                            border: '2px dashed',
+                            borderColor: 'divider',
+                            borderRadius: 2,
+                            p: 3,
+                            textAlign: 'center',
+                            color: 'text.secondary',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <input
+                            id="certificateFile"
+                            name="certificateFile"
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={handleChange}
+                            style={{ display: 'none' }}
+                          />
+                          <label htmlFor="certificateFile" style={{ cursor: 'pointer' }}>
+                            <CloudUpload style={{ verticalAlign: 'middle', marginRight: 8 }} />
+                            {formData.certificateFile ? 'File selected: ' + formData.certificateFile.name : 'Click to upload ID/certificate'}
+                            <Typography variant="body2" color="text.secondary">PDF, JPG, PNG up to 10MB</Typography>
+                          </label>
+                        </Box>
+                      </Grid>
+                    </>
+                  )}
+
+                  {/* Nanny-specific fields */}
+                  {formData.staffType === 'nanny' && (
+                    <>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="serviceArea"
+                          label="Service Area"
+                          placeholder="City, Region, etc."
+                          value={formData.serviceArea}
+                          onChange={handleChange}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="availability"
+                          label="Availability"
+                          placeholder="Full-time, Part-time, Weekends, etc."
+                          value={formData.availability}
+                          onChange={handleChange}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          name="qualification"
+                          label="Qualification/Experience (optional)"
+                          placeholder="Childcare certification, years of experience, etc."
+                          value={formData.qualification}
+                          onChange={handleChange}
+                          multiline
+                          rows={2}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Box
+                          sx={{
+                            border: '2px dashed',
+                            borderColor: 'divider',
+                            borderRadius: 2,
+                            p: 3,
+                            textAlign: 'center',
+                            color: 'text.secondary',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <input
+                            id="certificateFile"
+                            name="certificateFile"
+                            type="file"
+                            accept=".pdf,.jpg,.jpeg,.png"
+                            onChange={handleChange}
+                            style={{ display: 'none' }}
+                          />
+                          <label htmlFor="certificateFile" style={{ cursor: 'pointer' }}>
+                            <CloudUpload style={{ verticalAlign: 'middle', marginRight: 8 }} />
+                            {formData.certificateFile ? 'File selected: ' + formData.certificateFile.name : 'Click to upload certificate/background check'}
+                            <Typography variant="body2" color="text.secondary">PDF, JPG, PNG up to 10MB</Typography>
+                          </label>
+                        </Box>
+                      </Grid>
+                    </>
+                  )}
                 </>
               )}
 

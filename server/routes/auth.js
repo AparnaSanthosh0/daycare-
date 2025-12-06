@@ -71,7 +71,7 @@ router.post('/register', upload.single('certificate'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { firstName, lastName, email, password, role, phone, address, yearsOfExperience, qualification, username, notifyByEmail } = req.body;
+    const { firstName, lastName, email, password, role, phone, address, yearsOfExperience, qualification, username, notifyByEmail, staffType, licenseNumber, vehicleType, deliveryArea, serviceArea, availability } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ $or: [{ email }, ...(username ? [{ username }] : [])] });
@@ -90,9 +90,15 @@ router.post('/register', upload.single('certificate'), [
       address,
       username: username || undefined,
       staff: role === 'staff' ? {
+        staffType: staffType || 'teacher',
         yearsOfExperience: yearsOfExperience === undefined || yearsOfExperience === '' ? 0 : Number(yearsOfExperience),
         qualification: qualification || '',
-        certificateUrl: req.file ? `/uploads/certificates/${req.file.filename}` : null
+        certificateUrl: req.file ? `/uploads/certificates/${req.file.filename}` : null,
+        licenseNumber: licenseNumber || undefined,
+        vehicleType: vehicleType || undefined,
+        deliveryArea: deliveryArea || undefined,
+        serviceArea: serviceArea || undefined,
+        availability: availability || undefined
       } : undefined
     });
 

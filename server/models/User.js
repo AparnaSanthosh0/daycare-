@@ -81,9 +81,22 @@ const userSchema = new mongoose.Schema({
   },
   // Staff-specific profile data (only used when role = 'staff')
   staff: {
+    staffType: { 
+      type: String, 
+      enum: ['teacher', 'driver', 'delivery', 'nanny'], 
+      default: 'teacher' 
+    },
     yearsOfExperience: { type: Number, min: 0 },
     qualification: { type: String, trim: true },
-    certificateUrl: { type: String, default: null }
+    certificateUrl: { type: String, default: null },
+    // Driver-specific fields
+    licenseNumber: { type: String, trim: true },
+    vehicleType: { type: String, trim: true },
+    // Delivery-specific fields
+    deliveryArea: { type: String, trim: true },
+    // Nanny-specific fields
+    serviceArea: { type: String, trim: true },
+    availability: { type: String, trim: true }
   },
   // Verification & security
   emailVerified: { type: Boolean, default: false },

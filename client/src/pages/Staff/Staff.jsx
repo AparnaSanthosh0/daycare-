@@ -308,7 +308,7 @@ export default function Staff() {
       {/* Header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold' }}>
-          Staff Dashboard
+          Teacher Dashboard
         </Typography>
         <Button
           variant="outlined"

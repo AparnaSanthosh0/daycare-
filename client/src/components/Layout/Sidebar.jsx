@@ -68,7 +68,7 @@ const getMenuItems = (userRole) => {
   }
   if (userRole === 'staff') {
     return [
-      { text: 'Staff Dashboard', icon: <Group />, path: '/staff' },
+      { text: 'Teacher Dashboard', icon: <Group />, path: '/staff' },
       { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
       { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
       { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
