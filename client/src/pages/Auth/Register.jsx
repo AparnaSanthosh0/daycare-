@@ -19,7 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { prefillWithGoogle } from '../../utils/googlePrefill';
 
 // Parent registration styled to match the Child Admission form look
-const Register = ({ fixedRole }) => {
+const Register = ({ fixedRole, fixedStaffType }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { register } = useAuth();
@@ -36,6 +36,14 @@ const Register = ({ fixedRole }) => {
     return 'parent';
   })();
 
+  const initialStaffType = (() => {
+    // Fixed staffType via route prop or location state
+    if (typeof fixedStaffType !== 'undefined' && fixedStaffType) return fixedStaffType;
+    const st = location?.state;
+    if (st && st.staffType) return st.staffType;
+    return 'teacher';
+  })();
+
   const [formData, setFormData] = useState({
     // Parent / Staff basic details
     firstName: '',
@@ -45,7 +53,7 @@ const Register = ({ fixedRole }) => {
     username: '',
 
     // Staff-only details
-    staffType: 'teacher',
+    staffType: initialStaffType,
     yearsOfExperience: '',
     qualification: '',
     certificateFile: null,
@@ -217,6 +225,7 @@ const Register = ({ fixedRole }) => {
           return;
         }
       }
+      
       
       // File size validation for all staff types
       if (formData.certificateFile && formData.certificateFile.size > 10 * 1024 * 1024) {
@@ -494,23 +503,26 @@ const Register = ({ fixedRole }) => {
               {/* Staff-only fields */}
               {formData.role === 'staff' && (
                 <>
-                  <Grid item xs={12}>
-                    <TextField
-                      select
-                      required
-                      fullWidth
-                      name="staffType"
-                      label="Staff Type"
-                      value={formData.staffType}
-                      onChange={handleChange}
-                      helperText="Select your staff role"
-                    >
-                      <MenuItem value="teacher">Teacher</MenuItem>
-                      <MenuItem value="driver">Driver</MenuItem>
-                      <MenuItem value="delivery">Delivery</MenuItem>
-                      <MenuItem value="nanny">Nanny at Home Service</MenuItem>
-                    </TextField>
-                  </Grid>
+                  {/* Staff Type selector - hidden when fixedStaffType is provided */}
+                  {!fixedStaffType && (
+                    <Grid item xs={12}>
+                      <TextField
+                        select
+                        required
+                        fullWidth
+                        name="staffType"
+                        label="Staff Type"
+                        value={formData.staffType}
+                        onChange={handleChange}
+                        helperText="Select your staff role"
+                      >
+                        <MenuItem value="teacher">Teacher</MenuItem>
+                        <MenuItem value="driver">Driver</MenuItem>
+                        <MenuItem value="delivery">Delivery</MenuItem>
+                        <MenuItem value="nanny">Nanny at Home Service</MenuItem>
+                      </TextField>
+                    </Grid>
+                  )}
                   
                   {/* Teacher-specific fields */}
                   {formData.staffType === 'teacher' && (

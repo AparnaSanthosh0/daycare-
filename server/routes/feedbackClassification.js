@@ -225,9 +225,12 @@ router.post('/batch-predict', auth, [
 router.get('/stats', auth, async (req, res) => {
   try {
     // Check if user is admin
-    const User = require('../models/User');
-    const user = await User.findById(req.user.id);
-    if (user.role !== 'admin') {
+    if (!req.user) {
+      return res.status(401).json({ message: 'Not authenticated' });
+    }
+    
+    // Check role directly from req.user (set by auth middleware)
+    if (req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Admin role required.' });
     }
     

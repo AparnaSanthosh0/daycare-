@@ -116,14 +116,28 @@ const Login = () => {
       const role = result.role || result.user?.role || JSON.parse(localStorage.getItem('token_payload') || '{}').role || formData.role;
       console.log('Login successful, role:', role, 'navigating to appropriate route');
       
+      // Check if user is a staff type (teacher, driver, delivery, nanny)
+      const staffTypes = ['teacher', 'driver', 'delivery', 'nanny'];
+      const userStaffType = result.user?.staff?.staffType;
+      const isStaffType = staffTypes.includes(formData.role) || (role === 'staff');
+      
       switch (role) {
         case 'admin':
           console.log('Navigating to /admin');
           navigate('/admin');
           break;
         case 'staff':
-          console.log('Navigating to /staff');
+        case 'teacher':
+        case 'driver':
+        case 'delivery':
+        case 'nanny':
+          // All staff types navigate to /staff dashboard
+          console.log(`Navigating to /staff (${userStaffType || formData.role || 'staff'})`);
           navigate('/staff');
+          break;
+        case 'doctor':
+          console.log('Navigating to /doctor');
+          navigate('/doctor');
           break;
         case 'parent':
           console.log('Navigating to /dashboard');
@@ -134,8 +148,14 @@ const Login = () => {
           navigate('/vendor');
           break;
         default:
-          console.log('Navigating to /dashboard (default)');
-          navigate('/dashboard');
+          // Handle direct staff type selection (teacher, driver, delivery, nanny)
+          if (isStaffType) {
+            console.log(`Navigating to /staff (${formData.role})`);
+            navigate('/staff');
+          } else {
+            console.log('Navigating to /dashboard (default)');
+            navigate('/dashboard');
+          }
       }
     } else {
       setError(result.message);
@@ -247,7 +267,11 @@ const Login = () => {
                     }}
                   >
                     <MenuItem value="parent">Parent</MenuItem>
-                    <MenuItem value="staff">Staff</MenuItem>
+                    <MenuItem value="teacher">Teacher</MenuItem>
+                    <MenuItem value="driver">Driver</MenuItem>
+                    <MenuItem value="delivery">Delivery</MenuItem>
+                    <MenuItem value="nanny">Nanny at Home Service</MenuItem>
+                    <MenuItem value="doctor">Doctor</MenuItem>
                     <MenuItem value="vendor">Vendor</MenuItem>
                   </TextField>
                 )}
@@ -388,6 +412,10 @@ const Login = () => {
                           const loginResult = await loginWithGoogleIdToken(idToken);
                           if (!loginResult.success) throw new Error(loginResult.message || 'Google sign-in failed');
                           const role = loginResult.role || loginResult.user?.role || 'parent';
+                          const userStaffType = loginResult.user?.staff?.staffType;
+                          const staffTypes = ['teacher', 'driver', 'delivery', 'nanny'];
+                          const isStaffType = role === 'staff' || (userStaffType && staffTypes.includes(userStaffType));
+                          
                           switch (role) {
                             case 'admin':
                               navigate('/admin');
@@ -399,7 +427,11 @@ const Login = () => {
                               navigate('/vendor');
                               break;
                             default:
-                              navigate('/dashboard');
+                              if (isStaffType) {
+                                navigate('/staff');
+                              } else {
+                                navigate('/dashboard');
+                              }
                           }
                         } catch (err) {
                           console.error(err);

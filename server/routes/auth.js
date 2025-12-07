@@ -71,7 +71,7 @@ router.post('/register', upload.single('certificate'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { firstName, lastName, email, password, role, phone, address, yearsOfExperience, qualification, username, notifyByEmail, staffType, licenseNumber, vehicleType, deliveryArea, serviceArea, availability } = req.body;
+    const { firstName, lastName, email, password, role, phone, address, yearsOfExperience, qualification, username, notifyByEmail, staffType, licenseNumber, vehicleType, deliveryArea, serviceArea, availability, certification } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ $or: [{ email }, ...(username ? [{ username }] : [])] });
@@ -98,7 +98,8 @@ router.post('/register', upload.single('certificate'), [
         vehicleType: vehicleType || undefined,
         deliveryArea: deliveryArea || undefined,
         serviceArea: serviceArea || undefined,
-        availability: availability || undefined
+        availability: availability || undefined,
+        certification: certification || undefined
       } : undefined
     });
 

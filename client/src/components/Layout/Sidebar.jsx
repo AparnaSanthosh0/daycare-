@@ -26,7 +26,8 @@ import {
   SupervisorAccount,
   ManageAccounts,
   Inventory2,
-  ShoppingCart
+  ShoppingCart,
+  LocalHospital
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -37,6 +38,7 @@ const getMenuItems = (userRole) => {
     return [
       { text: 'Admin Home', icon: <SupervisorAccount />, path: '/admin' },
       { text: 'Users', icon: <ManageAccounts />, path: '/admin/users' },
+      { text: 'Doctor Management', icon: <LocalHospital />, path: '/admin/doctors' },
       { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
       { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
       { text: 'Billing', icon: <Payment />, path: '/billing' },

@@ -47,6 +47,7 @@ import AdminDashboard from './pages/Admin/AdminDashboard';
 import UserManagement from './pages/Admin/UserManagement';
 import StaffConsole from './pages/Admin/StaffConsole';
 import AdminOrders from './pages/Admin/AdminOrders';
+import DoctorManagement from './pages/Admin/DoctorManagement';
 import VendorOrders from './pages/Vendor/VendorOrders';
 import Families from './pages/Families/Families';
 import SupportCenter from './pages/Support/SupportCenter';
@@ -108,6 +109,10 @@ function App() {
           {/* Explicit parent and staff registration paths */}
           <Route path="/register/parent" element={<Register fixedRole="parent" />} />
           <Route path="/register/staff" element={<Register fixedRole="staff" />} />
+          <Route path="/register/teacher" element={<Register fixedRole="staff" fixedStaffType="teacher" />} />
+          <Route path="/register/driver" element={<Register fixedRole="staff" fixedStaffType="driver" />} />
+          <Route path="/register/delivery" element={<Register fixedRole="staff" fixedStaffType="delivery" />} />
+          <Route path="/register/nanny" element={<Register fixedRole="staff" fixedStaffType="nanny" />} />
           <Route
             path="/forgot-password"
             element={!user ? <ForgotPassword /> : <Navigate to="/dashboard" replace />} 
@@ -355,6 +360,10 @@ function App() {
           <Route 
             path="/admin/orders" 
             element={user?.role === 'admin' ? <Layout><AdminOrders /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
+          />
+          <Route 
+            path="/admin/doctors" 
+            element={user?.role === 'admin' ? <Layout><DoctorManagement /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
           />
           <Route 
             path="/vendor/orders" 

@@ -116,12 +116,7 @@ const VendorRegister = () => {
       } else {
         msg = data?.message || data?.errors?.[0]?.msg || err.message || 'Submission failed';
       }
-      // If registration is closed, show friendly info instead of error
-      if (/registration\s+is\s+(currently|temporarily)\s+closed/i.test(msg) || /approved vendor already exists/i.test(msg)) {
-        setError('');
-        setStatus('approved');
-        return;
-      }
+      // Multi-vendor support - no need to check for closed registration
       setError(msg);
       console.error('Vendor submit failed:', err?.response?.status, data);
     } finally {
@@ -130,7 +125,6 @@ const VendorRegister = () => {
   };
 
   const renderStatus = () => {
-    if (status === 'approved') return <Alert severity="info">A vendor has already been approved. Registrations are currently closed.</Alert>;
     if (status === 'pending') return <Alert severity="info">Registration in process. Awaiting admin approval.</Alert>;
     if (status === 'rejected') return <Alert severity="error">Registration rejected. Please contact admin.</Alert>;
     return null;
@@ -288,8 +282,8 @@ const VendorRegister = () => {
             </Grid>
 
             <Grid item xs={12}>
-              <Button type="submit" variant="contained" fullWidth disabled={loading || status === 'approved' || !!notice}>
-                {loading ? 'Submitting...' : (notice ? 'Unavailable' : (status === 'approved' ? 'Vendor Approved' : 'Submit Registration'))}
+              <Button type="submit" variant="contained" fullWidth disabled={loading || !!notice}>
+                {loading ? 'Submitting...' : (notice ? 'Unavailable' : 'Submit Registration')}
               </Button>
             </Grid>
           </Grid>

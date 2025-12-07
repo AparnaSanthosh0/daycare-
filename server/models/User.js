@@ -32,7 +32,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'staff', 'parent', 'vendor', 'customer'],
+    enum: ['admin', 'staff', 'parent', 'vendor', 'customer', 'doctor'],
     default: 'parent'
   },
   phone: {
@@ -97,6 +97,31 @@ const userSchema = new mongoose.Schema({
     // Nanny-specific fields
     serviceArea: { type: String, trim: true },
     availability: { type: String, trim: true }
+  },
+  // Doctor-specific profile data (only used when role = 'doctor')
+  doctor: {
+    licenseNumber: { type: String, trim: true },
+    specialization: { type: String, trim: true },
+    qualification: { type: String, trim: true },
+    yearsOfExperience: { type: Number, min: 0 },
+    assignedChildren: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Child' }],
+    // Legal & Licensing Requirements
+    licensePicture: { type: String, trim: true }, // Path to uploaded license picture
+    medicalLicenseNumber: { type: String, trim: true },
+    licenseIssuingAuthority: { type: String, trim: true },
+    licenseExpiryDate: { type: Date },
+    professionalRegistrationNumber: { type: String, trim: true },
+    insuranceProvider: { type: String, trim: true },
+    insurancePolicyNumber: { type: String, trim: true },
+    insuranceExpiryDate: { type: Date },
+    backgroundCheckDate: { type: Date },
+    backgroundCheckStatus: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+    certifications: [{ 
+      name: { type: String, trim: true },
+      issuingOrganization: { type: String, trim: true },
+      issueDate: { type: Date },
+      expiryDate: { type: Date }
+    }]
   },
   // Verification & security
   emailVerified: { type: Boolean, default: false },

@@ -118,12 +118,7 @@ router.post(
         return res.status(400).json({ errors: errors.array() });
       }
 
-      // Close vendor registrations if one is already approved
-      const approved = await Vendor.findOne({ status: 'approved' });
-      if (approved) {
-        return res.status(400).json({ message: 'Vendor registration is temporarily closed. An approved vendor already exists.' });
-      }
-
+      // Multi-vendor support - allow multiple vendors to register
       if (!req.file) {
         return res.status(400).json({ message: 'License document is required (PDF/JPG/PNG).' });
       }
@@ -234,12 +229,7 @@ router.put('/:id/approve', auth, authorize('admin'), async (req, res) => {
   try {
     const { id } = req.params;
 
-    // Check if another vendor is already approved
-    const alreadyApproved = await Vendor.findOne({ status: 'approved' });
-    if (alreadyApproved && alreadyApproved._id.toString() !== id) {
-      return res.status(400).json({ message: 'Another vendor is already approved. Reject it first to approve a new one.' });
-    }
-
+    // Multi-vendor support - allow multiple vendors to be approved
     const vendor = await Vendor.findById(id);
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
 

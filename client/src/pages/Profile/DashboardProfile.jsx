@@ -10,7 +10,8 @@ import {
   Avatar,
   Divider,
   IconButton,
-  Chip
+  Chip,
+  InputAdornment
 } from '@mui/material';
 import {
   Person,
@@ -21,7 +22,9 @@ import {
   Business,
   School,
   ChildCare,
-  AdminPanelSettings
+  AdminPanelSettings,
+  Visibility,
+  VisibilityOff
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import api from '../../config/api';
@@ -143,6 +146,8 @@ const DashboardProfile = () => {
         return <ChildCare sx={{ color: '#2e7d32' }} />;
       case 'vendor':
         return <Business sx={{ color: '#ed6c02' }} />;
+      case 'doctor':
+        return <Person sx={{ color: '#9c27b0' }} />;
       default:
         return <Person sx={{ color: '#666' }} />;
     }
@@ -158,6 +163,8 @@ const DashboardProfile = () => {
         return '#2e7d32';
       case 'vendor':
         return '#ed6c02';
+      case 'doctor':
+        return '#9c27b0';
       default:
         return '#666';
     }
@@ -412,6 +419,163 @@ const DashboardProfile = () => {
               </Typography>
             </Paper>
           )}
+
+          {/* Password Change Section - Available for all users */}
+          <Paper sx={{ p: 3, mt: 3 }}>
+            <PasswordChangeSection />
+          </Paper>
+        </Grid>
+      </Grid>
+    </Box>
+  );
+};
+
+// Password Change Component
+const PasswordChangeSection = () => {
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [changing, setChanging] = useState(false);
+
+  const handlePasswordChange = async () => {
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!passwordForm.currentPassword || !passwordForm.newPassword || !passwordForm.confirmPassword) {
+      setPasswordError('All fields are required');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordError('New passwords do not match');
+      return;
+    }
+
+    if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[\W_]).{8,}$/.test(passwordForm.newPassword)) {
+      setPasswordError('Password must be 8+ chars with upper, lower, number and special character');
+      return;
+    }
+
+    try {
+      setChanging(true);
+      await api.post('/api/auth/change-password', {
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword
+      });
+      setPasswordSuccess('Password changed successfully');
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+    } catch (error) {
+      setPasswordError(error.response?.data?.message || 'Failed to change password');
+    } finally {
+      setChanging(false);
+    }
+  };
+
+  return (
+    <Box>
+      <Typography variant="h6" gutterBottom>Change Password</Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Update your password to keep your account secure
+      </Typography>
+
+      {passwordError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setPasswordError('')}>
+          {passwordError}
+        </Alert>
+      )}
+      {passwordSuccess && (
+        <Alert severity="success" sx={{ mb: 2 }} onClose={() => setPasswordSuccess('')}>
+          {passwordSuccess}
+        </Alert>
+      )}
+
+      <Grid container spacing={2}>
+        <Grid item xs={12}>
+          <TextField
+            fullWidth
+            label="Current Password"
+            type={showCurrentPassword ? 'text' : 'password'}
+            value={passwordForm.currentPassword}
+            onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    edge="end"
+                    size="small"
+                  >
+                    {showCurrentPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <TextField
+            fullWidth
+            label="New Password"
+            type={showNewPassword ? 'text' : 'password'}
+            value={passwordForm.newPassword}
+            onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+            helperText="8+ chars with upper, lower, number and special character"
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowNewPassword(!showNewPassword)}
+                    edge="end"
+                    size="small"
+                  >
+                    {showNewPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6}>
+          <TextField
+            fullWidth
+            label="Confirm New Password"
+            type={showConfirmPassword ? 'text' : 'password'}
+            value={passwordForm.confirmPassword}
+            onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+            InputProps={{
+              endAdornment: (
+                <InputAdornment position="end">
+                  <IconButton
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    edge="end"
+                    size="small"
+                  >
+                    {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                  </IconButton>
+                </InputAdornment>
+              )
+            }}
+          />
+        </Grid>
+        <Grid item xs={12}>
+          <Button
+            variant="contained"
+            onClick={handlePasswordChange}
+            disabled={changing}
+          >
+            {changing ? 'Changing Password...' : 'Change Password'}
+          </Button>
         </Grid>
       </Grid>
     </Box>

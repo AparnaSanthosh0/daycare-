@@ -321,7 +321,48 @@ See EMAIL_SMS_SETUP.md for detailed instructions.
 `;
 }
 
+function doctorAccountCreatedEmail(doctor, username, password) {
+  const loginUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/login`;
+  return {
+    subject: 'Welcome to TinyTots - Doctor Account Created',
+    html: `
+      <div style="font-family:Arial,Helvetica,sans-serif;line-height:1.5;color:#222">
+        <div style="text-align:center;margin-bottom:16px">
+          <img alt="TinyTots" src="${process.env.FRONTEND_URL || 'http://localhost:3000'}/tinytots-logo.svg" height="40"/>
+        </div>
+        <p>Dear Dr. ${doctor.firstName} ${doctor.lastName},</p>
+        <p>Your doctor account has been created for TinyTots Daycare Management System.</p>
+        <div style="margin:24px 0;padding:20px;background:#e8f4f8;border:2px solid #3B82F6;border-radius:8px">
+          <h3 style="margin-top:0;color:#1e40af">Your Login Credentials</h3>
+          <p style="margin:12px 0;font-size:16px">
+            <strong style="color:#1e40af">Username:</strong><br/>
+            <span style="font-size:18px;font-weight:bold;color:#1e3a8a;font-family:monospace;background:#fff;padding:8px 12px;display:inline-block;border-radius:4px;margin-top:4px">${username}</span>
+          </p>
+          <p style="margin:12px 0;font-size:16px">
+            <strong style="color:#1e40af">Password:</strong><br/>
+            <span style="font-size:18px;font-weight:bold;color:#1e3a8a;font-family:monospace;background:#fff;padding:8px 12px;display:inline-block;border-radius:4px;margin-top:4px">${password}</span>
+          </p>
+          <p style="margin-top:16px;font-size:14px;color:#666">
+            <strong>Important:</strong> Please save these credentials securely. You will need both your username and password to log in.
+          </p>
+        </div>
+        <p>Please log in and change your password immediately for security purposes.</p>
+        <p style="text-align:center;margin:24px 0">
+          <a href="${loginUrl}" style="display:inline-block;padding:14px 28px;background:#3B82F6;color:white;text-decoration:none;border-radius:6px;font-weight:bold;font-size:16px">Login to Your Account</a>
+        </p>
+        <p style="margin:16px 0;padding:12px;background:#fff3cd;border:1px solid #ffc107;border-radius:8px">
+          <strong>Security Note:</strong> For your security, please change your password immediately after your first login. You can do this from your profile settings.
+        </p>
+        <p>If you have any questions, please contact the administration.</p>
+        <p style="margin-top:24px">Best Regards,<br/>TinyTots Administration Team</p>
+      </div>
+    `,
+    text: `Dear Dr. ${doctor.firstName} ${doctor.lastName},\n\nYour doctor account has been created for TinyTots Daycare Management System.\n\n=== YOUR LOGIN CREDENTIALS ===\n\nUsername: ${username}\nPassword: ${password}\n\nIMPORTANT: Please save these credentials securely. You will need both your username and password to log in.\n\nPlease log in at: ${loginUrl}\n\nAfter logging in, please change your password immediately for security purposes. You can do this from your profile settings.\n\nIf you have any questions, please contact the administration.\n\nBest Regards,\nTinyTots Administration Team`
+  };
+}
+
 module.exports = {
+  doctorAccountCreatedEmail,
   sendMail,
   vendorApprovedEmail,
   vendorRejectedEmail,

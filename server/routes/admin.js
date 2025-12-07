@@ -1,14 +1,47 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const Child = require('../models/Child');
 const Product = require('../models/Product');
 const auth = require('../middleware/auth');
 const { authorize } = require('../middleware/auth');
-const { sendMail, parentApprovedEmail, parentRejectedEmail, staffApprovedEmail, staffRejectedEmail, childCreatedEmail, vendorApprovedEmail, vendorRejectedEmail } = require('../utils/mailer');
+const { sendMail, parentApprovedEmail, parentRejectedEmail, staffApprovedEmail, staffRejectedEmail, childCreatedEmail, vendorApprovedEmail, vendorRejectedEmail, doctorAccountCreatedEmail } = require('../utils/mailer');
 
 const router = express.Router();
+
+// Multer configuration for doctor license pictures
+const licenseUploadsDir = path.join(__dirname, '..', 'uploads', 'doctor_licenses');
+if (!fs.existsSync(licenseUploadsDir)) {
+  fs.mkdirSync(licenseUploadsDir, { recursive: true });
+}
+
+const licenseStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, licenseUploadsDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.jpg';
+    const name = `license-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    cb(null, name);
+  }
+});
+
+const licenseUpload = multer({
+  storage: licenseStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedMimes = ['image/jpeg', 'image/png', 'image/jpg'];
+    const allowedExtensions = ['.jpg', '.jpeg', '.png'];
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    
+    if (allowedMimes.includes(file.mimetype) && allowedExtensions.includes(fileExtension)) {
+      return cb(null, true);
+    }
+    cb(new Error('Only JPG, JPEG, and PNG image files are allowed for license pictures'));
+  }
+});
 
 // Admin middleware - only admin can access these routes
 const adminOnly = [auth, authorize('admin')];
@@ -431,7 +464,7 @@ router.get('/discounts/pending', adminOnly, async (req, res) => {
 
 // Email utility - unified mailer and templates
 
-// Approve vendor account (ensure only one approved globally)
+// Approve vendor account (multi-vendor support enabled)
 router.put('/vendors/:id/approve', adminOnly, async (req, res) => {
   try {
     const vendorId = req.params.id;
@@ -450,7 +483,7 @@ router.put('/vendors/:id/approve', adminOnly, async (req, res) => {
     vendor.approvedAt = new Date();
     vendor.approvedBy = req.user.userId;
 
-    // Ensure exactly one approved vendor – auto-reject others later
+    // Multi-vendor support - allow multiple vendors to be approved
 
     // Create or link a User account for the vendor to log in
     let loginInfo = null;
@@ -480,10 +513,7 @@ router.put('/vendors/:id/approve', adminOnly, async (req, res) => {
 
     await vendor.save();
 
-    // Auto-reject all other vendors and send emails to everyone
-    const otherVendors = await Vendor.find({ _id: { $ne: vendor._id } });
-
-    // Send approval email to the selected vendor with login info if created now
+    // Send approval email to the vendor with login info if created now
     try {
       const mail = vendorApprovedEmail(vendor, loginInfo);
       await sendMail({ to: vendor.email, ...mail });
@@ -491,27 +521,20 @@ router.put('/vendors/:id/approve', adminOnly, async (req, res) => {
       console.error('Failed to send approval email:', e.message);
     }
 
-    // Reject others and notify them (best-effort)
-    for (const v of otherVendors) {
-      if (v.status !== 'rejected') {
-        v.status = 'rejected';
-        v.approvedAt = null;
-        v.approvedBy = null;
-        await v.save();
-      }
-      try {
-        const mail = vendorRejectedEmail(v, 'Another vendor has been selected.');
-        await sendMail({ to: v.email, ...mail });
-      } catch (e) {
-        console.warn('Failed to send rejection email to', v.email, e.message);
-      }
+    // Send approval SMS (best-effort)
+    try {
+      const { sendSms } = require('../utils/sms');
+      const to = String(vendor.phone).startsWith('+') ? vendor.phone : `+91${vendor.phone}`;
+      await sendSms(to, `TinyTots: Your vendor registration for ${vendor.companyName} has been APPROVED.`);
+    } catch (e) {
+      console.warn('Failed to send approval SMS:', e.message);
     }
 
     const updatedVendor = await Vendor.findById(vendorId)
       .populate('approvedBy', 'firstName lastName email')
       .populate('user', 'email role isActive');
 
-    res.json({ message: 'Vendor approved successfully and others notified', vendor: updatedVendor });
+    res.json({ message: 'Vendor approved successfully', vendor: updatedVendor });
   } catch (error) {
     console.error('Vendor approve error:', error);
     res.status(500).json({ message: 'Server error approving vendor' });
@@ -1059,6 +1082,377 @@ router.post('/children', adminOnly, [
   } catch (error) {
     console.error('Create child error:', error);
     res.status(500).json({ message: 'Server error creating child profile' });
+  }
+});
+
+// ==================== DOCTOR MANAGEMENT ====================
+
+// Get all doctors
+router.get('/doctors', adminOnly, async (req, res) => {
+  try {
+    const doctors = await User.find({ role: 'doctor' })
+      .select('-password')
+      .populate('doctor.assignedChildren', 'firstName lastName dateOfBirth program');
+    res.json(doctors);
+  } catch (error) {
+    console.error('Get doctors error:', error);
+    res.status(500).json({ message: 'Server error fetching doctors' });
+  }
+});
+
+// Create doctor account (admin only)
+router.post('/doctors', adminOnly, licenseUpload.single('licensePicture'), [
+  body('firstName').trim().notEmpty().withMessage('First name is required'),
+  body('lastName').trim().notEmpty().withMessage('Last name is required'),
+  body('email').isEmail().withMessage('Please provide a valid email'),
+  body('username').optional().trim(),
+  body('phone').optional().trim(),
+  body('licenseNumber').trim().notEmpty().withMessage('License number is required'),
+  body('specialization').optional().trim(),
+  body('qualification').optional().trim(),
+  body('yearsOfExperience').optional().isInt({ min: 0 }).withMessage('Years of experience must be a non-negative integer'),
+  body('password').optional().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  // Legal & Licensing fields
+  body('medicalLicenseNumber').optional().trim(),
+  body('licenseIssuingAuthority').optional().trim(),
+  body('licenseExpiryDate').optional().isISO8601().withMessage('License expiry date must be a valid date'),
+  body('professionalRegistrationNumber').optional().trim(),
+  body('insuranceProvider').optional().trim(),
+  body('insurancePolicyNumber').optional().trim(),
+  body('insuranceExpiryDate').optional().isISO8601().withMessage('Insurance expiry date must be a valid date'),
+  body('backgroundCheckDate').optional().isISO8601().withMessage('Background check date must be a valid date'),
+  body('backgroundCheckStatus').optional().isIn(['pending', 'approved', 'rejected']),
+  body('certifications').optional().isArray()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { 
+      firstName, 
+      lastName, 
+      email, 
+      username,
+      phone, 
+      licenseNumber, 
+      specialization, 
+      qualification, 
+      yearsOfExperience, 
+      password,
+      medicalLicenseNumber,
+      licenseIssuingAuthority,
+      licenseExpiryDate,
+      professionalRegistrationNumber,
+      insuranceProvider,
+      insurancePolicyNumber,
+      insuranceExpiryDate,
+      backgroundCheckDate,
+      backgroundCheckStatus,
+      certifications
+    } = req.body;
+
+    // Check if user already exists by email
+    const existingUserByEmail = await User.findOne({ email });
+    if (existingUserByEmail) {
+      return res.status(400).json({ message: 'User already exists with this email' });
+    }
+
+    // Generate username if not provided
+    let doctorUsername = username;
+    if (!doctorUsername) {
+      // Generate unique username
+      const baseUsername = `dr.${firstName.toLowerCase()}.${lastName.toLowerCase()}`;
+      let counter = 0;
+      let uniqueUsername = baseUsername;
+      
+      // Check if username exists and generate unique one
+      while (await User.findOne({ username: uniqueUsername })) {
+        counter++;
+        uniqueUsername = `${baseUsername}.${counter}`;
+      }
+      doctorUsername = uniqueUsername;
+    } else {
+      // Check if provided username already exists
+      const existingUserByUsername = await User.findOne({ username: doctorUsername });
+      if (existingUserByUsername) {
+        return res.status(400).json({ message: 'Username already exists' });
+      }
+    }
+    
+    // Generate password if not provided
+    const doctorPassword = password || Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase() + '!@#';
+
+    // Handle license picture upload
+    let licensePicturePath = '';
+    if (req.file) {
+      licensePicturePath = `/uploads/doctor_licenses/${req.file.filename}`;
+    }
+
+    const doctor = new User({
+      firstName,
+      lastName,
+      email,
+      username: doctorUsername,
+      password: doctorPassword,
+      role: 'doctor',
+      phone,
+      isActive: true,
+      doctor: {
+        licenseNumber,
+        specialization: specialization || '',
+        qualification: qualification || '',
+        yearsOfExperience: yearsOfExperience || 0,
+        assignedChildren: [],
+        licensePicture: licensePicturePath,
+        medicalLicenseNumber: medicalLicenseNumber || '',
+        licenseIssuingAuthority: licenseIssuingAuthority || '',
+        licenseExpiryDate: licenseExpiryDate ? new Date(licenseExpiryDate) : undefined,
+        professionalRegistrationNumber: professionalRegistrationNumber || '',
+        insuranceProvider: insuranceProvider || '',
+        insurancePolicyNumber: insurancePolicyNumber || '',
+        insuranceExpiryDate: insuranceExpiryDate ? new Date(insuranceExpiryDate) : undefined,
+        backgroundCheckDate: backgroundCheckDate ? new Date(backgroundCheckDate) : undefined,
+        backgroundCheckStatus: backgroundCheckStatus || 'pending',
+        certifications: Array.isArray(certifications) ? certifications.map(cert => ({
+          name: cert.name || '',
+          issuingOrganization: cert.issuingOrganization || '',
+          issueDate: cert.issueDate ? new Date(cert.issueDate) : undefined,
+          expiryDate: cert.expiryDate ? new Date(cert.expiryDate) : undefined
+        })) : []
+      }
+    });
+
+    await doctor.save();
+
+    // Send email with credentials to doctor
+    try {
+      const emailData = doctorAccountCreatedEmail(doctor, doctorUsername, doctorPassword);
+      await sendMail({
+        to: doctor.email,
+        ...emailData
+      });
+      console.log(`Doctor account creation email sent to: ${doctor.email}`);
+    } catch (emailError) {
+      console.error('Error sending doctor account creation email:', emailError);
+      // Don't fail the request if email fails, but log it
+    }
+
+    res.status(201).json({
+      message: 'Doctor account created successfully. Credentials have been sent to the doctor\'s email.',
+      doctor: doctor.toJSON(),
+      username: doctorUsername,
+      tempPassword: password ? undefined : doctorPassword // Only return if auto-generated
+    });
+  } catch (error) {
+    console.error('Create doctor error:', error);
+    res.status(500).json({ message: 'Server error creating doctor account' });
+  }
+});
+
+// Update doctor information
+router.put('/doctors/:id', adminOnly, licenseUpload.single('licensePicture'), [
+  body('firstName').optional().trim().notEmpty(),
+  body('lastName').optional().trim().notEmpty(),
+  body('phone').optional().trim(),
+  body('licenseNumber').optional().trim().notEmpty(),
+  body('specialization').optional().trim(),
+  body('qualification').optional().trim(),
+  body('yearsOfExperience').optional().isInt({ min: 0 }),
+  body('medicalLicenseNumber').optional().trim(),
+  body('licenseIssuingAuthority').optional().trim(),
+  body('licenseExpiryDate').optional().isISO8601(),
+  body('professionalRegistrationNumber').optional().trim(),
+  body('insuranceProvider').optional().trim(),
+  body('insurancePolicyNumber').optional().trim(),
+  body('insuranceExpiryDate').optional().isISO8601(),
+  body('backgroundCheckDate').optional().isISO8601(),
+  body('backgroundCheckStatus').optional().isIn(['pending', 'approved', 'rejected']),
+  body('certifications').optional().isArray()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const doctor = await User.findById(req.params.id);
+    if (!doctor || doctor.role !== 'doctor') {
+      return res.status(404).json({ message: 'Doctor not found' });
+    }
+
+    const { 
+      firstName, 
+      lastName, 
+      phone, 
+      licenseNumber, 
+      specialization, 
+      qualification, 
+      yearsOfExperience,
+      medicalLicenseNumber,
+      licenseIssuingAuthority,
+      licenseExpiryDate,
+      professionalRegistrationNumber,
+      insuranceProvider,
+      insurancePolicyNumber,
+      insuranceExpiryDate,
+      backgroundCheckDate,
+      backgroundCheckStatus,
+      certifications
+    } = req.body;
+
+    if (firstName) doctor.firstName = firstName;
+    if (lastName) doctor.lastName = lastName;
+    if (phone !== undefined) doctor.phone = phone;
+    if (licenseNumber) doctor.doctor.licenseNumber = licenseNumber;
+    if (specialization !== undefined) doctor.doctor.specialization = specialization;
+    if (qualification !== undefined) doctor.doctor.qualification = qualification;
+    if (yearsOfExperience !== undefined) doctor.doctor.yearsOfExperience = yearsOfExperience;
+    
+    // Legal & Licensing fields
+    if (medicalLicenseNumber !== undefined) doctor.doctor.medicalLicenseNumber = medicalLicenseNumber;
+    if (licenseIssuingAuthority !== undefined) doctor.doctor.licenseIssuingAuthority = licenseIssuingAuthority;
+    if (licenseExpiryDate !== undefined) doctor.doctor.licenseExpiryDate = licenseExpiryDate ? new Date(licenseExpiryDate) : undefined;
+    if (professionalRegistrationNumber !== undefined) doctor.doctor.professionalRegistrationNumber = professionalRegistrationNumber;
+    if (insuranceProvider !== undefined) doctor.doctor.insuranceProvider = insuranceProvider;
+    if (insurancePolicyNumber !== undefined) doctor.doctor.insurancePolicyNumber = insurancePolicyNumber;
+    if (insuranceExpiryDate !== undefined) doctor.doctor.insuranceExpiryDate = insuranceExpiryDate ? new Date(insuranceExpiryDate) : undefined;
+    if (backgroundCheckDate !== undefined) doctor.doctor.backgroundCheckDate = backgroundCheckDate ? new Date(backgroundCheckDate) : undefined;
+    if (backgroundCheckStatus !== undefined) doctor.doctor.backgroundCheckStatus = backgroundCheckStatus;
+    
+    // Handle license picture update
+    if (req.file) {
+      // Delete old license picture if exists
+      if (doctor.doctor.licensePicture) {
+        const oldFilePath = path.join(__dirname, '..', doctor.doctor.licensePicture);
+        if (fs.existsSync(oldFilePath)) {
+          fs.unlinkSync(oldFilePath);
+        }
+      }
+      doctor.doctor.licensePicture = `/uploads/doctor_licenses/${req.file.filename}`;
+    }
+    
+    if (certifications !== undefined) {
+      doctor.doctor.certifications = Array.isArray(certifications) ? certifications.map(cert => ({
+        name: cert.name || '',
+        issuingOrganization: cert.issuingOrganization || '',
+        issueDate: cert.issueDate ? new Date(cert.issueDate) : undefined,
+        expiryDate: cert.expiryDate ? new Date(cert.expiryDate) : undefined
+      })) : [];
+    }
+
+    await doctor.save();
+
+    res.json({
+      message: 'Doctor updated successfully',
+      doctor: doctor.toJSON()
+    });
+  } catch (error) {
+    console.error('Update doctor error:', error);
+    res.status(500).json({ message: 'Server error updating doctor' });
+  }
+});
+
+// Assign children to doctor
+router.put('/doctors/:id/assign-children', adminOnly, [
+  body('childIds').isArray().withMessage('childIds must be an array'),
+  body('childIds.*').isMongoId().withMessage('Each child ID must be valid')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const doctor = await User.findById(req.params.id);
+    if (!doctor || doctor.role !== 'doctor') {
+      return res.status(404).json({ message: 'Doctor not found' });
+    }
+
+    const { childIds } = req.body;
+
+    // Verify all children exist
+    const children = await Child.find({ _id: { $in: childIds } });
+    if (children.length !== childIds.length) {
+      return res.status(400).json({ message: 'One or more children not found' });
+    }
+
+    doctor.doctor.assignedChildren = childIds;
+    await doctor.save();
+
+    await doctor.populate('doctor.assignedChildren', 'firstName lastName dateOfBirth program');
+
+    res.json({
+      message: 'Children assigned to doctor successfully',
+      doctor: doctor.toJSON()
+    });
+  } catch (error) {
+    console.error('Assign children to doctor error:', error);
+    res.status(500).json({ message: 'Server error assigning children' });
+  }
+});
+
+// Remove child from doctor
+router.put('/doctors/:id/remove-child/:childId', adminOnly, async (req, res) => {
+  try {
+    const doctor = await User.findById(req.params.id);
+    if (!doctor || doctor.role !== 'doctor') {
+      return res.status(404).json({ message: 'Doctor not found' });
+    }
+
+    doctor.doctor.assignedChildren = doctor.doctor.assignedChildren.filter(
+      childId => childId.toString() !== req.params.childId
+    );
+    await doctor.save();
+
+    await doctor.populate('doctor.assignedChildren', 'firstName lastName dateOfBirth program');
+
+    res.json({
+      message: 'Child removed from doctor successfully',
+      doctor: doctor.toJSON()
+    });
+  } catch (error) {
+    console.error('Remove child from doctor error:', error);
+    res.status(500).json({ message: 'Server error removing child' });
+  }
+});
+
+// Delete doctor account
+router.delete('/doctors/:id', adminOnly, async (req, res) => {
+  try {
+    const doctor = await User.findById(req.params.id);
+    if (!doctor || doctor.role !== 'doctor') {
+      return res.status(404).json({ message: 'Doctor not found' });
+    }
+
+    await User.findByIdAndDelete(req.params.id);
+
+    res.json({ message: 'Doctor account deleted successfully' });
+  } catch (error) {
+    console.error('Delete doctor error:', error);
+    res.status(500).json({ message: 'Server error deleting doctor' });
+  }
+});
+
+// Toggle doctor active status
+router.put('/doctors/:id/toggle-status', adminOnly, async (req, res) => {
+  try {
+    const doctor = await User.findById(req.params.id);
+    if (!doctor || doctor.role !== 'doctor') {
+      return res.status(404).json({ message: 'Doctor not found' });
+    }
+
+    doctor.isActive = !doctor.isActive;
+    await doctor.save();
+
+    res.json({
+      message: `Doctor ${doctor.isActive ? 'activated' : 'deactivated'} successfully`,
+      doctor: doctor.toJSON()
+    });
+  } catch (error) {
+    console.error('Toggle doctor status error:', error);
+    res.status(500).json({ message: 'Server error updating doctor status' });
   }
 });
 
