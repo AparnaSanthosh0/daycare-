@@ -27,13 +27,14 @@ import {
   ManageAccounts,
   Inventory2,
   ShoppingCart,
-  LocalHospital
+  LocalHospital,
+  DirectionsCar
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 
 const drawerWidth = 240;
 
-const getMenuItems = (userRole) => {
+const getMenuItems = (userRole, user) => {
   if (userRole === 'admin') {
     return [
       { text: 'Admin Home', icon: <SupervisorAccount />, path: '/admin' },
@@ -69,6 +70,17 @@ const getMenuItems = (userRole) => {
     ];
   }
   if (userRole === 'staff') {
+    // Check if user is a driver
+    const isDriver = user?.staff?.staffType === 'driver';
+    
+    if (isDriver) {
+      return [
+        { text: 'Driver Dashboard', icon: <DirectionsCar />, path: '/driver' },
+        { text: 'Profile', icon: <Person />, path: '/profile' },
+      ];
+    }
+    
+    // Regular staff menu
     return [
       { text: 'Teacher Dashboard', icon: <Group />, path: '/staff' },
       { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
@@ -80,6 +92,12 @@ const getMenuItems = (userRole) => {
       { text: 'Communication', icon: <Email />, path: '/communication' },
       { text: 'Reports', icon: <Assessment />, path: '/reports' },
       { text: 'Feedback', icon: <Assessment />, path: '/parent/feedback' },
+      { text: 'Profile', icon: <Person />, path: '/profile' },
+    ];
+  }
+  if (userRole === 'doctor') {
+    return [
+      { text: 'Doctor Dashboard', icon: <LocalHospital />, path: '/doctor' },
       { text: 'Profile', icon: <Person />, path: '/profile' },
     ];
   }
@@ -117,7 +135,7 @@ const Sidebar = ({ mobileOpen, onDrawerToggle }) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   
-  const menuItems = getMenuItems(user?.role);
+  const menuItems = getMenuItems(user?.role, user);
 
   const drawer = (
     <div>

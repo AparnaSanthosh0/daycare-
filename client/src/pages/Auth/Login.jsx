@@ -113,27 +113,60 @@ const Login = () => {
     const result = await login(formData.email, formData.password);
     
     if (result.success) {
-      const role = result.role || result.user?.role || JSON.parse(localStorage.getItem('token_payload') || '{}').role || formData.role;
-      console.log('Login successful, role:', role, 'navigating to appropriate route');
-      
-      // Check if user is a staff type (teacher, driver, delivery, nanny)
-      const staffTypes = ['teacher', 'driver', 'delivery', 'nanny'];
+      const actualRole = result.role || result.user?.role || JSON.parse(localStorage.getItem('token_payload') || '{}').role;
       const userStaffType = result.user?.staff?.staffType;
-      const isStaffType = staffTypes.includes(formData.role) || (role === 'staff');
+      const selectedRole = formData.role;
       
-      switch (role) {
+      // Skip role validation for admin login route (admin has separate login)
+      // Also skip if actual role is admin (admin should use /admin-login route)
+      if (!isAdminLogin && actualRole !== 'admin') {
+        // Validate role match for non-admin logins
+        let roleMatches = false;
+        
+        // Handle staff types (teacher, driver, delivery, nanny)
+        if (selectedRole === 'teacher' || selectedRole === 'driver' || selectedRole === 'delivery' || selectedRole === 'nanny') {
+          // For staff types, check if actual role is 'staff' and staffType matches
+          roleMatches = actualRole === 'staff' && userStaffType === selectedRole;
+        } else if (selectedRole === 'doctor') {
+          // Doctor role must match exactly
+          roleMatches = actualRole === 'doctor';
+        } else if (selectedRole === 'parent') {
+          // Parent role must match exactly
+          roleMatches = actualRole === 'parent';
+        } else if (selectedRole === 'vendor') {
+          // Vendor role must match exactly
+          roleMatches = actualRole === 'vendor';
+        }
+        
+        if (!roleMatches) {
+          setError(`Invalid role selection. This account is registered as ${actualRole === 'staff' ? userStaffType || 'staff' : actualRole}. Please select the correct role.`);
+          setLoading(false);
+          return;
+        }
+      } else if (!isAdminLogin && actualRole === 'admin') {
+        // If someone tries to login as admin through regular login, redirect them
+        setError('Admin accounts must use the admin login page.');
+        setLoading(false);
+        return;
+      }
+      
+      // Role matches, proceed with navigation
+      console.log('Login successful, role:', actualRole, 'staffType:', userStaffType, 'navigating to appropriate route');
+      
+      switch (actualRole) {
         case 'admin':
           console.log('Navigating to /admin');
           navigate('/admin');
           break;
         case 'staff':
-        case 'teacher':
-        case 'driver':
-        case 'delivery':
-        case 'nanny':
-          // All staff types navigate to /staff dashboard
-          console.log(`Navigating to /staff (${userStaffType || formData.role || 'staff'})`);
-          navigate('/staff');
+          // Check staffType for specific navigation
+          if (userStaffType === 'driver') {
+            console.log('Navigating to /driver');
+            navigate('/driver');
+          } else {
+            console.log(`Navigating to /staff (${userStaffType || 'staff'})`);
+            navigate('/staff');
+          }
           break;
         case 'doctor':
           console.log('Navigating to /doctor');
@@ -148,14 +181,8 @@ const Login = () => {
           navigate('/vendor');
           break;
         default:
-          // Handle direct staff type selection (teacher, driver, delivery, nanny)
-          if (isStaffType) {
-            console.log(`Navigating to /staff (${formData.role})`);
-            navigate('/staff');
-          } else {
-            console.log('Navigating to /dashboard (default)');
-            navigate('/dashboard');
-          }
+          console.log('Navigating to /dashboard (default)');
+          navigate('/dashboard');
       }
     } else {
       setError(result.message);

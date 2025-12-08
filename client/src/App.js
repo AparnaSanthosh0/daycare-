@@ -10,11 +10,12 @@ import Register from './pages/Auth/Register';
 import JobsLanding from './pages/Jobs/JobsLanding';
 import ForgotPassword from './pages/Auth/ForgotPassword';
 import ResetPassword from './pages/Auth/ResetPassword';
-import Dashboard from './pages/Dashboard/Dashboard';
 // import Children from './pages/Children/Children';
 // import Parents from './pages/Parents/Parents';
 import Staff from './pages/Staff/Staff';
 import MealPlanning from './pages/Staff/MealPlanning';
+import DriverDashboard from './pages/Driver/DriverDashboard';
+import DoctorDashboard from './pages/Doctor/DoctorDashboard';
 import MealPlanApproval from './pages/MealPlan/MealPlanApproval';
 import Visitors from './pages/Staff/Visitors';
 import Emergency from './pages/Staff/Emergency';
@@ -242,7 +243,7 @@ function App() {
           {/* Protected Routes */}
           <Route 
             path="/dashboard" 
-            element={user ? <Layout>{user.role === 'parent' ? <ParentDashboard /> : <Dashboard />}</Layout> : <Navigate to="/" replace />} 
+            element={user?.role === 'parent' ? <Layout><ParentDashboard /></Layout> : <Navigate to={user ? (user.role === 'admin' ? '/admin' : user.role === 'staff' && user.staff?.staffType === 'driver' ? '/driver' : user.role === 'doctor' ? '/doctor' : user.role === 'vendor' ? '/vendor' : '/staff') : '/'} replace />} 
           />
           {/* Parent sidebar routes mapped to dashboard tabs */}
           <Route 
@@ -292,8 +293,16 @@ function App() {
             element={user ? <Layout><Families /></Layout> : <Navigate to="/" replace />} 
           />
           <Route 
-            path="/staff" 
+            path="/staff"
             element={user && (user.role === 'admin' || user.role === 'staff') ? <Layout><Staff /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
+          />
+          <Route
+            path="/driver"
+            element={user?.role === 'staff' && user?.staff?.staffType === 'driver' ? <Layout><DriverDashboard /></Layout> : <Navigate to="/" replace />} 
+          />
+          <Route
+            path="/doctor"
+            element={user?.role === 'doctor' ? <Layout><DoctorDashboard /></Layout> : <Navigate to="/" replace />} 
           />
           <Route 
             path="/meal-planning" 

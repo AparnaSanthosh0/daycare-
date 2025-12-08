@@ -119,7 +119,7 @@ const DoctorManagement = () => {
   return (
     <Box sx={{ p: 3 }}>
       {error && (
-        <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
+        <Alert severity="error" sx={{ mb: 3, whiteSpace: 'pre-line' }} onClose={() => setError('')}>
           {error}
         </Alert>
       )}
@@ -403,7 +403,7 @@ const DoctorManagement = () => {
                 />
               </Grid>
               <Grid item xs={12}>
-                <Typography variant="body2" sx={{ mb: 1 }}>License Picture (Required)</Typography>
+                <Typography variant="body2" sx={{ mb: 1 }}>Medical License Certificate Photo (Required)</Typography>
                 <input
                   accept="image/*"
                   style={{ display: 'none' }}
@@ -412,6 +412,16 @@ const DoctorManagement = () => {
                   onChange={(e) => {
                     const file = e.target.files[0];
                     if (file) {
+                      // Validate file type
+                      if (!file.type.startsWith('image/')) {
+                        setError('Please upload an image file (JPG, PNG, etc.)');
+                        return;
+                      }
+                      // Validate file size (10MB max)
+                      if (file.size > 10 * 1024 * 1024) {
+                        setError('Image file size must be less than 10MB');
+                        return;
+                      }
                       setLicensePictureFile(file);
                       const reader = new FileReader();
                       reader.onloadend = () => {
@@ -423,14 +433,14 @@ const DoctorManagement = () => {
                 />
                 <label htmlFor="license-picture-upload">
                   <Button variant="outlined" component="span" fullWidth>
-                    {licensePictureFile ? 'Change License Picture' : 'Upload License Picture'}
+                    {licensePictureFile ? 'Change Certificate Photo' : 'Upload Certificate Photo'}
                   </Button>
                 </label>
                 {licensePicturePreview && (
                   <Box sx={{ mt: 2, textAlign: 'center' }}>
                     <img
                       src={licensePicturePreview}
-                      alt="License preview"
+                      alt="Certificate preview"
                       style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '4px' }}
                     />
                   </Box>
@@ -438,11 +448,11 @@ const DoctorManagement = () => {
                 {doctorDialog.mode === 'edit' && doctorDialog.doctor?.doctor?.licensePicture && !licensePicturePreview && (
                   <Box sx={{ mt: 2, textAlign: 'center' }}>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-                      Current License Picture:
+                      Current Certificate Photo:
                     </Typography>
                     <img
                       src={`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}${doctorDialog.doctor.doctor.licensePicture}`}
-                      alt="Current license"
+                      alt="Current certificate"
                       style={{ maxWidth: '100%', maxHeight: '200px', borderRadius: '4px' }}
                       onError={(e) => {
                         e.target.style.display = 'none';
@@ -603,40 +613,52 @@ const DoctorManagement = () => {
             variant="contained"
             onClick={async () => {
               try {
-                // Validate license picture for new doctors
+                // Validate certificate photo for new doctors
                 if (doctorDialog.mode === 'create' && !licensePictureFile) {
-                  setError('Please upload a license picture before creating the doctor account');
+                  setError('Please upload a medical license certificate photo before creating the doctor account');
                   return;
                 }
 
                 // Create FormData for file upload
                 const formData = new FormData();
+                // Required fields that must always be sent
+                const requiredFields = ['firstName', 'lastName', 'email', 'licenseNumber'];
+                // Fields to exclude from the loop (handled separately)
+                const excludedFields = ['username', 'password', 'certifications'];
+                
                 Object.keys(doctorForm).forEach(key => {
+                  // Skip excluded fields - they're handled separately
+                  if (excludedFields.includes(key)) return;
+                  
                   const value = doctorForm[key];
-                  if (value !== '' && value !== null && value !== undefined) {
-                    if (key === 'certifications' && Array.isArray(value)) {
-                      formData.append(key, JSON.stringify(value));
-                    } else {
-                      formData.append(key, value);
-                    }
+                  // Always send required fields, even if empty (server will validate)
+                  if (requiredFields.includes(key)) {
+                    formData.append(key, value || '');
+                  } else if (value !== '' && value !== null && value !== undefined) {
+                    formData.append(key, value);
                   }
                 });
 
+                // Handle certifications separately
+                if (doctorForm.certifications && Array.isArray(doctorForm.certifications) && doctorForm.certifications.length > 0) {
+                  formData.append('certifications', JSON.stringify(doctorForm.certifications));
+                }
+
+                // Handle license picture
                 if (licensePictureFile) {
                   formData.append('licensePicture', licensePictureFile);
                 }
 
+                // Handle username and password for create mode only
                 if (doctorDialog.mode === 'create') {
-                  if (!doctorForm.password) {
-                    // Don't send empty password, let server auto-generate
-                  } else {
+                  if (doctorForm.password && doctorForm.password.trim() !== '') {
                     formData.append('password', doctorForm.password);
                   }
-                  if (!doctorForm.username) {
-                    // Don't send empty username, let server auto-generate
-                  } else {
+                  // Username is optional - server will auto-generate if not provided
+                  if (doctorForm.username && doctorForm.username.trim() !== '') {
                     formData.append('username', doctorForm.username);
                   }
+                  
                   const response = await api.post('/api/admin/doctors', formData);
                   setSuccess('Doctor created successfully. Credentials have been sent to the doctor\'s email.');
                   // Show username and password
@@ -657,7 +679,27 @@ const DoctorManagement = () => {
                 setDoctorDialog({ open: false, doctor: null, mode: 'create' });
                 fetchDoctors();
               } catch (error) {
-                setError(error.response?.data?.message || error.response?.data?.errors?.[0]?.msg || 'Failed to save doctor');
+                console.error('Doctor creation error:', error.response?.data);
+                console.error('Full error:', error);
+                let errorMessage = 'Failed to save doctor';
+                if (error.response?.data) {
+                  if (error.response.data.errors && error.response.data.errors.length > 0) {
+                    const errorDetails = error.response.data.errors.map(e => {
+                      const field = e.param || e.path || 'field';
+                      const msg = e.msg || e.message || 'Invalid value';
+                      // Make field names more readable
+                      const fieldName = field.charAt(0).toUpperCase() + field.slice(1).replace(/([A-Z])/g, ' $1');
+                      return `${fieldName}: ${msg}`;
+                    });
+                    errorMessage = errorDetails.join('\n');
+                    console.error('Validation errors:', errorDetails);
+                  } else if (error.response.data.message) {
+                    errorMessage = error.response.data.message;
+                  }
+                } else if (error.message) {
+                  errorMessage = error.message;
+                }
+                setError(errorMessage);
               }
             }}
           >
@@ -805,11 +847,11 @@ const DoctorManagement = () => {
               </Grid>
               {viewDetailsDialog.doctor?.doctor?.licensePicture && (
                 <Grid item xs={12} sm={6}>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>License Picture</Typography>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>Medical License Certificate Photo</Typography>
                   <Box sx={{ mt: 1 }}>
                     <img
                       src={`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}${viewDetailsDialog.doctor.doctor.licensePicture}`}
-                      alt="License"
+                      alt="Medical License Certificate"
                       style={{ maxWidth: '100%', maxHeight: '300px', borderRadius: '4px', border: '1px solid #ddd' }}
                       onError={(e) => {
                         e.target.style.display = 'none';
@@ -817,7 +859,7 @@ const DoctorManagement = () => {
                       }}
                     />
                     <Typography variant="caption" color="error" sx={{ display: 'none' }}>
-                      Failed to load license picture
+                      Failed to load certificate photo
                     </Typography>
                   </Box>
                 </Grid>

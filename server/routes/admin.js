@@ -1102,32 +1102,83 @@ router.get('/doctors', adminOnly, async (req, res) => {
 
 // Create doctor account (admin only)
 router.post('/doctors', adminOnly, licenseUpload.single('licensePicture'), [
-  body('firstName').trim().notEmpty().withMessage('First name is required'),
-  body('lastName').trim().notEmpty().withMessage('Last name is required'),
-  body('email').isEmail().withMessage('Please provide a valid email'),
-  body('username').optional().trim(),
-  body('phone').optional().trim(),
-  body('licenseNumber').trim().notEmpty().withMessage('License number is required'),
+  body('firstName').notEmpty().withMessage('First name is required').trim(),
+  body('lastName').notEmpty().withMessage('Last name is required').trim(),
+  body('email').notEmpty().withMessage('Email is required').isEmail().withMessage('Please provide a valid email').normalizeEmail(),
+  body('username').optional({ checkFalsy: true }).trim(),
+  body('phone').optional({ checkFalsy: true }).trim(),
+  body('licenseNumber').notEmpty().withMessage('License number is required').trim(),
   body('specialization').optional().trim(),
   body('qualification').optional().trim(),
-  body('yearsOfExperience').optional().isInt({ min: 0 }).withMessage('Years of experience must be a non-negative integer'),
-  body('password').optional().isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+  body('yearsOfExperience').optional({ checkFalsy: true }).customSanitizer((value) => {
+    if (value === '' || value === null || value === undefined) return undefined;
+    const num = parseInt(value, 10);
+    return isNaN(num) ? undefined : num;
+  }).custom((value) => {
+    if (value === undefined || value === null || value === '') return true;
+    const num = parseInt(value, 10);
+    return !isNaN(num) && num >= 0;
+  }).withMessage('Years of experience must be a non-negative integer'),
+  body('password').optional({ checkFalsy: true }).custom((value) => {
+    if (!value || value === '') return true; // Allow empty, server will auto-generate
+    return value.length >= 8;
+  }).withMessage('Password must be at least 8 characters'),
   // Legal & Licensing fields
   body('medicalLicenseNumber').optional().trim(),
   body('licenseIssuingAuthority').optional().trim(),
-  body('licenseExpiryDate').optional().isISO8601().withMessage('License expiry date must be a valid date'),
+  body('licenseExpiryDate').optional({ checkFalsy: true }).custom((value) => {
+    if (!value || value === '') return true;
+    return /^\d{4}-\d{2}-\d{2}/.test(value) || new Date(value).toString() !== 'Invalid Date';
+  }).withMessage('License expiry date must be a valid date'),
   body('professionalRegistrationNumber').optional().trim(),
   body('insuranceProvider').optional().trim(),
   body('insurancePolicyNumber').optional().trim(),
-  body('insuranceExpiryDate').optional().isISO8601().withMessage('Insurance expiry date must be a valid date'),
-  body('backgroundCheckDate').optional().isISO8601().withMessage('Background check date must be a valid date'),
+  body('insuranceExpiryDate').optional({ checkFalsy: true }).custom((value) => {
+    if (!value || value === '') return true;
+    return /^\d{4}-\d{2}-\d{2}/.test(value) || new Date(value).toString() !== 'Invalid Date';
+  }).withMessage('Insurance expiry date must be a valid date'),
+  body('backgroundCheckDate').optional({ checkFalsy: true }).custom((value) => {
+    if (!value || value === '') return true;
+    return /^\d{4}-\d{2}-\d{2}/.test(value) || new Date(value).toString() !== 'Invalid Date';
+  }).withMessage('Background check date must be a valid date'),
   body('backgroundCheckStatus').optional().isIn(['pending', 'approved', 'rejected']),
-  body('certifications').optional().isArray()
+  body('certifications').optional({ checkFalsy: true, nullable: true }).custom((value) => {
+    // If not provided, null, undefined, or empty string, it's valid (optional field)
+    if (!value || value === '' || value === null || value === undefined) return true;
+    // If it's already an array, validate it
+    if (Array.isArray(value)) return true;
+    // If it's a string, try to parse it
+    if (typeof value === 'string') {
+      // Allow empty array string
+      if (value === '[]' || value.trim() === '[]') return true;
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed);
+      } catch (e) {
+        return false;
+      }
+    }
+    return false;
+  }).withMessage('Certifications must be a valid JSON array')
 ], async (req, res) => {
   try {
+    // Log incoming request data for debugging
+    console.log('=== Doctor Creation Request ===');
+    console.log('Body keys:', Object.keys(req.body));
+    console.log('Body values:', JSON.stringify(req.body, null, 2));
+    console.log('Certifications value:', req.body.certifications, 'Type:', typeof req.body.certifications);
+    console.log('File:', req.file ? { filename: req.file.filename, size: req.file.size } : 'No file');
+    
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
+      console.error('Doctor creation validation errors:', JSON.stringify(errors.array(), null, 2));
+      console.error('Request body keys:', Object.keys(req.body));
+      console.error('Request body values:', JSON.stringify(req.body, null, 2));
+      console.error('Certifications value causing error:', req.body.certifications, 'Type:', typeof req.body.certifications);
+      return res.status(400).json({ 
+        message: 'Validation failed',
+        errors: errors.array() 
+      });
     }
 
     const { 
