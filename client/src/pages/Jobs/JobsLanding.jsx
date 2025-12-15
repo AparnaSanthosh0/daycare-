@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, Container, Grid, Card, CardActionArea, CardContent, Typography, Button } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
-import { School, DirectionsCar, LocalShipping, ChildCare, Store } from '@mui/icons-material';
+import { School, DirectionsCar, LocalShipping, ChildCare } from '@mui/icons-material';
 
 // Staff role configurations
 const staffRoles = [
@@ -10,6 +10,14 @@ const staffRoles = [
   { type: 'delivery', title: 'Delivery Staff', icon: <LocalShipping />, description: 'Product and service delivery', color: 'info' },
   { type: 'nanny', title: 'Nanny at Home Service', icon: <ChildCare />, description: 'In-home childcare services', color: 'warning' }
 ];
+
+// Role images for cards
+const roleImages = {
+  teacher: '/jobs/teacher.jpg',
+  nanny: '/jobs/nanny2.jpg',
+  delivery: '/jobs/image.png',
+  vendor: '/jobs/vendorr.jpg'
+};
 
 const JobsLanding = () => {
   const navigate = useNavigate();
@@ -84,79 +92,66 @@ const JobsLanding = () => {
                 >
                   <CardActionArea onClick={() => navigate(`/register/${role.type}`, { state: { staffType: role.type } })}>
                     <CardContent sx={{ p: 0 }}>
-                      {role.type === 'driver' ? (
-                        // Driver card with school bus image
-                        <>
-                          <Box sx={{ 
-                            height: 200, 
-                            position: 'relative',
-                            backgroundImage: "url('/jobs/driver.jpg')",
-                            backgroundSize: 'cover',
-                            backgroundPosition: 'center',
-                            backgroundRepeat: 'no-repeat'
-                          }}>
-                            <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(0,0,0,0.55), rgba(0,0,0,0.15))' }} />
-                            <Box sx={{ position: 'absolute', bottom: 0, p: 3, color: 'white' }}>
-                              <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                                {role.title}
-                              </Typography>
-                              <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                                {role.description}
-                              </Typography>
+                      {(() => {
+                        // Background image per role (driver, teacher, nanny, delivery). Fallback to gradient.
+                        const backgroundImage = role.type === 'driver'
+                          ? "url('/jobs/driver.jpg')"
+                          : role.type === 'teacher'
+                            ? `url('${roleImages.teacher}')`
+                            : role.type === 'nanny'
+                              ? `url('${roleImages.nanny}')`
+                              : role.type === 'delivery'
+                                ? `url('${roleImages.delivery}')`
+                                : null;
+
+                        return (
+                          <>
+                            <Box sx={{ 
+                              height: 200, 
+                              position: 'relative',
+                              backgroundImage: backgroundImage || `linear-gradient(135deg, rgba(59, 130, 246, 0.8) 0%, rgba(147, 51, 234, 0.8) 100%)`,
+                              backgroundSize: 'cover',
+                              backgroundPosition: 'center',
+                              backgroundRepeat: 'no-repeat',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              color: 'white'
+                            }}>
+                              {!backgroundImage && (
+                                <Box sx={{ fontSize: 48, mb: 2 }}>
+                                  {role.icon}
+                                </Box>
+                              )}
+                              {backgroundImage ? (
+                                <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(0,0,0,0.55), rgba(0,0,0,0.15))' }} />
+                              ) : null}
+                              <Box sx={{ position: backgroundImage ? 'absolute' : 'static', bottom: backgroundImage ? 0 : 'auto', p: backgroundImage ? 3 : 0, textAlign: backgroundImage ? 'left' : 'center' }}>
+                                <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                                  {role.title}
+                                </Typography>
+                                <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                                  {role.description}
+                                </Typography>
+                              </Box>
                             </Box>
-                          </Box>
-                          <Box sx={{ p: 2 }}>
-                            <Button 
-                              fullWidth 
-                              variant="contained" 
-                              color={role.color}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/register/${role.type}`, { state: { staffType: role.type } });
-                              }}
-                            >
-                              Apply as {role.title}
-                            </Button>
-                          </Box>
-                        </>
-                      ) : (
-                        // Other staff roles with gradient background
-                        <>
-                          <Box sx={{ 
-                            height: 200, 
-                            position: 'relative',
-                            background: `linear-gradient(135deg, rgba(59, 130, 246, 0.8) 0%, rgba(147, 51, 234, 0.8) 100%)`,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            color: 'white'
-                          }}>
-                            <Box sx={{ fontSize: 48, mb: 2 }}>
-                              {role.icon}
+                            <Box sx={{ p: 2 }}>
+                              <Button 
+                                fullWidth 
+                                variant="contained" 
+                                color={role.color}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/register/${role.type}`, { state: { staffType: role.type } });
+                                }}
+                              >
+                                Apply as {role.title}
+                              </Button>
                             </Box>
-                            <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                              {role.title}
-                            </Typography>
-                          </Box>
-                          <Box sx={{ p: 2 }}>
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, minHeight: 40 }}>
-                              {role.description}
-                            </Typography>
-                            <Button 
-                              fullWidth 
-                              variant="contained" 
-                              color={role.color}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                navigate(`/register/${role.type}`, { state: { staffType: role.type } });
-                              }}
-                            >
-                              Apply as {role.title}
-                            </Button>
-                          </Box>
-                        </>
-                      )}
+                          </>
+                        );
+                      })()}
                     </CardContent>
                   </CardActionArea>
                 </Card>
@@ -189,19 +184,20 @@ const JobsLanding = () => {
                     <Box sx={{ 
                       height: 200, 
                       position: 'relative',
-                      background: `linear-gradient(135deg, rgba(156, 39, 176, 0.8) 0%, rgba(233, 30, 99, 0.8) 100%)`,
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'white'
+                      backgroundImage: `url('${roleImages.vendor}')`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                      backgroundRepeat: 'no-repeat'
                     }}>
-                      <Box sx={{ fontSize: 48, mb: 2 }}>
-                        <Store />
+                      <Box sx={{ position: 'absolute', inset: 0, background: 'linear-gradient(0deg, rgba(0,0,0,0.55), rgba(0,0,0,0.15))' }} />
+                      <Box sx={{ position: 'absolute', bottom: 0, p: 3, color: 'white' }}>
+                        <Typography variant="h5" sx={{ fontWeight: 700 }}>
+                          Vendor
+                        </Typography>
+                        <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                          Service providers and suppliers registration
+                        </Typography>
                       </Box>
-                      <Typography variant="h5" sx={{ fontWeight: 700 }}>
-                        Vendor
-                      </Typography>
                     </Box>
                     <Box sx={{ p: 2 }}>
                       <Typography variant="body2" color="text.secondary" sx={{ mb: 2, minHeight: 40 }}>

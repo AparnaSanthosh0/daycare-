@@ -36,6 +36,9 @@ const Register = ({ fixedRole, fixedStaffType }) => {
     return 'parent';
   })();
 
+  // Check if coming from twins registration
+  const isTwinsRegistration = location?.pathname === '/register/twins' || location?.state?.isTwins === true;
+
   const initialStaffType = (() => {
     // Fixed staffType via route prop or location state
     if (typeof fixedStaffType !== 'undefined' && fixedStaffType) return fixedStaffType;
@@ -67,6 +70,7 @@ const Register = ({ fixedRole, fixedStaffType }) => {
     availability: '',
 
     // Child admission details (for parents)
+    hasTwins: isTwinsRegistration,
     childName: '',
     childDob: '',
     childGender: 'male',
@@ -74,6 +78,12 @@ const Register = ({ fixedRole, fixedStaffType }) => {
     medicalInfo: '',
     emergencyContactName: '',
     emergencyContactPhone: '',
+    // Twin child details
+    twinName: '',
+    twinDob: '',
+    twinGender: 'male',
+    twinProgram: 'preschool',
+    twinMedicalInfo: '',
 
     // Account
     password: '',
@@ -145,6 +155,27 @@ const Register = ({ fixedRole, fixedStaffType }) => {
         setLoading(false);
         return;
       }
+      
+      // Validate twin if hasTwins is true
+      if (formData.hasTwins) {
+        if (!formData.twinName || !formData.twinDob) {
+          setError("Twin child name and date of birth are required");
+          setLoading(false);
+          return;
+        }
+        const twinDob = new Date(formData.twinDob);
+        if (isNaN(twinDob.getTime())) {
+          setError('Invalid twin date of birth');
+          setLoading(false);
+          return;
+        }
+        if (!(twinDob >= minDob && twinDob <= maxDob)) {
+          setError('Twin age must be between 1 and 7 years');
+          setLoading(false);
+          return;
+        }
+      }
+      
       if (formData.emergencyContactPhone && !/^\d{10}$/.test(formData.emergencyContactPhone)) {
         setError('Emergency contact phone must be 10 digits');
         setLoading(false);
@@ -267,6 +298,10 @@ const Register = ({ fixedRole, fixedStaffType }) => {
         if (serviceArea) rest.serviceArea = serviceArea;
         if (availability) rest.availability = availability;
       }
+      // Include twins data if hasTwins is true
+      if (rest.hasTwins) {
+        rest.hasTwins = true; // Ensure it's a boolean
+      }
       payload = rest;
     }
 
@@ -341,7 +376,7 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                   : formData.staffType === 'delivery' ? 'Delivery Staff Registration'
                   : formData.staffType === 'nanny' ? 'Nanny at Home Service Registration'
                   : 'Staff Registration'
-                : 'Parent Registration'}
+                : formData.hasTwins ? 'Parent Registration (Twins)' : 'Parent Registration'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Your registration will be reviewed by our admin team
@@ -752,12 +787,27 @@ const Register = ({ fixedRole, fixedStaffType }) => {
               {/* Parent-only child details */}
               {formData.role !== 'staff' && (
                 <>
+                  {/* Twins checkbox */}
+                  <Grid item xs={12}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <input
+                        id="hasTwins"
+                        type="checkbox"
+                        checked={!!formData.hasTwins}
+                        onChange={(e) => setFormData(prev => ({ ...prev, hasTwins: e.target.checked }))}
+                      />
+                      <label htmlFor="hasTwins" style={{ fontWeight: 600, cursor: 'pointer' }}>
+                        I have twins (registering both children)
+                      </label>
+                    </Box>
+                  </Grid>
+                  
                   <Grid item xs={12} sm={6}>
                     <TextField
                       required
                       fullWidth
                       name="childName"
-                      label="Child's Name"
+                      label="First Child's Name"
                       value={formData.childName}
                       onChange={handleChange}
                       InputProps={{
@@ -865,6 +915,96 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     />
                   </Grid>
+                  
+                  {/* Twin child details - shown only if hasTwins is true */}
+                  {formData.hasTwins && (
+                    <>
+                      <Grid item xs={12}>
+                        <Typography variant="h6" sx={{ mt: 2, mb: 1, fontWeight: 600 }}>
+                          Twin Child Details
+                        </Typography>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="twinName"
+                          label="Twin Child's Name"
+                          value={formData.twinName}
+                          onChange={handleChange}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <Person />
+                              </InputAdornment>
+                            ),
+                          }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="twinDob"
+                          label="Twin's Date of Birth"
+                          type="date"
+                          value={formData.twinDob}
+                          onChange={handleChange}
+                          InputLabelProps={{ shrink: true }}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <Event />
+                              </InputAdornment>
+                            ),
+                          }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          select
+                          fullWidth
+                          name="twinGender"
+                          label="Twin's Gender"
+                          value={formData.twinGender}
+                          onChange={handleChange}
+                        >
+                          <MenuItem value="male">Male</MenuItem>
+                          <MenuItem value="female">Female</MenuItem>
+                        </TextField>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          select
+                          fullWidth
+                          name="twinProgram"
+                          label="Twin's Program"
+                          value={formData.twinProgram}
+                          onChange={handleChange}
+                        >
+                          <MenuItem value="infant">Infant</MenuItem>
+                          <MenuItem value="toddler">Toddler</MenuItem>
+                          <MenuItem value="preschool">Preschool</MenuItem>
+                          <MenuItem value="prekindergarten">Pre-Kindergarten</MenuItem>
+                        </TextField>
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          multiline
+                          minRows={3}
+                          name="twinMedicalInfo"
+                          label="Twin's Medical Information (allergies, medications, conditions)"
+                          placeholder="Any allergies, medications, or medical conditions..."
+                          value={formData.twinMedicalInfo}
+                          onChange={handleChange}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                    </>
+                  )}
                 </>
               )}
 

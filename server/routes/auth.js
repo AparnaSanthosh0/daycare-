@@ -115,7 +115,7 @@ router.post('/register', upload.single('certificate'), [
     if (roleToEvaluate === 'parent') {
       const AdmissionRequest = require('../models/AdmissionRequest');
       // Extract child/admission fields from body
-      const { childName, childDob, childGender, medicalInfo, emergencyContactName, emergencyContactPhone, program } = req.body || {};
+      const { childName, childDob, childGender, medicalInfo, emergencyContactName, emergencyContactPhone, program, hasTwins, twinName, twinDob, twinGender, twinProgram, twinMedicalInfo } = req.body || {};
 
       // Validate child DOB between 1 and 7 years
       const dob = childDob ? new Date(childDob) : null;
@@ -134,7 +134,7 @@ router.post('/register', upload.single('certificate'), [
         return res.status(400).json({ message: 'Emergency contact phone must be 10 digits' });
       }
 
-      // Create admission request
+      // Create admission request for first child
       await AdmissionRequest.create({
         parentUser: user._id,
         parent: {
@@ -155,6 +155,41 @@ router.post('/register', upload.single('certificate'), [
         },
         status: 'pending'
       });
+
+      // If twins, create admission request for second child
+      if (hasTwins === true || hasTwins === 'true') {
+        if (!twinName || !twinDob) {
+          return res.status(400).json({ message: 'Twin child name and date of birth are required' });
+        }
+        const twinDobDate = twinDob ? new Date(twinDob) : null;
+        if (!twinDobDate || isNaN(twinDobDate.getTime())) {
+          return res.status(400).json({ message: 'Invalid twin date of birth' });
+        }
+        if (!(twinDobDate >= minDob && twinDobDate <= maxDob)) {
+          return res.status(400).json({ message: 'Twin age must be between 1 and 7 years' });
+        }
+
+        await AdmissionRequest.create({
+          parentUser: user._id,
+          parent: {
+            firstName,
+            lastName,
+            email,
+            phone,
+            address
+          },
+          child: {
+            name: twinName,
+            dateOfBirth: twinDobDate,
+            gender: twinGender || 'male',
+            program: twinProgram || null,
+            medicalInfo: twinMedicalInfo || '',
+            emergencyContactName: emergencyContactName || '',
+            emergencyContactPhone: emergencyContactPhone || ''
+          },
+          status: 'pending'
+        });
+      }
     }
 
     // For parent/staff registrations, mark as submitted and do not auto-login

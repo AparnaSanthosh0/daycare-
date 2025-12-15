@@ -130,8 +130,8 @@ const Login = () => {
         } else if (selectedRole === 'doctor') {
           // Doctor role must match exactly
           roleMatches = actualRole === 'doctor';
-        } else if (selectedRole === 'parent') {
-          // Parent role must match exactly
+        } else if (selectedRole === 'parent' || selectedRole === 'twins') {
+          // Parent role must match exactly (twins is also a parent)
           roleMatches = actualRole === 'parent';
         } else if (selectedRole === 'vendor') {
           // Vendor role must match exactly
@@ -163,6 +163,12 @@ const Login = () => {
           if (userStaffType === 'driver') {
             console.log('Navigating to /driver');
             navigate('/driver');
+          } else if (userStaffType === 'delivery') {
+            console.log('Navigating to /delivery');
+            navigate('/delivery');
+          } else if (userStaffType === 'nanny') {
+            console.log('Navigating to /nanny');
+            navigate('/nanny');
           } else {
             console.log(`Navigating to /staff (${userStaffType || 'staff'})`);
             navigate('/staff');
@@ -294,6 +300,7 @@ const Login = () => {
                     }}
                   >
                     <MenuItem value="parent">Parent</MenuItem>
+                    <MenuItem value="twins">Parent (Twins)</MenuItem>
                     <MenuItem value="teacher">Teacher</MenuItem>
                     <MenuItem value="driver">Driver</MenuItem>
                     <MenuItem value="delivery">Delivery</MenuItem>

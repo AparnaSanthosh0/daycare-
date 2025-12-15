@@ -72,10 +72,26 @@ const getMenuItems = (userRole, user) => {
   if (userRole === 'staff') {
     // Check if user is a driver
     const isDriver = user?.staff?.staffType === 'driver';
+    const isNanny = user?.staff?.staffType === 'nanny';
+    const isDelivery = user?.staff?.staffType === 'delivery';
     
     if (isDriver) {
       return [
         { text: 'Driver Dashboard', icon: <DirectionsCar />, path: '/driver' },
+        { text: 'Profile', icon: <Person />, path: '/profile' },
+      ];
+    }
+
+    if (isNanny) {
+      return [
+        { text: 'Nanny Dashboard', icon: <ChildCare />, path: '/nanny' },
+        { text: 'Profile', icon: <Person />, path: '/profile' },
+      ];
+    }
+
+    if (isDelivery) {
+      return [
+        { text: 'Delivery Dashboard', icon: <LocalActivity />, path: '/delivery' },
         { text: 'Profile', icon: <Person />, path: '/profile' },
       ];
     }
