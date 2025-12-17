@@ -39,6 +39,8 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
 
+const STAFF_ROLE_VALUES = ['teacher', 'driver', 'nanny', 'delivery'];
+
 const UserManagement = () => {
   const { user } = useAuth();
   const [users, setUsers] = useState([]);
@@ -61,10 +63,11 @@ const UserManagement = () => {
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
+      const roleParam = STAFF_ROLE_VALUES.includes(roleFilter) ? 'staff' : roleFilter;
       const params = {
         page: page + 1,
         limit: rowsPerPage,
-        role: roleFilter,
+        role: roleParam,
         status: statusFilter
       };
 
@@ -108,15 +111,23 @@ const UserManagement = () => {
   };
 
   const filteredUsers = users.filter(u => {
-    if (searchTerm) {
-      const searchLower = searchTerm.toLowerCase();
-      return (
-        u.firstName.toLowerCase().includes(searchLower) ||
-        u.lastName.toLowerCase().includes(searchLower) ||
-        u.email.toLowerCase().includes(searchLower)
-      );
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = !searchTerm || (
+      u.firstName.toLowerCase().includes(searchLower) ||
+      u.lastName.toLowerCase().includes(searchLower) ||
+      u.email.toLowerCase().includes(searchLower)
+    );
+
+    let matchesRole = true;
+    if (roleFilter !== 'all') {
+      if (STAFF_ROLE_VALUES.includes(roleFilter)) {
+        matchesRole = u.role === 'staff' && (u.staff?.staffType === roleFilter);
+      } else {
+        matchesRole = u.role === roleFilter;
+      }
     }
-    return true;
+
+    return matchesSearch && matchesRole;
   });
 
   const getRoleColor = (role) => {
@@ -132,6 +143,19 @@ const UserManagement = () => {
 
   const getStatusColor = (isActive) => {
     return isActive ? 'success' : 'error';
+  };
+
+  const getStaffTypeLabel = (user) => {
+    if (user.role !== 'staff') return '—';
+    const label = user.staff?.staffType || 'teacher';
+    switch (label) {
+      case 'driver': return 'Driver';
+      case 'nanny': return 'Nanny';
+      case 'delivery': return 'Delivery';
+      case 'teacher':
+      default:
+        return 'Teacher';
+    }
   };
 
   if (user?.role !== 'admin') {
@@ -240,8 +264,10 @@ const UserManagement = () => {
                 onChange={(e) => setRoleFilter(e.target.value)}
               >
                 <MenuItem value="all">All Roles</MenuItem>
-                <MenuItem value="admin">Admin</MenuItem>
-                <MenuItem value="staff">Staff</MenuItem>
+                <MenuItem value="teacher">Teacher</MenuItem>
+                <MenuItem value="driver">Driver</MenuItem>
+                <MenuItem value="nanny">Nanny</MenuItem>
+                <MenuItem value="delivery">Delivery</MenuItem>
                 <MenuItem value="parent">Parent</MenuItem>
                 <MenuItem value="vendor">Vendor</MenuItem>
                 <MenuItem value="customer">Customer</MenuItem>
@@ -274,6 +300,7 @@ const UserManagement = () => {
                 <TableCell>Name</TableCell>
                 <TableCell>Email</TableCell>
                 <TableCell>Role</TableCell>
+                <TableCell>Staff Role</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Phone</TableCell>
                 <TableCell>Joined</TableCell>
@@ -305,6 +332,14 @@ const UserManagement = () => {
                         label={u.role.toUpperCase()}
                         color={getRoleColor(u.role)}
                         size="small"
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={getStaffTypeLabel(u)}
+                        color={u.role === 'staff' ? 'info' : 'default'}
+                        size="small"
+                        variant={u.role === 'staff' ? 'filled' : 'outlined'}
                       />
                     </TableCell>
                     <TableCell>
@@ -432,6 +467,10 @@ const UserManagement = () => {
               )}
               {viewDialog.user.staff && (
                 <>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="subtitle2">Staff Role:</Typography>
+                    <Typography>{getStaffTypeLabel(viewDialog.user)}</Typography>
+                  </Grid>
                   <Grid item xs={12} sm={6}>
                     <Typography variant="subtitle2">Experience:</Typography>
                     <Typography>{viewDialog.user.staff.yearsOfExperience} years</Typography>

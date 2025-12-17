@@ -53,6 +53,7 @@ const Register = ({ fixedRole, fixedStaffType }) => {
     lastName: '',
     email: '',
     phone: '',
+    city: '',
     username: '',
 
     // Staff-only details
@@ -93,6 +94,8 @@ const Register = ({ fixedRole, fixedStaffType }) => {
     // Email preference
     notifyByEmail: false
   });
+  const [parentName, setParentName] = useState('');
+  const [phoneCode, setPhoneCode] = useState('+91');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -106,6 +109,18 @@ const Register = ({ fixedRole, fixedStaffType }) => {
       [name]: files ? files[0] : value
     }));
     if (error) setError('');
+  };
+
+  const handleParentNameChange = (value) => {
+    setParentName(value);
+    const parts = value.trim().split(' ');
+    const first = parts[0] || '';
+    const last = parts.slice(1).join(' ') || 'Parent';
+    setFormData((prev) => ({
+      ...prev,
+      firstName: first,
+      lastName: last
+    }));
   };
 
   const handleSubmit = async (e) => {
@@ -129,7 +144,7 @@ const Register = ({ fixedRole, fixedStaffType }) => {
 
     // Phone validation (optional but if provided must be 10 digits)
     if (formData.phone && !/^\d{10}$/.test(formData.phone)) {
-      setError('Phone number must be exactly 10 digits');
+      setError('Phone number must be exactly 10 digits (numbers only)');
       setLoading(false);
       return;
     }
@@ -310,6 +325,8 @@ const Register = ({ fixedRole, fixedStaffType }) => {
       payload.set('notifyByEmail', String(!!formData.notifyByEmail));
     } else {
       payload.notifyByEmail = !!formData.notifyByEmail;
+      // Attach phone code for backend if needed
+      payload.phoneCode = phoneCode;
     }
 
     const result = await register(payload);
@@ -328,6 +345,367 @@ const Register = ({ fixedRole, fixedStaffType }) => {
 
     setLoading(false);
   };
+
+  const isStaff = formData.role === 'staff';
+
+  const renderParentLayout = () => (
+    <Box
+      sx={{
+        minHeight: '100vh',
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        py: 6,
+        px: 2,
+        position: 'relative',
+        overflow: 'hidden',
+        background: 'linear-gradient(90deg, #d6f5d1 0%, #e8fbe4 100%)'
+      }}
+    >
+      <Box
+        aria-hidden
+        sx={{
+          position: 'absolute',
+          inset: 0,
+          backgroundImage: "url('https://images.unsplash.com/photo-1503457574462-bd27054394c1?q=80&w=1400&auto=format&fit=crop')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          opacity: 0.12
+        }}
+      />
+
+      <Container maxWidth="lg" sx={{ position: 'relative', zIndex: 1 }}>
+        <Grid container spacing={3} alignItems="center">
+          <Grid item xs={12} md={6}>
+            <Box sx={{ pr: { md: 4 }, mb: { xs: 3, md: 0 } }}>
+              <Typography variant="h3" sx={{ fontWeight: 800, color: '#1b3c2a', lineHeight: 1.1, mb: 1 }}>
+                Learning that feels like joy!
+              </Typography>
+              <Typography variant="h6" sx={{ color: '#2f4f3f', fontWeight: 500 }}>
+                Block your child's seat with a quick admission request.
+              </Typography>
+            </Box>
+          </Grid>
+
+          <Grid item xs={12} md={6}>
+            <Paper
+              elevation={6}
+              sx={{
+                p: { xs: 3, sm: 4 },
+                borderRadius: 4,
+                boxShadow: '0 14px 36px rgba(0,0,0,0.12)',
+                backgroundColor: 'white',
+              }}
+            >
+              <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+                Block Your Child's Seat at TinyTots
+              </Typography>
+
+              {successMsg && (
+                <Alert severity="success" sx={{ width: '100%', mb: 2 }}>
+                  {successMsg}
+                </Alert>
+              )}
+              {error && (
+                <Alert severity="error" sx={{ width: '100%', mb: 2 }}>
+                  {error}
+                </Alert>
+              )}
+
+              <Box component="form" onSubmit={handleSubmit}>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}>
+                    <TextField
+                      required
+                      fullWidth
+                      label="Parent's Name"
+                      value={parentName}
+                      onChange={(e) => handleParentNameChange(e.target.value)}
+                      placeholder="Enter parent's full name"
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Person />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Grid container spacing={1}>
+                      <Grid item xs={4} sm={3}>
+                        <TextField
+                          select
+                          fullWidth
+                          label="Code"
+                          value={phoneCode}
+                          onChange={(e) => setPhoneCode(e.target.value)}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        >
+                          <MenuItem value="+91">+91</MenuItem>
+                          <MenuItem value="+1">+1</MenuItem>
+                          <MenuItem value="+44">+44</MenuItem>
+                          <MenuItem value="+971">+971</MenuItem>
+                        </TextField>
+                      </Grid>
+                      <Grid item xs={8} sm={9}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="phone"
+                          label="Phone Number"
+                          placeholder="10 digit number"
+                          value={formData.phone}
+                          onChange={handleChange}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <Phone />
+                              </InputAdornment>
+                            ),
+                          }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      required
+                      fullWidth
+                      name="email"
+                      label="Email Address"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Email />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      select
+                      required
+                      fullWidth
+                      name="program"
+                      label="Select Program Interested In"
+                      value={formData.program}
+                      onChange={handleChange}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    >
+                      <MenuItem value="preschool">Preschool</MenuItem>
+                      <MenuItem value="daycare">Daycare</MenuItem>
+                      <MenuItem value="afterschool">Afterschool Enrichment</MenuItem>
+                      <MenuItem value="caregiver_home">Caregiver @ Home</MenuItem>
+                      <MenuItem value="teacher_home">Teacher @ Home</MenuItem>
+                    </TextField>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      name="city"
+                      label="City (optional)"
+                      value={formData.city}
+                      onChange={handleChange}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mt: 1 }}>
+                      Child Details
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      required
+                      fullWidth
+                      name="childName"
+                      label="Child's Name"
+                      value={formData.childName}
+                      onChange={handleChange}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Person />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      required
+                      fullWidth
+                      name="childDob"
+                      label="Child's Date of Birth"
+                      type="date"
+                      value={formData.childDob}
+                      onChange={handleChange}
+                      InputLabelProps={{ shrink: true }}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Event />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <input
+                        id="hasTwins"
+                        type="checkbox"
+                        checked={!!formData.hasTwins}
+                        onChange={(e) => setFormData(prev => ({ ...prev, hasTwins: e.target.checked }))}
+                      />
+                      <label htmlFor="hasTwins" style={{ fontWeight: 600, cursor: 'pointer' }}>
+                        I have twins (registering both children)
+                      </label>
+                    </Box>
+                  </Grid>
+
+                  {formData.hasTwins && (
+                    <>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="twinName"
+                          label="Twin Child's Name"
+                          value={formData.twinName}
+                          onChange={handleChange}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <Person />
+                              </InputAdornment>
+                            ),
+                          }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          required
+                          fullWidth
+                          name="twinDob"
+                          label="Twin's Date of Birth"
+                          type="date"
+                          value={formData.twinDob}
+                          onChange={handleChange}
+                          InputLabelProps={{ shrink: true }}
+                          InputProps={{
+                            startAdornment: (
+                              <InputAdornment position="start">
+                                <Event />
+                              </InputAdornment>
+                            ),
+                          }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                    </>
+                  )}
+
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      name="username"
+                      label="Username (optional)"
+                      value={formData.username}
+                      onChange={handleChange}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      required
+                      fullWidth
+                      name="password"
+                      label="Password"
+                      type={showPassword ? 'text' : 'password'}
+                      value={formData.password}
+                      onChange={handleChange}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Lock />
+                          </InputAdornment>
+                        ),
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton onClick={() => setShowPassword(!showPassword)} edge="end">
+                              {showPassword ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      required
+                      fullWidth
+                      name="confirmPassword"
+                      label="Confirm Password"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Lock />
+                          </InputAdornment>
+                        ),
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton onClick={() => setShowConfirmPassword(!showConfirmPassword)} edge="end">
+                              {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                </Grid>
+
+                <Button
+                  type="submit"
+                  fullWidth
+                  variant="contained"
+                  sx={{ mt: 3, py: 1.4, borderRadius: 2 }}
+                  disabled={loading}
+                >
+                  {loading ? 'Submitting...' : 'Enquire Now'}
+                </Button>
+              </Box>
+            </Paper>
+          </Grid>
+        </Grid>
+      </Container>
+    </Box>
+  );
+
+  if (!isStaff) return renderParentLayout();
 
   return (
     <Box
@@ -370,13 +748,11 @@ const Register = ({ fixedRole, fixedStaffType }) => {
         >
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Typography component="h1" variant="h5" sx={{ color: 'text.secondary', mb: 0.5 }}>
-              {formData.role === 'staff' 
-                ? formData.staffType === 'teacher' ? 'Teacher Registration'
-                  : formData.staffType === 'driver' ? 'Driver Registration'
-                  : formData.staffType === 'delivery' ? 'Delivery Staff Registration'
-                  : formData.staffType === 'nanny' ? 'Nanny at Home Service Registration'
-                  : 'Staff Registration'
-                : formData.hasTwins ? 'Parent Registration (Twins)' : 'Parent Registration'}
+              {formData.staffType === 'teacher' ? 'Teacher Registration'
+                : formData.staffType === 'driver' ? 'Driver Registration'
+                : formData.staffType === 'delivery' ? 'Delivery Staff Registration'
+                : formData.staffType === 'nanny' ? 'Nanny at Home Service Registration'
+                : 'Staff Registration'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
               Your registration will be reviewed by our admin team
@@ -415,128 +791,128 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                 </Grid>
               )}
 
-              {/* Prefill with Google */}
-              <Grid item xs={12}>
-                <Button
-                  variant="outlined"
-                  onClick={async () => {
-                    const res = await prefillWithGoogle();
-                    if (res.success) {
-                      const display = res.profile.displayName || '';
-                      const [first, ...rest] = display.split(' ');
-                      const last = rest.join(' ');
-                      setFormData((prev) => ({
-                        ...prev,
-                        email: res.profile.email || prev.email,
-                        firstName: first || prev.firstName,
-                        lastName: last || prev.lastName,
-                      }));
-                    }
-                  }}
-                >
-                  Use Google to prefill name & email
-                </Button>
-              </Grid>
+                  {/* Prefill with Google */}
+                  <Grid item xs={12}>
+                    <Button
+                      variant="outlined"
+                      onClick={async () => {
+                        const res = await prefillWithGoogle();
+                        if (res.success) {
+                          const display = res.profile.displayName || '';
+                          const [first, ...rest] = display.split(' ');
+                          const last = rest.join(' ');
+                          setFormData((prev) => ({
+                            ...prev,
+                            email: res.profile.email || prev.email,
+                            firstName: first || prev.firstName,
+                            lastName: last || prev.lastName,
+                          }));
+                        }
+                      }}
+                    >
+                      Use Google to prefill name & email
+                    </Button>
+                  </Grid>
 
-              {/* Email preference */}
-              <Grid item xs={12}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                  <input
-                    id="notifyByEmail"
-                    type="checkbox"
-                    checked={!!formData.notifyByEmail}
-                    onChange={(e) => setFormData(prev => ({ ...prev, notifyByEmail: e.target.checked }))}
-                  />
-                  <label htmlFor="notifyByEmail">Send me a confirmation email after I submit</label>
-                </Box>
-              </Grid>
+                  {/* Email preference */}
+                  <Grid item xs={12}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <input
+                        id="notifyByEmail"
+                        type="checkbox"
+                        checked={!!formData.notifyByEmail}
+                        onChange={(e) => setFormData(prev => ({ ...prev, notifyByEmail: e.target.checked }))}
+                      />
+                      <label htmlFor="notifyByEmail">Send me a confirmation email after I submit</label>
+                    </Box>
+                  </Grid>
 
-              {/* Details */}
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  name="firstName"
-                  label={formData.role === 'staff' ? 'Full Name (First)' : 'Parent First Name'}
-                  value={formData.firstName}
-                  onChange={handleChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Person />
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  name="lastName"
-                  label={formData.role === 'staff' ? 'Full Name (Last)' : 'Parent Last Name'}
-                  value={formData.lastName}
-                  onChange={handleChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Person />
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  required
-                  fullWidth
-                  name="email"
-                  label="Email Address"
-                  type="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Email />
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  name="phone"
-                  label="Phone Number (10 digits)"
-                  value={formData.phone}
-                  onChange={handleChange}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Phone />
-                      </InputAdornment>
-                    ),
-                  }}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                />
-              </Grid>
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  name="username"
-                  label="Username (optional)"
-                  value={formData.username}
-                  onChange={handleChange}
-                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                />
-              </Grid>
+                  {/* Details */}
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      required
+                      fullWidth
+                      name="firstName"
+                      label="Full Name (First)"
+                      value={formData.firstName}
+                      onChange={handleChange}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Person />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      required
+                      fullWidth
+                      name="lastName"
+                      label="Full Name (Last)"
+                      value={formData.lastName}
+                      onChange={handleChange}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Person />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      required
+                      fullWidth
+                      name="email"
+                      label="Email Address"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Email />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      name="phone"
+                      label="Phone Number (10 digits)"
+                      value={formData.phone}
+                      onChange={handleChange}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Phone />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      name="username"
+                      label="Username (optional)"
+                      value={formData.username}
+                      onChange={handleChange}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
 
-              {/* Staff-only fields */}
-              {formData.role === 'staff' && (
+                  {/* Staff-only fields */}
+                  {formData.role === 'staff' && (
                 <>
                   {/* Staff Type selector - hidden when fixedStaffType is provided */}
                   {!fixedStaffType && (

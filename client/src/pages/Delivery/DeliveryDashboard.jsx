@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -25,11 +26,15 @@ import {
   AccessTime,
   ErrorOutline,
   DoneAll,
+  AccountCircle,
+  ShoppingCart,
 } from '@mui/icons-material';
+import { Avatar, IconButton, Tooltip } from '@mui/material';
 
 const fmtCurrency = (v) => `$${v.toFixed(2)}`;
 
 const DeliveryDashboard = () => {
+  const navigate = useNavigate();
   const [tab, setTab] = useState(0);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -97,72 +102,89 @@ const DeliveryDashboard = () => {
     setActiveDelivery((prev) => ({ ...prev, status: 'delivered' }));
   };
 
+  const ordersCount = orders.length;
+
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ p: 3, bgcolor: '#f7f8fb', minHeight: '100vh' }}>
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
       {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
       {/* Header */}
-      <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', boxShadow: '0 10px 30px rgba(0,0,0,0.05)' }}>
         <Box>
           <Typography variant="h5" fontWeight={700}>Delivery Agent Dashboard</Typography>
           <Typography variant="body2" color="text.secondary">Mike Rodriguez - Agent #DA-042</Typography>
         </Box>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
           <Chip color="success" label="Online" icon={<DirectionsBike />} />
           <Button variant="outlined" startIcon={<ErrorOutline />} onClick={() => setError('Contact support: placeholder action')}>
             Report Issue
           </Button>
+          <Tooltip title="Shop">
+            <IconButton size="large" onClick={() => navigate('/shop')}>
+              <ShoppingCart />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Profile">
+            <IconButton size="large" sx={{ ml: 1 }} onClick={() => navigate('/profile')}>
+              <Avatar sx={{ bgcolor: '#16a34a' }}>
+                <AccountCircle />
+              </Avatar>
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Paper>
 
       {/* Stats */}
       <Grid container spacing={2.5} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, borderRadius: 2 }}>
-            <Typography color="text.secondary">Today's Deliveries</Typography>
+          <Paper sx={{ p: 2, borderRadius: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.04)' }}>
+            <Typography color="text.secondary">Today’s Deliveries</Typography>
             <Typography variant="h4">{stats.todayDeliveries}</Typography>
           </Paper>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, borderRadius: 2 }}>
-            <Typography color="text.secondary">Today's Earnings</Typography>
-            <Typography variant="h4" color="success.main">{fmtCurrency(stats.todayEarnings)}</Typography>
+          <Paper sx={{ p: 2, borderRadius: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.04)' }}>
+            <Typography color="text.secondary">Today’s Earnings</Typography>
+            <Typography variant="h4" sx={{ color: '#13b655' }}>{fmtCurrency(stats.todayEarnings)}</Typography>
           </Paper>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, borderRadius: 2 }}>
+          <Paper sx={{ p: 2, borderRadius: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.04)' }}>
             <Typography color="text.secondary">Average Rating</Typography>
-            <Typography variant="h4" color="warning.main">{stats.avgRating}</Typography>
+            <Typography variant="h4" sx={{ color: '#f08a00' }}>{stats.avgRating}</Typography>
           </Paper>
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
-          <Paper sx={{ p: 2, borderRadius: 2 }}>
+          <Paper sx={{ p: 2, borderRadius: 2, boxShadow: '0 8px 24px rgba(0,0,0,0.04)' }}>
             <Typography color="text.secondary">On-Time Rate</Typography>
-            <Typography variant="h4" color="primary.main">{stats.onTimeRate}%</Typography>
+            <Typography variant="h4" sx={{ color: '#2f86ff' }}>{stats.onTimeRate}%</Typography>
           </Paper>
         </Grid>
       </Grid>
 
-      <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mb: 3 }}>
-        <Tab label={`Available Orders (${orders.length})`} icon={<LocalShipping />} />
-        <Tab label="Active Delivery" icon={<Schedule />} />
-        <Tab label="Completed" icon={<DoneAll />} />
-        <Tab label="Earnings" icon={<MonetizationOn />} />
-      </Tabs>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+        <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ minHeight: 44 }}>
+          <Tab label={`Available Orders`} icon={<LocalShipping />} iconPosition="start" sx={{ textTransform: 'none' }} />
+          <Tab label="Active Delivery" icon={<Schedule />} iconPosition="start" sx={{ textTransform: 'none' }} />
+          <Tab label="Completed" icon={<DoneAll />} iconPosition="start" sx={{ textTransform: 'none' }} />
+          <Tab label="Earnings" icon={<MonetizationOn />} iconPosition="start" sx={{ textTransform: 'none' }} />
+        </Tabs>
+        <Chip label={`${ordersCount} Orders`} color="warning" variant="outlined" />
+      </Box>
 
       {/* Available Orders */}
       {tab === 0 && (
         <Stack spacing={2}>
           {orders.length === 0 && <Typography color="text.secondary">No available orders.</Typography>}
           {orders.map((o) => (
-            <Paper key={o.id} sx={{ p: 2, borderRadius: 2 }}>
+            <Paper key={o.id} sx={{ p: 2.5, borderRadius: 2, boxShadow: '0 10px 24px rgba(0,0,0,0.05)' }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                 <Stack direction="row" spacing={1} alignItems="center">
                   <Typography variant="h6">{o.id}</Typography>
                   <Chip size="small" label={`${o.items} items`} />
                 </Stack>
-                <Chip label={`$${o.pay}`} color="secondary" />
+                <Chip label={`$${o.pay}`} sx={{ backgroundColor: '#f3fff8', color: '#13b655', fontWeight: 600 }} />
               </Stack>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                 Pickup from: <strong>{o.pickup}</strong> — {o.pickupAddr}
@@ -178,12 +200,21 @@ const DeliveryDashboard = () => {
                 <Button
                   fullWidth
                   variant="contained"
-                  color="warning"
+                  sx={{
+                    backgroundColor: '#16a34a',
+                    '&:hover': { backgroundColor: '#15803d' }
+                  }}
                   onClick={() => handleAccept(o.id)}
                 >
                   Accept Order
                 </Button>
-                <Button fullWidth variant="outlined" color="inherit" onClick={() => setSuccess(`Viewing details for ${o.id} (placeholder)`)} >
+                <Button
+                  fullWidth
+                  variant="outlined"
+                  color="inherit"
+                  onClick={() => setSuccess(`Viewing details for ${o.id} (placeholder)`)}
+                  sx={{ color: '#4a4a4a', borderColor: '#d9d9d9' }}
+                >
                   View Details
                 </Button>
               </Stack>
@@ -194,7 +225,7 @@ const DeliveryDashboard = () => {
 
       {/* Active Delivery */}
       {tab === 1 && (
-        <Paper sx={{ p: 2, borderRadius: 2 }}>
+        <Paper sx={{ p: 2.5, borderRadius: 2, boxShadow: '0 10px 24px rgba(0,0,0,0.05)' }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
             <Typography variant="h6">Active Delivery</Typography>
             <Chip color="success" label={activeDelivery.status === 'delivered' ? 'Completed' : 'In Progress'} />
@@ -226,7 +257,7 @@ const DeliveryDashboard = () => {
 
       {/* Completed */}
       {tab === 2 && (
-        <Paper sx={{ p: 2, borderRadius: 2 }}>
+        <Paper sx={{ p: 2.5, borderRadius: 2, boxShadow: '0 10px 24px rgba(0,0,0,0.05)' }}>
           <Typography variant="h6" sx={{ mb: 1 }}>Completed Deliveries</Typography>
           <List>
             {completed.map((c) => (
@@ -248,7 +279,7 @@ const DeliveryDashboard = () => {
 
       {/* Earnings */}
       {tab === 3 && (
-        <Paper sx={{ p: 2, borderRadius: 2 }}>
+        <Paper sx={{ p: 2.5, borderRadius: 2, boxShadow: '0 10px 24px rgba(0,0,0,0.05)' }}>
           <Typography variant="h6" sx={{ mb: 1 }}>Earnings Summary</Typography>
           <Grid container spacing={2}>
             <Grid item xs={12} sm={6} md={3}>
