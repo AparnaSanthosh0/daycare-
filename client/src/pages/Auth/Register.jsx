@@ -749,9 +749,9 @@ const Register = ({ fixedRole, fixedStaffType }) => {
           <Box sx={{ textAlign: 'center', mb: 3 }}>
             <Typography component="h1" variant="h5" sx={{ color: 'text.secondary', mb: 0.5 }}>
               {formData.staffType === 'teacher' ? 'Teacher Registration'
-                : formData.staffType === 'driver' ? 'Driver Registration'
-                : formData.staffType === 'delivery' ? 'Delivery Staff Registration'
-                : formData.staffType === 'nanny' ? 'Nanny at Home Service Registration'
+                  : formData.staffType === 'driver' ? 'Driver Registration'
+                  : formData.staffType === 'delivery' ? 'Delivery Staff Registration'
+                  : formData.staffType === 'nanny' ? 'Nanny at Home Service Registration'
                 : 'Staff Registration'}
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -791,128 +791,128 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                 </Grid>
               )}
 
-                  {/* Prefill with Google */}
-                  <Grid item xs={12}>
-                    <Button
-                      variant="outlined"
-                      onClick={async () => {
-                        const res = await prefillWithGoogle();
-                        if (res.success) {
-                          const display = res.profile.displayName || '';
-                          const [first, ...rest] = display.split(' ');
-                          const last = rest.join(' ');
-                          setFormData((prev) => ({
-                            ...prev,
-                            email: res.profile.email || prev.email,
-                            firstName: first || prev.firstName,
-                            lastName: last || prev.lastName,
-                          }));
-                        }
-                      }}
-                    >
-                      Use Google to prefill name & email
-                    </Button>
-                  </Grid>
+              {/* Prefill with Google */}
+              <Grid item xs={12}>
+                <Button
+                  variant="outlined"
+                  onClick={async () => {
+                    const res = await prefillWithGoogle();
+                    if (res.success) {
+                      const display = res.profile.displayName || '';
+                      const [first, ...rest] = display.split(' ');
+                      const last = rest.join(' ');
+                      setFormData((prev) => ({
+                        ...prev,
+                        email: res.profile.email || prev.email,
+                        firstName: first || prev.firstName,
+                        lastName: last || prev.lastName,
+                      }));
+                    }
+                  }}
+                >
+                  Use Google to prefill name & email
+                </Button>
+              </Grid>
 
-                  {/* Email preference */}
-                  <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <input
-                        id="notifyByEmail"
-                        type="checkbox"
-                        checked={!!formData.notifyByEmail}
-                        onChange={(e) => setFormData(prev => ({ ...prev, notifyByEmail: e.target.checked }))}
-                      />
-                      <label htmlFor="notifyByEmail">Send me a confirmation email after I submit</label>
-                    </Box>
-                  </Grid>
+              {/* Email preference */}
+              <Grid item xs={12}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <input
+                    id="notifyByEmail"
+                    type="checkbox"
+                    checked={!!formData.notifyByEmail}
+                    onChange={(e) => setFormData(prev => ({ ...prev, notifyByEmail: e.target.checked }))}
+                  />
+                  <label htmlFor="notifyByEmail">Send me a confirmation email after I submit</label>
+                </Box>
+              </Grid>
 
-                  {/* Details */}
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      required
-                      fullWidth
-                      name="firstName"
+              {/* Details */}
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  name="firstName"
                       label="Full Name (First)"
-                      value={formData.firstName}
-                      onChange={handleChange}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Person />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      required
-                      fullWidth
-                      name="lastName"
+                  value={formData.firstName}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Person />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  name="lastName"
                       label="Full Name (Last)"
-                      value={formData.lastName}
-                      onChange={handleChange}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Person />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      required
-                      fullWidth
-                      name="email"
-                      label="Email Address"
-                      type="email"
-                      value={formData.email}
-                      onChange={handleChange}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Email />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      name="phone"
-                      label="Phone Number (10 digits)"
-                      value={formData.phone}
-                      onChange={handleChange}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <Phone />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      name="username"
-                      label="Username (optional)"
-                      value={formData.username}
-                      onChange={handleChange}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
-                  </Grid>
+                  value={formData.lastName}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Person />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  required
+                  fullWidth
+                  name="email"
+                  label="Email Address"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Email />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  name="phone"
+                  label="Phone Number (10 digits)"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <Phone />
+                      </InputAdornment>
+                    ),
+                  }}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  name="username"
+                  label="Username (optional)"
+                  value={formData.username}
+                  onChange={handleChange}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                />
+              </Grid>
 
-                  {/* Staff-only fields */}
-                  {formData.role === 'staff' && (
+              {/* Staff-only fields */}
+              {formData.role === 'staff' && (
                 <>
                   {/* Staff Type selector - hidden when fixedStaffType is provided */}
                   {!fixedStaffType && (
@@ -1157,27 +1157,27 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                       </Grid>
                     </>
                   )}
-                </>
-              )}
+                    </>
+                  )}
 
               {/* Parent-only child details */}
               {formData.role !== 'staff' && (
                 <>
                   {/* Twins checkbox */}
-                  <Grid item xs={12}>
+                      <Grid item xs={12}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <input
+                          <input
                         id="hasTwins"
                         type="checkbox"
                         checked={!!formData.hasTwins}
                         onChange={(e) => setFormData(prev => ({ ...prev, hasTwins: e.target.checked }))}
-                      />
+                          />
                       <label htmlFor="hasTwins" style={{ fontWeight: 600, cursor: 'pointer' }}>
                         I have twins (registering both children)
-                      </label>
-                    </Box>
-                  </Grid>
-                  
+                          </label>
+                        </Box>
+                      </Grid>
+
                   <Grid item xs={12} sm={6}>
                     <TextField
                       required
@@ -1376,9 +1376,9 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                           placeholder="Any allergies, medications, or medical conditions..."
                           value={formData.twinMedicalInfo}
                           onChange={handleChange}
-                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                        />
-                      </Grid>
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
                     </>
                   )}
                 </>

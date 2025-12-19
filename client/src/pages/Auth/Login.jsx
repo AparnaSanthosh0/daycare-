@@ -171,7 +171,7 @@ const Login = () => {
             navigate('/nanny');
           } else {
             console.log(`Navigating to /staff (${userStaffType || 'staff'})`);
-            navigate('/staff');
+          navigate('/staff');
           }
           break;
         case 'doctor':
@@ -187,8 +187,8 @@ const Login = () => {
           navigate('/vendor');
           break;
         default:
-          console.log('Navigating to /dashboard (default)');
-          navigate('/dashboard');
+            console.log('Navigating to /dashboard (default)');
+            navigate('/dashboard');
       }
     } else {
       setError(result.message);

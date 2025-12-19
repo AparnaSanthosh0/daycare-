@@ -295,7 +295,7 @@ function App() {
             element={user ? <Layout><Families /></Layout> : <Navigate to="/" replace />} 
           />
           <Route 
-            path="/staff"
+            path="/staff" 
             element={user && (user.role === 'admin' || user.role === 'staff') ? <Layout><Staff /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
           />
           <Route
