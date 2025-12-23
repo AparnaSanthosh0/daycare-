@@ -130,8 +130,8 @@ const Login = () => {
         } else if (selectedRole === 'doctor') {
           // Doctor role must match exactly
           roleMatches = actualRole === 'doctor';
-        } else if (selectedRole === 'parent' || selectedRole === 'twins') {
-          // Parent role must match exactly (twins is also a parent)
+        } else if (selectedRole === 'parent') {
+          // Parent role must match exactly
           roleMatches = actualRole === 'parent';
         } else if (selectedRole === 'vendor') {
           // Vendor role must match exactly
@@ -300,7 +300,6 @@ const Login = () => {
                     }}
                   >
                     <MenuItem value="parent">Parent</MenuItem>
-                    <MenuItem value="twins">Parent (Twins)</MenuItem>
                     <MenuItem value="teacher">Teacher</MenuItem>
                     <MenuItem value="driver">Driver</MenuItem>
                     <MenuItem value="delivery">Delivery</MenuItem>

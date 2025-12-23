@@ -312,7 +312,7 @@ function App() {
           />
           <Route
             path="/doctor"
-            element={user?.role === 'doctor' ? <Layout><DoctorDashboard /></Layout> : <Navigate to="/" replace />} 
+            element={user?.role === 'doctor' ? <DoctorDashboard /> : <Navigate to="/" replace />} 
           />
           <Route 
             path="/meal-planning" 

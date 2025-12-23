@@ -25,7 +25,8 @@ import {
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Alert
 } from '@mui/material';
 import {
   Person,
@@ -40,7 +41,10 @@ import {
   PhotoAlbum,
   // Analytics,
   TrendingUp,
-  Assessment
+  Assessment,
+  LocalHospital,
+  Add,
+  CheckCircle
   // People,
   // SupervisorAccount,
   // ContactPhone,
@@ -139,6 +143,21 @@ const ParentDashboard = ({ initialTab }) => {
   const [billingData, setBillingData] = useState({ invoices: [], payments: [] });
   const [paymentDialog, setPaymentDialog] = useState({ open: false, invoice: null });
   const [paymentLoading, setPaymentLoading] = useState(false);
+
+  // Doctor Appointments states
+  const [appointments, setAppointments] = useState([]);
+  const [appointmentDialog, setAppointmentDialog] = useState(false);
+  const [appointmentForm, setAppointmentForm] = useState({
+    childId: '',
+    appointmentDate: '',
+    appointmentTime: '09:00',
+    reason: '',
+    appointmentType: 'onsite',
+    isEmergency: false
+  });
+  const [appointmentLoading, setAppointmentLoading] = useState(false);
+  const [appointmentError, setAppointmentError] = useState('');
+  const [appointmentSuccess, setAppointmentSuccess] = useState('');
 
   // Editable fields (parent-allowed)
   const [editMode, setEditMode] = useState(false);
@@ -980,24 +999,86 @@ const ParentDashboard = ({ initialTab }) => {
         invoiceId: invoice._id,
         amount: invoice.amount,
         paymentDate: new Date().toISOString(),
-        method: 'online',
-        status: 'completed'
+        method: 'card'
       };
       
       setBillingData({
+        ...billingData,
         invoices: updatedInvoices,
         payments: [...billingData.payments, newPayment]
       });
       
       setPaymentDialog({ open: false, invoice: null });
-      alert('Payment processed successfully!');
     } catch (error) {
-      console.error('Payment error:', error);
-      alert('Payment failed. Please try again.');
+      console.error('Error processing payment:', error);
     } finally {
       setPaymentLoading(false);
     }
   };
+
+  // Fetch appointments
+  const fetchAppointments = async () => {
+    try {
+      const response = await api.get('/api/appointments/parent');
+      setAppointments(response.data || []);
+    } catch (error) {
+      console.error('Error fetching appointments:', error);
+    }
+  };
+
+  // Book appointment
+  const handleBookAppointment = async () => {
+    setAppointmentLoading(true);
+    setAppointmentError('');
+    setAppointmentSuccess('');
+
+    try {
+      if (!appointmentForm.childId) {
+        setAppointmentError('Please select a child');
+        setAppointmentLoading(false);
+        return;
+      }
+
+      if (!appointmentForm.appointmentDate) {
+        setAppointmentError('Please select appointment date');
+        setAppointmentLoading(false);
+        return;
+      }
+
+      if (!appointmentForm.reason) {
+        setAppointmentError('Please provide a reason for consultation');
+        setAppointmentLoading(false);
+        return;
+      }
+
+      await api.post('/api/appointments', appointmentForm);
+      
+      setAppointmentSuccess('Appointment request submitted successfully! The doctor will review and confirm.');
+      setAppointmentDialog(false);
+      setAppointmentForm({
+        childId: '',
+        appointmentDate: '',
+        appointmentTime: '09:00',
+        reason: '',
+        appointmentType: 'onsite',
+        isEmergency: false
+      });
+      
+      fetchAppointments();
+    } catch (error) {
+      console.error('Error booking appointment:', error);
+      setAppointmentError(error.response?.data?.message || 'Failed to book appointment');
+    } finally {
+      setAppointmentLoading(false);
+    }
+  };
+
+  // Load appointments when tab changes
+  useEffect(() => {
+    if (tab === 8 && user?.role === 'parent') {
+      fetchAppointments();
+    }
+  }, [tab, user?.role]);
 
   // Schedule display component
   const ScheduleCard = () => {
@@ -1118,6 +1199,7 @@ const ParentDashboard = ({ initialTab }) => {
           <Tab label="Meals" icon={<LocalDining />} iconPosition="start" />
           <Tab label="Staff" icon={<Person />} iconPosition="start" />
           <Tab label="Feedback" icon={<Assessment />} iconPosition="start" />
+          <Tab label="Doctor Appointments" icon={<LocalHospital />} iconPosition="start" />
         </Tabs>
         <Divider sx={{ mb: 2 }} />
           </>
@@ -2387,8 +2469,165 @@ const ParentDashboard = ({ initialTab }) => {
               </Box>
             )}
 
-            {/* Reports & Analytics */}
+            {/* Doctor Appointments */}
             {tab === 8 && (
+              <Box>
+                {/* Success/Error Messages */}
+                {appointmentSuccess && (
+                  <Alert severity="success" sx={{ mb: 2 }} onClose={() => setAppointmentSuccess('')}>
+                    {appointmentSuccess}
+                  </Alert>
+                )}
+                {appointmentError && (
+                  <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAppointmentError('')}>
+                    {appointmentError}
+                  </Alert>
+                )}
+
+                <Card sx={{ mb: 3 }}>
+                  <CardHeader 
+                    title="Doctor Appointments" 
+                    subheader="Book and manage doctor consultations for your children"
+                    action={
+                      <Button
+                        variant="contained"
+                        startIcon={<Add />}
+                        onClick={() => {
+                          setAppointmentForm({
+                            ...appointmentForm,
+                            childId: activeChildId || ''
+                          });
+                          setAppointmentDialog(true);
+                        }}
+                      >
+                        Book Appointment
+                      </Button>
+                    }
+                  />
+                  <CardContent>
+                    {/* Appointments List */}
+                    <Grid container spacing={2}>
+                      {appointments.length === 0 ? (
+                        <Grid item xs={12}>
+                          <Box sx={{ textAlign: 'center', py: 4 }}>
+                            <LocalHospital sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                            <Typography variant="h6" gutterBottom>
+                              No Appointments Yet
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                              Book your first doctor appointment for your child
+                            </Typography>
+                            <Button
+                              variant="contained"
+                              startIcon={<Add />}
+                              onClick={() => {
+                                setAppointmentForm({
+                                  ...appointmentForm,
+                                  childId: activeChildId || ''
+                                });
+                                setAppointmentDialog(true);
+                              }}
+                            >
+                              Book Now
+                            </Button>
+                          </Box>
+                        </Grid>
+                      ) : (
+                        appointments.map((appointment) => (
+                          <Grid item xs={12} md={6} key={appointment._id}>
+                            <Card variant="outlined">
+                              <CardContent>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                                  <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                                    <Avatar sx={{ bgcolor: 'primary.main' }}>
+                                      {appointment.child?.firstName?.[0]}
+                                    </Avatar>
+                                    <Box>
+                                      <Typography variant="h6">
+                                        {appointment.child?.firstName} {appointment.child?.lastName}
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        {new Date(appointment.appointmentDate).toLocaleDateString('en-US', {
+                                          weekday: 'long',
+                                          month: 'short',
+                                          day: 'numeric',
+                                          year: 'numeric'
+                                        })}
+                                      </Typography>
+                                    </Box>
+                                  </Box>
+                                  <Chip
+                                    label={appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                                    size="small"
+                                    color={
+                                      appointment.status === 'confirmed' ? 'success' :
+                                      appointment.status === 'completed' ? 'info' :
+                                      appointment.status === 'cancelled' ? 'error' :
+                                      'warning'
+                                    }
+                                  />
+                                </Box>
+
+                                <Divider sx={{ my: 2 }} />
+
+                                <Grid container spacing={1}>
+                                  <Grid item xs={6}>
+                                    <Typography variant="caption" color="text.secondary">Time</Typography>
+                                    <Typography variant="body2" fontWeight={600}>
+                                      {appointment.appointmentTime}
+                                    </Typography>
+                                  </Grid>
+                                  <Grid item xs={6}>
+                                    <Typography variant="caption" color="text.secondary">Type</Typography>
+                                    <Typography variant="body2" fontWeight={600}>
+                                      {appointment.appointmentType === 'online' ? 'Online' : 'On-site'}
+                                    </Typography>
+                                  </Grid>
+                                  <Grid item xs={12}>
+                                    <Typography variant="caption" color="text.secondary">Reason</Typography>
+                                    <Typography variant="body2">{appointment.reason}</Typography>
+                                  </Grid>
+
+                                  {appointment.diagnosis && (
+                                    <Grid item xs={12}>
+                                      <Typography variant="caption" color="text.secondary">Diagnosis</Typography>
+                                      <Typography variant="body2">{appointment.diagnosis}</Typography>
+                                    </Grid>
+                                  )}
+
+                                  {appointment.prescription && (
+                                    <Grid item xs={12}>
+                                      <Typography variant="caption" color="text.secondary">Prescription</Typography>
+                                      <Typography variant="body2">{appointment.prescription}</Typography>
+                                    </Grid>
+                                  )}
+
+                                  {appointment.healthAdvice && (
+                                    <Grid item xs={12}>
+                                      <Typography variant="caption" color="text.secondary">Health Advice</Typography>
+                                      <Typography variant="body2">{appointment.healthAdvice}</Typography>
+                                    </Grid>
+                                  )}
+
+                                  {appointment.isEmergency && (
+                                    <Grid item xs={12}>
+                                      <Chip label="Emergency" size="small" color="error" />
+                                    </Grid>
+                                  )}
+                                </Grid>
+                              </CardContent>
+                            </Card>
+                          </Grid>
+                        ))
+                      )}
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Box>
+            )}
+
+            {/* Reports & Analytics */}
+            {tab === 9 && (
               <Box>
                 <Grid container spacing={3}>
                   {/* Attendance Summary */}
@@ -3046,6 +3285,125 @@ const ParentDashboard = ({ initialTab }) => {
             sx={{ bgcolor: 'success.main', '&:hover': { bgcolor: 'success.dark' } }}
           >
             {paymentLoading ? <CircularProgress size={20} /> : 'Pay Now'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Book Appointment Dialog */}
+      <Dialog 
+        open={appointmentDialog} 
+        onClose={() => !appointmentLoading && setAppointmentDialog(false)}
+        maxWidth="md" 
+        fullWidth
+      >
+        <DialogTitle>
+          Book Doctor Appointment
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Select Child</InputLabel>
+                <Select
+                  value={appointmentForm.childId}
+                  onChange={(e) => setAppointmentForm({ ...appointmentForm, childId: e.target.value })}
+                  label="Select Child"
+                >
+                  {children.map((child) => (
+                    <MenuItem key={child._id} value={child._id}>
+                      {child.firstName} {child.lastName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                type="date"
+                label="Appointment Date"
+                value={appointmentForm.appointmentDate}
+                onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentDate: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+                inputProps={{ min: new Date().toISOString().split('T')[0] }}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                type="time"
+                label="Appointment Time"
+                value={appointmentForm.appointmentTime}
+                onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentTime: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Reason for Consultation"
+                placeholder="e.g., Fever, Allergy symptoms, Routine check-up..."
+                value={appointmentForm.reason}
+                onChange={(e) => setAppointmentForm({ ...appointmentForm, reason: e.target.value })}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Appointment Type</InputLabel>
+                <Select
+                  value={appointmentForm.appointmentType}
+                  onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentType: e.target.value })}
+                  label="Appointment Type"
+                >
+                  <MenuItem value="onsite">On-site (Daycare Visit)</MenuItem>
+                  <MenuItem value="online">Online Consultation</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Priority</InputLabel>
+                <Select
+                  value={appointmentForm.isEmergency ? 'emergency' : 'normal'}
+                  onChange={(e) => setAppointmentForm({ ...appointmentForm, isEmergency: e.target.value === 'emergency' })}
+                  label="Priority"
+                >
+                  <MenuItem value="normal">Normal</MenuItem>
+                  <MenuItem value="emergency">Emergency</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {appointmentForm.isEmergency && (
+              <Grid item xs={12}>
+                <Alert severity="warning">
+                  Emergency appointments will be prioritized and admin/staff will be notified immediately.
+                </Alert>
+              </Grid>
+            )}
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button 
+            onClick={() => setAppointmentDialog(false)}
+            disabled={appointmentLoading}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleBookAppointment}
+            variant="contained"
+            disabled={appointmentLoading}
+            startIcon={appointmentLoading ? <CircularProgress size={20} /> : <CheckCircle />}
+          >
+            {appointmentLoading ? 'Booking...' : 'Book Appointment'}
           </Button>
         </DialogActions>
       </Dialog>
