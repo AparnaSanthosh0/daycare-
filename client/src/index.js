@@ -35,7 +35,7 @@ const queryClient = new QueryClient({
 // Create Material-UI theme
 const theme = createTheme({
   palette: {
-    // Fresh, attractive palette: violet primary + amber secondary
+    // Fresh, attractive palette: teal green primary (to match Home tab)
     primary: {
       main: '#14B8A6',   // teal-500
       light: '#99F6E4',  // teal-200
@@ -47,6 +47,12 @@ const theme = createTheme({
       light: '#FDA4AF',  // rose-300
       dark: '#BE123C',   // rose-700
       contrastText: '#111827'
+    },
+    success: {
+      main: '#14B8A6',   // teal-500 (match primary)
+      light: '#5eead4',  // teal-300
+      dark: '#0F766E',   // teal-700
+      contrastText: '#ffffff'
     },
     background: {
       default: '#F8FAFC',  // slate-50
@@ -66,11 +72,35 @@ const theme = createTheme({
   },
   components: {
     MuiButton: {
+      defaultProps: {
+        color: 'success',
+      },
       styleOverrides: {
         root: {
           textTransform: 'none',
           borderRadius: 10,
           paddingInline: 18,
+        },
+        contained: {
+          backgroundColor: '#14B8A6',
+          color: 'white',
+          '&:hover': {
+            backgroundColor: '#0F766E',
+          },
+        },
+        outlined: {
+          borderColor: '#14B8A6',
+          color: '#14B8A6',
+          '&:hover': {
+            borderColor: '#0F766E',
+            backgroundColor: 'rgba(20, 184, 166, 0.08)',
+          },
+        },
+        text: {
+          color: '#14B8A6',
+          '&:hover': {
+            backgroundColor: 'rgba(20, 184, 166, 0.08)',
+          },
         },
       },
     },

@@ -245,36 +245,36 @@ function App() {
           {/* Protected Routes */}
           <Route 
             path="/dashboard" 
-            element={user?.role === 'parent' ? <Layout><ParentDashboard /></Layout> : <Navigate to={user ? (user.role === 'admin' ? '/admin' : user.role === 'staff' && user.staff?.staffType === 'driver' ? '/driver' : user.role === 'staff' && user.staff?.staffType === 'nanny' ? '/nanny' : user.role === 'staff' && user.staff?.staffType === 'delivery' ? '/delivery' : user.role === 'doctor' ? '/doctor' : user.role === 'vendor' ? '/vendor' : '/staff') : '/'} replace />} 
+            element={user?.role === 'parent' ? <ParentDashboard /> : <Navigate to={user ? (user.role === 'admin' ? '/admin' : user.role === 'staff' && user.staff?.staffType === 'driver' ? '/driver' : user.role === 'staff' && user.staff?.staffType === 'nanny' ? '/nanny' : user.role === 'staff' && user.staff?.staffType === 'delivery' ? '/delivery' : user.role === 'doctor' ? '/doctor' : user.role === 'vendor' ? '/vendor' : '/staff') : '/'} replace />} 
           />
           {/* Parent sidebar routes mapped to dashboard tabs */}
           <Route 
             path="/parent/notifications" 
-            element={user?.role === 'parent' ? <Layout><ParentDashboard initialTab="notifications" /></Layout> : <Navigate to="/dashboard" replace />} 
+            element={user?.role === 'parent' ? <ParentDashboard initialTab="notifications" /> : <Navigate to="/dashboard" replace />} 
           />
           <Route 
             path="/parent/messaging" 
-            element={user?.role === 'parent' ? <Layout><ParentDashboard initialTab="messaging" /></Layout> : <Navigate to="/dashboard" replace />} 
+            element={user?.role === 'parent' ? <ParentDashboard initialTab="messaging" /> : <Navigate to="/dashboard" replace />} 
           />
           <Route 
             path="/parent/billing" 
-            element={user?.role === 'parent' ? <Layout><ParentDashboard initialTab="billing" /></Layout> : <Navigate to="/dashboard" replace />} 
+            element={user?.role === 'parent' ? <ParentDashboard initialTab="billing" /> : <Navigate to="/dashboard" replace />} 
           />
           <Route 
             path="/parent/feedback" 
-            element={user?.role === 'parent' ? <Layout><ParentDashboard initialTab="feedback" /></Layout> : <Navigate to="/dashboard" replace />} 
+            element={user?.role === 'parent' ? <ParentDashboard initialTab="feedback" /> : <Navigate to="/dashboard" replace />} 
           />
           <Route 
             path="/parent/staff" 
-            element={user?.role === 'parent' ? <Layout><ParentDashboard initialTab="staff" /></Layout> : <Navigate to="/dashboard" replace />} 
+            element={user?.role === 'parent' ? <ParentDashboard initialTab="staff" /> : <Navigate to="/dashboard" replace />} 
           />
           <Route 
             path="/parent/reports" 
-            element={user?.role === 'parent' ? <Layout><ParentDashboard initialTab="reports" /></Layout> : <Navigate to="/dashboard" replace />} 
+            element={user?.role === 'parent' ? <ParentDashboard initialTab="reports" /> : <Navigate to="/dashboard" replace />} 
           />
           <Route 
             path="/parent/admissions" 
-            element={user?.role === 'parent' ? <Layout><ParentDashboard initialTab="admissions" /></Layout> : <Navigate to="/dashboard" replace />} 
+            element={user?.role === 'parent' ? <ParentDashboard initialTab="admissions" /> : <Navigate to="/dashboard" replace />}
           />
           {/* Customer Orders - Protected Route */}
           <Route
@@ -308,7 +308,7 @@ function App() {
           />
           <Route
             path="/nanny"
-            element={user?.role === 'staff' && user?.staff?.staffType === 'nanny' ? <Layout><NannyDashboard /></Layout> : <Navigate to="/" replace />} 
+            element={user?.role === 'staff' && user?.staff?.staffType === 'nanny' ? <NannyDashboard /> : <Navigate to="/" replace />} 
           />
           <Route
             path="/doctor"

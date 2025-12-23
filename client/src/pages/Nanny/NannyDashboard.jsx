@@ -16,6 +16,9 @@ import {
   Rating,
   TextField,
   Alert,
+  Card,
+  CardContent,
+  IconButton,
 } from '@mui/material';
 import {
   Schedule,
@@ -26,14 +29,25 @@ import {
   Stop,
   Chat,
   Notes,
-  ThumbUp,
-  ReportProblem,
   Star,
+  CalendarToday,
+  Person,
+  Description,
+  Logout,
+  Visibility,
+  ShoppingCart,
 } from '@mui/icons-material';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
-const fmtDate = (d) => new Date(d).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+const fmtDate = (d) => {
+  const date = new Date(d);
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+};
 
 const NannyDashboard = () => {
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const [tab, setTab] = useState(0);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -113,80 +127,234 @@ const NannyDashboard = () => {
   };
 
   return (
-    <Box sx={{ p: 3 }}>
-      {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
+    <Box sx={{ minHeight: '100vh', bgcolor: '#f5f5f5' }}>
+      {error && <Alert severity="error" sx={{ mb: 2, m: 3 }} onClose={() => setError('')}>{error}</Alert>}
+      {success && <Alert severity="success" sx={{ mb: 2, m: 3 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
       {/* Header */}
-      <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Box>
-          <Typography variant="h5" fontWeight={700}>Nanny Dashboard</Typography>
-          <Typography variant="body2" color="text.secondary">Emily Davis - Certified Childcare Provider</Typography>
-        </Box>
-        <Stack direction="row" spacing={2} alignItems="center">
-          <Stack direction="row" spacing={0.5} alignItems="center">
-            <Star color="warning" />
-            <Typography variant="h6" fontWeight={700}>4.8</Typography>
-            <Typography variant="body2" color="text.secondary">(48 reviews)</Typography>
+      <Box sx={{ bgcolor: 'white', borderBottom: '1px solid #e0e0e0', px: 3, py: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box>
+            <Typography 
+              variant="h4" 
+              sx={{ 
+                color: '#e91e63', 
+                fontWeight: 'bold',
+                mb: 0.5
+              }}
+            >
+              Nanny Dashboard
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {user?.name || user?.firstName || 'Emily'} {user?.lastName || 'Davis'} - Certified Childcare Provider
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={2} alignItems="center">
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              <Star sx={{ color: '#ffc107', fontSize: 20 }} />
+              <Typography variant="h6" fontWeight={700}>4.8</Typography>
+              <Typography variant="body2" color="text.secondary">(48 reviews)</Typography>
+            </Stack>
+            <IconButton 
+              color="inherit" 
+              sx={{ position: 'relative', color: 'text.secondary' }}
+              onClick={() => navigate('/shop')}
+            >
+              <ShoppingCart />
+              <Box sx={{ 
+                position: 'absolute', 
+                top: 5, 
+                right: 5, 
+                bgcolor: '#e91e63', 
+                color: 'white', 
+                borderRadius: '50%', 
+                width: 18, 
+                height: 18, 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                fontSize: '0.7rem',
+                fontWeight: 'bold'
+              }}>
+                3
+              </Box>
+            </IconButton>
+            <Button 
+              startIcon={<Logout />} 
+              onClick={() => {
+                logout();
+                window.location.href = '/login';
+              }}
+              sx={{ color: 'text.secondary', textTransform: 'none' }}
+            >
+              Logout
+            </Button>
           </Stack>
-          <Button variant="outlined" color="error" startIcon={<ReportProblem />} onClick={() => setError('Please contact admin: scheduling issue placeholder.')}>
-            Report Issue
-          </Button>
-        </Stack>
-      </Paper>
+        </Box>
+      </Box>
 
-      <Tabs value={tab} onChange={(e, v) => setTab(v)} sx={{ mb: 3 }}>
-        <Tab label={`New Requests${totalPending ? ` (${totalPending})` : ''}`} icon={<CheckCircle />} />
-        <Tab label="My Schedule" icon={<Schedule />} />
-        <Tab label="Active Service" icon={<AccessTime />} />
-        <Tab label="Service History" icon={<Notes />} />
-        <Tab label="Reviews" icon={<ThumbUp />} />
-      </Tabs>
+      {/* Navigation Tabs */}
+      <Box sx={{ bgcolor: 'white', borderBottom: '1px solid #e0e0e0', px: 3 }}>
+        <Tabs 
+          value={tab} 
+          onChange={(e, v) => setTab(v)}
+          sx={{
+            '& .MuiTab-root': {
+              textTransform: 'none',
+              fontSize: '1rem',
+              fontWeight: 500,
+              color: 'text.secondary',
+              minHeight: '64px',
+              '&.Mui-selected': {
+                color: '#e91e63'
+              }
+            },
+            '& .MuiTabs-indicator': {
+              backgroundColor: '#e91e63',
+              height: 3
+            }
+          }}
+        >
+          <Tab label="New Requests" icon={<CalendarToday />} iconPosition="start" />
+          <Tab label="My Schedule" icon={<Schedule />} iconPosition="start" />
+          <Tab label="Active Service" icon={<Person />} iconPosition="start" />
+          <Tab label="Service History" icon={<Description />} iconPosition="start" />
+          <Tab label="Reviews" icon={<Star />} iconPosition="start" />
+        </Tabs>
+      </Box>
+
+      {/* Main Content */}
+      <Box sx={{ p: 3 }}>
 
       {/* New Requests */}
       {tab === 0 && (
-        <Stack spacing={2}>
-          {requests.length === 0 && <Typography color="text.secondary">No requests right now.</Typography>}
-          {requests.map((r) => (
-            <Paper key={r.id} sx={{ p: 2, borderRadius: 2 }}>
-              <Grid container spacing={2} alignItems="center">
-                <Grid item xs={12} md={8}>
-                  <Typography variant="h6">{r.parent}</Typography>
-                  <Typography variant="body2" color="text.secondary">Child: {r.child} ({r.childAge})</Typography>
-                  <Stack direction="row" spacing={2} sx={{ mt: 1 }}>
-                    <Chip label={fmtDate(r.date)} />
-                    <Chip label={r.time} />
-                    <Chip label={`${r.hours} hours @ $${r.rate}/hr`} />
-                    <Chip color="secondary" label={`$${r.hours * r.rate}`} />
-                  </Stack>
-                  {r.notes && <Typography variant="body2" sx={{ mt: 1 }} color="text.secondary">{r.notes}</Typography>}
+        <Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+            <Typography variant="h5" sx={{ fontWeight: 'bold' }}>
+              New Booking Requests
+            </Typography>
+            {totalPending > 0 && (
+              <Chip 
+                label={`${totalPending} Pending`}
+                sx={{
+                  bgcolor: '#e91e63',
+                  color: 'white',
+                  fontWeight: 'bold',
+                  fontSize: '0.9rem',
+                  px: 1,
+                  py: 2
+                }}
+              />
+            )}
+          </Box>
+          
+          {requests.length === 0 ? (
+            <Typography color="text.secondary">No requests right now.</Typography>
+          ) : (
+            <Grid container spacing={3}>
+              {requests.filter(r => r.status === 'pending').map((r) => (
+                <Grid item xs={12} key={r.id}>
+                  <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                    <CardContent sx={{ p: 3 }}>
+                      <Grid container spacing={2} alignItems="center">
+                        <Grid item xs={12} md={8}>
+                          <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
+                            {r.parent}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                            Child: {r.child} ({r.childAge})
+                          </Typography>
+                          <Stack direction="row" spacing={2} sx={{ mb: 1, flexWrap: 'wrap', gap: 1 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <CalendarToday sx={{ fontSize: 16, color: 'text.secondary' }} />
+                              <Typography variant="body2" color="text.secondary">
+                                {fmtDate(r.date)}
+                              </Typography>
+                            </Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <AccessTime sx={{ fontSize: 16, color: 'text.secondary' }} />
+                              <Typography variant="body2" color="text.secondary">
+                                {r.time}
+                              </Typography>
+                            </Box>
+                          </Stack>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                            <Typography variant="body2" color="text.secondary">
+                              {r.hours} hours @ ${r.rate}/hr
+                            </Typography>
+                            <Typography 
+                              variant="h6" 
+                              sx={{ 
+                                color: '#e91e63', 
+                                fontWeight: 'bold',
+                                ml: 'auto'
+                              }}
+                            >
+                              ${r.hours * r.rate}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12} md={4}>
+                          <Stack direction={{ xs: 'column', sm: 'row', md: 'column' }} spacing={1}>
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              sx={{
+                                bgcolor: '#14B8A6',
+                                color: 'white',
+                                fontWeight: 'bold',
+                                '&:hover': {
+                                  bgcolor: '#0F766E'
+                                }
+                              }}
+                              onClick={() => handleRequestAction(r.id, 'accepted')}
+                              startIcon={<CheckCircle />}
+                            >
+                              Accept Booking
+                            </Button>
+                            <Button
+                              fullWidth
+                              variant="outlined"
+                              sx={{
+                                borderColor: '#14B8A6',
+                                color: '#14B8A6',
+                                bgcolor: '#f5f5f5',
+                                '&:hover': {
+                                  bgcolor: '#e8f5e9',
+                                  borderColor: '#0F766E'
+                                }
+                              }}
+                              onClick={() => handleRequestAction(r.id, 'declined')}
+                              startIcon={<Cancel />}
+                            >
+                              Decline
+                            </Button>
+                            <Button
+                              fullWidth
+                              variant="outlined"
+                              sx={{
+                                borderColor: '#14B8A6',
+                                color: '#14B8A6',
+                                bgcolor: '#e8f5e9',
+                                '&:hover': {
+                                  bgcolor: '#c8e6c9',
+                                  borderColor: '#0F766E'
+                                }
+                              }}
+                              startIcon={<Visibility />}
+                            >
+                              View Details
+                            </Button>
+                          </Stack>
+                        </Grid>
+                      </Grid>
+                    </CardContent>
+                  </Card>
                 </Grid>
-                <Grid item xs={12} md={4}>
-                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                    <Button
-                      fullWidth
-                      variant="contained"
-                      color="secondary"
-                      onClick={() => handleRequestAction(r.id, 'accepted')}
-                      startIcon={<CheckCircle />}
-                    >
-                      Accept Booking
-                    </Button>
-                    <Button
-                      fullWidth
-                      variant="outlined"
-                      color="inherit"
-                      onClick={() => handleRequestAction(r.id, 'declined')}
-                      startIcon={<Cancel />}
-                    >
-                      Decline
-                    </Button>
-                  </Stack>
-                </Grid>
-              </Grid>
-            </Paper>
-          ))}
-        </Stack>
+              ))}
+            </Grid>
+          )}
+        </Box>
       )}
 
       {/* My Schedule */}
@@ -226,7 +394,7 @@ const NannyDashboard = () => {
               </Button>
             )}
             {activeService.started && !activeService.endTime && (
-              <Button variant="contained" color="secondary" startIcon={<Stop />} onClick={handleEndService}>
+              <Button variant="contained" startIcon={<Stop />} onClick={handleEndService}>
                 End Service
               </Button>
             )}
@@ -292,6 +460,7 @@ const NannyDashboard = () => {
           ))}
         </Stack>
       )}
+      </Box>
     </Box>
   );
 };
