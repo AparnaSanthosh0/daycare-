@@ -93,6 +93,7 @@ app.use('/api/staff', requireDb, require('./routes/staff'));
 app.use('/api/staff-ops', requireDb, require('./routes/staffOps'));
 app.use('/api/driver', requireDb, require('./routes/driver'));
 app.use('/api/doctor', requireDb, require('./routes/doctor'));
+app.use('/api/nanny', requireDb, require('./routes/nannyBooking'));
 app.use('/api/appointments', requireDb, require('./routes/appointments'));
 app.use('/api/attendance', requireDb, require('./routes/attendance'));
 app.use('/api/billing', requireDb, require('./routes/billing'));

@@ -58,6 +58,7 @@ import api, { API_BASE_URL } from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import MealRecommendation from '../../components/MealRecommendation';
+import NannyServicesTab from '../../components/NannyServicesTab';
 
 // Simple helper to format date strings
 const formatDate = (d) => {
@@ -1648,8 +1649,391 @@ const ParentDashboard = ({ initialTab }) => {
 
                     {daycareTab === 1 && (
                       <Box sx={{ p: 2 }}>
-                        <Typography variant="h6" gutterBottom>Medical & Emergency</Typography>
-                        <Typography variant="body2" color="text.secondary">View medical information and emergency contacts</Typography>
+                        <Grid container spacing={3}>
+                          {/* Allergies Section */}
+                          <Grid item xs={12} md={6}>
+                            <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+                                Allergies
+                              </Typography>
+                              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                                <TextField
+                                  fullWidth
+                                  size="small"
+                                  placeholder="Add allergy"
+                                  value={editFields.newAllergy || ''}
+                                  onChange={(e) => setEditFields({ ...editFields, newAllergy: e.target.value })}
+                                />
+                                <Button 
+                                  variant="contained"
+                                  sx={{ bgcolor: '#14B8A6', '&:hover': { bgcolor: '#0F766E' }, minWidth: '80px' }}
+                                  onClick={async () => {
+                                    if (editFields.newAllergy?.trim()) {
+                                      const updatedAllergies = [...(profile.allergies || []), editFields.newAllergy.trim()];
+                                      try {
+                                        await api.put(`/api/children/${activeChildId}`, { allergies: updatedAllergies });
+                                        setProfile({ ...profile, allergies: updatedAllergies });
+                                        setEditFields({ ...editFields, newAllergy: '' });
+                                      } catch (error) {
+                                        console.error('Error adding allergy:', error);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  Add
+                                </Button>
+                              </Box>
+                            </Paper>
+                          </Grid>
+
+                          {/* Medical Information Section */}
+                          <Grid item xs={12} md={6}>
+                            <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+                                Medical Information
+                              </Typography>
+                              <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                                <TextField
+                                  fullWidth
+                                  size="small"
+                                  placeholder="Add medical note"
+                                  value={editFields.newMedicalCondition || ''}
+                                  onChange={(e) => setEditFields({ ...editFields, newMedicalCondition: e.target.value })}
+                                />
+                                <Button 
+                                  variant="contained"
+                                  sx={{ bgcolor: '#14B8A6', '&:hover': { bgcolor: '#0F766E' }, minWidth: '80px' }}
+                                  onClick={async () => {
+                                    if (editFields.newMedicalCondition?.trim()) {
+                                      const updatedConditions = [...(profile.medicalConditions || []), editFields.newMedicalCondition.trim()];
+                                      try {
+                                        await api.put(`/api/children/${activeChildId}`, { medicalConditions: updatedConditions });
+                                        setProfile({ ...profile, medicalConditions: updatedConditions });
+                                        setEditFields({ ...editFields, newMedicalCondition: '' });
+                                      } catch (error) {
+                                        console.error('Error adding medical condition:', error);
+                                      }
+                                    }
+                                  }}
+                                >
+                                  Add
+                                </Button>
+                              </Box>
+                            </Paper>
+                          </Grid>
+
+                          {/* Emergency Contacts Section */}
+                          <Grid item xs={12} md={6}>
+                            <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+                                Emergency Contacts
+                              </Typography>
+                              <Grid container spacing={1}>
+                                <Grid item xs={12} sm={4}>
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    placeholder="Name"
+                                    value={editFields.emergencyName || ''}
+                                    onChange={(e) => setEditFields({ ...editFields, emergencyName: e.target.value })}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={4}>
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    placeholder="Phone"
+                                    value={editFields.emergencyPhone || ''}
+                                    onChange={(e) => setEditFields({ ...editFields, emergencyPhone: e.target.value })}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={4}>
+                                  <Box sx={{ display: 'flex', gap: 1 }}>
+                                    <TextField
+                                      fullWidth
+                                      size="small"
+                                      placeholder="Relationship"
+                                      value={editFields.emergencyRelationship || 'Emergency'}
+                                      onChange={(e) => setEditFields({ ...editFields, emergencyRelationship: e.target.value })}
+                                    />
+                                    <Button 
+                                      variant="contained"
+                                      sx={{ bgcolor: '#14B8A6', '&:hover': { bgcolor: '#0F766E' }, minWidth: '60px' }}
+                                      onClick={async () => {
+                                        if (editFields.emergencyName && editFields.emergencyPhone) {
+                                          const newContact = {
+                                            name: editFields.emergencyName,
+                                            phone: editFields.emergencyPhone,
+                                            relationship: editFields.emergencyRelationship || 'Emergency'
+                                          };
+                                          const updatedContacts = [...(profile.emergencyContacts || []), newContact];
+                                          try {
+                                            await api.put(`/api/children/${activeChildId}`, { emergencyContacts: updatedContacts });
+                                            setProfile({ ...profile, emergencyContacts: updatedContacts });
+                                            setEditFields({ 
+                                              ...editFields, 
+                                              emergencyName: '', 
+                                              emergencyPhone: '', 
+                                              emergencyRelationship: 'Emergency' 
+                                            });
+                                          } catch (error) {
+                                            console.error('Error adding emergency contact:', error);
+                                          }
+                                        }
+                                      }}
+                                    >
+                                      Add
+                                    </Button>
+                                  </Box>
+                                </Grid>
+                              </Grid>
+                            </Paper>
+                          </Grid>
+
+                          {/* Authorized Pickups Section */}
+                          <Grid item xs={12} md={6}>
+                            <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 2 }}>
+                                Authorized Pickups
+                              </Typography>
+                              <Grid container spacing={1}>
+                                <Grid item xs={12} sm={4}>
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    placeholder="Name"
+                                    value={editFields.pickupName || ''}
+                                    onChange={(e) => setEditFields({ ...editFields, pickupName: e.target.value })}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={4}>
+                                  <TextField
+                                    fullWidth
+                                    size="small"
+                                    placeholder="Phone"
+                                    value={editFields.pickupPhone || ''}
+                                    onChange={(e) => setEditFields({ ...editFields, pickupPhone: e.target.value })}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} sm={4}>
+                                  <Box sx={{ display: 'flex', gap: 1 }}>
+                                    <TextField
+                                      fullWidth
+                                      size="small"
+                                      placeholder="Relationship"
+                                      value={editFields.pickupRelationship || ''}
+                                      onChange={(e) => setEditFields({ ...editFields, pickupRelationship: e.target.value })}
+                                    />
+                                    <Button 
+                                      variant="contained"
+                                      sx={{ bgcolor: '#14B8A6', '&:hover': { bgcolor: '#0F766E' }, minWidth: '60px' }}
+                                      onClick={async () => {
+                                        if (editFields.pickupName && editFields.pickupPhone) {
+                                          const newPickup = {
+                                            name: editFields.pickupName,
+                                            phone: editFields.pickupPhone,
+                                            relationship: editFields.pickupRelationship || ''
+                                          };
+                                          const updatedPickups = [...(profile.authorizedPickups || []), newPickup];
+                                          try {
+                                            await api.put(`/api/children/${activeChildId}`, { authorizedPickups: updatedPickups });
+                                            setProfile({ ...profile, authorizedPickups: updatedPickups });
+                                            setEditFields({ 
+                                              ...editFields, 
+                                              pickupName: '', 
+                                              pickupPhone: '', 
+                                              pickupRelationship: '' 
+                                            });
+                                          } catch (error) {
+                                            console.error('Error adding authorized pickup:', error);
+                                          }
+                                        }
+                                      }}
+                                    >
+                                      Add
+                                    </Button>
+                                  </Box>
+                                </Grid>
+                              </Grid>
+                            </Paper>
+                          </Grid>
+
+                          {/* Current Medical Information Display */}
+                          <Grid item xs={12}>
+                            <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600, mb: 3 }}>
+                                Current Medical Information
+                              </Typography>
+                              <Grid container spacing={3}>
+                                {/* Allergies List */}
+                                <Grid item xs={12} md={6}>
+                                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                                    Allergies
+                                  </Typography>
+                                  {profile.allergies && profile.allergies.length > 0 ? (
+                                    <List>
+                                      {profile.allergies.map((allergy, index) => (
+                                        <ListItem 
+                                          key={index}
+                                          secondaryAction={
+                                            <IconButton 
+                                              edge="end" 
+                                              color="error"
+                                              onClick={async () => {
+                                                const updatedAllergies = profile.allergies.filter((_, i) => i !== index);
+                                                try {
+                                                  await api.put(`/api/children/${activeChildId}`, { allergies: updatedAllergies });
+                                                  setProfile({ ...profile, allergies: updatedAllergies });
+                                                } catch (error) {
+                                                  console.error('Error removing allergy:', error);
+                                                }
+                                              }}
+                                            >
+                                              <Delete />
+                                            </IconButton>
+                                          }
+                                          sx={{ bgcolor: '#fff3cd', borderRadius: 1, mb: 1 }}
+                                        >
+                                          <ListItemText primary={allergy} />
+                                        </ListItem>
+                                      ))}
+                                    </List>
+                                  ) : (
+                                    <Typography variant="body2" color="text.secondary">
+                                      No allergies recorded
+                                    </Typography>
+                                  )}
+                                </Grid>
+
+                                {/* Medical Conditions List */}
+                                <Grid item xs={12} md={6}>
+                                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                                    Medical Conditions
+                                  </Typography>
+                                  {profile.medicalConditions && profile.medicalConditions.length > 0 ? (
+                                    <List>
+                                      {profile.medicalConditions.map((condition, index) => (
+                                        <ListItem 
+                                          key={index}
+                                          secondaryAction={
+                                            <IconButton 
+                                              edge="end" 
+                                              color="error"
+                                              onClick={async () => {
+                                                const updatedConditions = profile.medicalConditions.filter((_, i) => i !== index);
+                                                try {
+                                                  await api.put(`/api/children/${activeChildId}`, { medicalConditions: updatedConditions });
+                                                  setProfile({ ...profile, medicalConditions: updatedConditions });
+                                                } catch (error) {
+                                                  console.error('Error removing condition:', error);
+                                                }
+                                              }}
+                                            >
+                                              <Delete />
+                                            </IconButton>
+                                          }
+                                          sx={{ bgcolor: '#f0f0f0', borderRadius: 1, mb: 1 }}
+                                        >
+                                          <ListItemText primary={condition} />
+                                        </ListItem>
+                                      ))}
+                                    </List>
+                                  ) : (
+                                    <Typography variant="body2" color="text.secondary">
+                                      No medical conditions recorded
+                                    </Typography>
+                                  )}
+                                </Grid>
+
+                                {/* Emergency Contacts List */}
+                                <Grid item xs={12} md={6}>
+                                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                                    Emergency Contacts
+                                  </Typography>
+                                  {profile.emergencyContacts && profile.emergencyContacts.length > 0 ? (
+                                    <List>
+                                      {profile.emergencyContacts.map((contact, index) => (
+                                        <ListItem 
+                                          key={index}
+                                          secondaryAction={
+                                            <IconButton 
+                                              edge="end" 
+                                              color="error"
+                                              onClick={async () => {
+                                                const updatedContacts = profile.emergencyContacts.filter((_, i) => i !== index);
+                                                try {
+                                                  await api.put(`/api/children/${activeChildId}`, { emergencyContacts: updatedContacts });
+                                                  setProfile({ ...profile, emergencyContacts: updatedContacts });
+                                                } catch (error) {
+                                                  console.error('Error removing contact:', error);
+                                                }
+                                              }}
+                                            >
+                                              <Delete />
+                                            </IconButton>
+                                          }
+                                          sx={{ bgcolor: '#e8f5e9', borderRadius: 1, mb: 1 }}
+                                        >
+                                          <ListItemText 
+                                            primary={contact.name}
+                                            secondary={`${contact.phone} - ${contact.relationship}`}
+                                          />
+                                        </ListItem>
+                                      ))}
+                                    </List>
+                                  ) : (
+                                    <Typography variant="body2" color="text.secondary">
+                                      No emergency contacts added
+                                    </Typography>
+                                  )}
+                                </Grid>
+
+                                {/* Authorized Pickups List */}
+                                <Grid item xs={12} md={6}>
+                                  <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                                    Authorized Pickups
+                                  </Typography>
+                                  {profile.authorizedPickups && profile.authorizedPickups.length > 0 ? (
+                                    <List>
+                                      {profile.authorizedPickups.map((pickup, index) => (
+                                        <ListItem 
+                                          key={index}
+                                          secondaryAction={
+                                            <IconButton 
+                                              edge="end" 
+                                              color="error"
+                                              onClick={async () => {
+                                                const updatedPickups = profile.authorizedPickups.filter((_, i) => i !== index);
+                                                try {
+                                                  await api.put(`/api/children/${activeChildId}`, { authorizedPickups: updatedPickups });
+                                                  setProfile({ ...profile, authorizedPickups: updatedPickups });
+                                                } catch (error) {
+                                                  console.error('Error removing pickup:', error);
+                                                }
+                                              }}
+                                            >
+                                              <Delete />
+                                            </IconButton>
+                                          }
+                                          sx={{ bgcolor: '#e3f2fd', borderRadius: 1, mb: 1 }}
+                                        >
+                                          <ListItemText 
+                                            primary={pickup.name}
+                                            secondary={`${pickup.phone}${pickup.relationship ? ` - ${pickup.relationship}` : ''}`}
+                                          />
+                                        </ListItem>
+                                      ))}
+                                    </List>
+                                  ) : (
+                                    <Typography variant="body2" color="text.secondary">
+                                      No authorized pickups added
+                                    </Typography>
+                                  )}
+                                </Grid>
+                              </Grid>
+                            </Paper>
+                          </Grid>
+                        </Grid>
                       </Box>
                     )}
 
@@ -1989,13 +2373,15 @@ const ParentDashboard = ({ initialTab }) => {
 
             {/* Tab 2: Services */}
             {tab === 2 && (
-              <Paper sx={{ p: 4, textAlign: 'center' }}>
-                <Favorite sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h5" gutterBottom>Services Coming Soon</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Explore additional services and programs
+              <Box>
+                {/* Nanny Services Section */}
+                <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Favorite sx={{ color: '#e91e63' }} />
+                  Nanny Services
                 </Typography>
-              </Paper>
+
+                <NannyServicesTab />
+              </Box>
             )}
 
             {/* Tab 3: My Orders */}

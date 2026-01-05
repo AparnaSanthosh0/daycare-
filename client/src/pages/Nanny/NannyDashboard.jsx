@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -19,15 +19,17 @@ import {
   Card,
   CardContent,
   IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
 import {
   Schedule,
   CheckCircle,
   Cancel,
-  AccessTime,
   PlayArrow,
   Stop,
-  Chat,
   Notes,
   Star,
   CalendarToday,
@@ -39,6 +41,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
+import api from '../../config/api';
 
 const fmtDate = (d) => {
   const date = new Date(d);
@@ -51,79 +54,110 @@ const NannyDashboard = () => {
   const [tab, setTab] = useState(0);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [requests, setRequests] = useState([
-    {
-      id: 'req1',
-      parent: 'Jane Wilson',
-      child: 'Emma',
-      childAge: '3 yrs',
-      date: '2025-12-10',
-      time: '9:00 AM - 5:00 PM',
-      hours: 8,
-      rate: 15,
-      status: 'pending',
-      notes: 'Follow nap routine and no peanuts.',
-    },
-    {
-      id: 'req2',
-      parent: 'John Smith',
-      child: 'Noah',
-      childAge: '4 yrs',
-      date: '2025-12-12',
-      time: '10:00 AM - 2:00 PM',
-      hours: 4,
-      rate: 15,
-      status: 'pending',
-      notes: 'Prefers outdoor play and story time.',
-    },
-  ]);
+  const [requests, setRequests] = useState([]);
+  const [schedule, setSchedule] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [noteDialog, setNoteDialog] = useState(false);
+  const [activityDialog, setActivityDialog] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [serviceNote, setServiceNote] = useState('');
+  const [activityUpdate, setActivityUpdate] = useState('');
 
-  const [schedule] = useState([
-    { id: 'sch1', parent: 'Maria Lopez', child: 'Ava', date: '2025-12-14', time: '8:00 AM - 1:00 PM', hours: 5 },
-    { id: 'sch2', parent: 'David Lee', child: 'Mason', date: '2025-12-15', time: '12:00 PM - 6:00 PM', hours: 6 },
-  ]);
+  useEffect(() => {
+    fetchPendingRequests();
+    fetchSchedule();
+    fetchHistory();
+  }, []);
 
-  const [activeService, setActiveService] = useState({
-    id: 'act1',
-    parent: 'Emily Clark',
-    child: 'Liam',
-    date: '2025-12-08',
-    time: '9:00 AM - 3:00 PM',
-    started: false,
-    startTime: null,
-    endTime: null,
-    notes: '',
-  });
-
-  const [history] = useState([
-    { id: 'h1', parent: 'Sarah Green', child: 'Olivia', date: '2025-12-05', hours: 6, amount: 90, status: 'Completed' },
-    { id: 'h2', parent: 'Michael Brown', child: 'Ethan', date: '2025-12-03', hours: 4, amount: 60, status: 'Completed' },
-  ]);
-
-  const [reviews] = useState([
-    { id: 'r1', parent: 'Sarah Green', rating: 4.8, text: 'Great with routines and kept me updated.' },
-    { id: 'r2', parent: 'Michael Brown', rating: 4.6, text: 'Kids loved the activities. Very punctual.' },
-  ]);
-
-  const totalPending = useMemo(() => requests.filter(r => r.status === 'pending').length, [requests]);
-
-  const handleRequestAction = (id, status) => {
-    setRequests((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)));
-    setSuccess(`Request ${status === 'accepted' ? 'accepted' : 'declined'}.`);
+  const fetchPendingRequests = async () => {
+    try {
+      const response = await api.get('/api/nanny/bookings/nanny/pending');
+      setRequests(response.data || []);
+    } catch (error) {
+      console.error('Error fetching requests:', error);
+    }
   };
 
-  const handleStartService = () => {
-    setActiveService((prev) => ({ ...prev, started: true, startTime: new Date().toISOString() }));
-    setSuccess('Service started. Time tracking in progress.');
+  const fetchSchedule = async () => {
+    try {
+      const response = await api.get('/api/nanny/bookings/nanny?status=accepted');
+      setSchedule(response.data || []);
+    } catch (error) {
+      console.error('Error fetching schedule:', error);
+    }
   };
 
-  const handleEndService = () => {
-    setActiveService((prev) => ({ ...prev, endTime: new Date().toISOString() }));
-    setSuccess('Service ended. Please confirm notes and submit.');
+  const fetchHistory = async () => {
+    try {
+      const response = await api.get('/api/nanny/bookings/nanny?status=completed');
+      setHistory(response.data || []);
+    } catch (error) {
+      console.error('Error fetching history:', error);
+    }
   };
 
-  const handleSaveNotes = () => {
-    setSuccess('Service notes saved for parents.');
+  const totalPending = useMemo(() => requests.length, [requests]);
+
+  const handleRequestAction = async (id, status) => {
+    try {
+      const endpoint = status === 'accepted' ? 'accept' : 'reject';
+      await api.put(`/api/nanny/bookings/${id}/${endpoint}`);
+      setSuccess(`Request ${status === 'accepted' ? 'accepted' : 'rejected'}.`);
+      fetchPendingRequests();
+      fetchSchedule();
+    } catch (error) {
+      setError('Failed to update request');
+      console.error(error);
+    }
+  };
+
+  const handleStartService = async (bookingId) => {
+    try {
+      await api.put(`/api/nanny/bookings/${bookingId}/start`);
+      setSuccess('Service started. Time tracking in progress.');
+      fetchSchedule();
+    } catch (error) {
+      setError('Failed to start service');
+      console.error(error);
+    }
+  };
+
+  const handleEndService = async (bookingId) => {
+    try {
+      await api.put(`/api/nanny/bookings/${bookingId}/end`);
+      setSuccess('Service ended successfully.');
+      fetchSchedule();
+      fetchHistory();
+    } catch (error) {
+      setError('Failed to end service');
+      console.error(error);
+    }
+  };
+
+  const handleSaveNote = async () => {
+    try {
+      await api.post(`/api/nanny/bookings/${selectedBooking}/notes`, { note: serviceNote });
+      setSuccess('Service note saved for parents.');
+      setNoteDialog(false);
+      setServiceNote('');
+      fetchSchedule();
+    } catch (error) {
+      setError('Failed to save note');
+      console.error(error);
+    }
+  };
+
+  const handleSaveActivity = async () => {
+    try {
+      await api.post(`/api/nanny/bookings/${selectedBooking}/activity`, { activity: activityUpdate });
+      setSuccess('Activity update added.');
+      setActivityDialog(false);
+      setActivityUpdate('');
+      fetchSchedule();
+    } catch (error) {
+      setError('Failed to save activity');
+      console.error(error);
+    }
   };
 
   return (
@@ -252,95 +286,63 @@ const NannyDashboard = () => {
             <Typography color="text.secondary">No requests right now.</Typography>
           ) : (
             <Grid container spacing={3}>
-              {requests.filter(r => r.status === 'pending').map((r) => (
-                <Grid item xs={12} key={r.id}>
+              {requests.map((r) => (
+                <Grid item xs={12} key={r._id}>
                   <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
                     <CardContent sx={{ p: 3 }}>
                       <Grid container spacing={2} alignItems="center">
                         <Grid item xs={12} md={8}>
-                          <Typography variant="h6" sx={{ fontWeight: 'bold', mb: 1 }}>
-                            {r.parent}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                            Child: {r.child} ({r.childAge})
-                          </Typography>
-                          <Stack direction="row" spacing={2} sx={{ mb: 1, flexWrap: 'wrap', gap: 1 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <CalendarToday sx={{ fontSize: 16, color: 'text.secondary' }} />
-                              <Typography variant="body2" color="text.secondary">
-                                {fmtDate(r.date)}
-                              </Typography>
-                            </Box>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                              <AccessTime sx={{ fontSize: 16, color: 'text.secondary' }} />
-                              <Typography variant="body2" color="text.secondary">
-                                {r.time}
-                              </Typography>
-                            </Box>
-                          </Stack>
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                          <Stack spacing={1}>
+                            <Typography variant="h6" fontWeight={700}>
+                              {r.parentName}
+                            </Typography>
                             <Typography variant="body2" color="text.secondary">
-                              {r.hours} hours @ ${r.rate}/hr
+                              <strong>Child:</strong> {r.child.name} ({r.child.age} yrs)
                             </Typography>
-                            <Typography 
-                              variant="h6" 
-                              sx={{ 
-                                color: '#e91e63', 
-                                fontWeight: 'bold',
-                                ml: 'auto'
-                              }}
-                            >
-                              ${r.hours * r.rate}
+                            <Typography variant="body2" color="text.secondary">
+                              <strong>Date:</strong> {fmtDate(r.serviceDate)}
                             </Typography>
-                          </Box>
+                            <Typography variant="body2" color="text.secondary">
+                              <strong>Time:</strong> {r.startTime} - {r.endTime}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              <strong>Hours:</strong> {r.hours} hrs | <strong>Rate:</strong> ${r.hourlyRate}/hr | <strong>Total:</strong> ${r.totalAmount}
+                            </Typography>
+                            {r.child.allergies && (
+                              <Alert severity="warning" sx={{ mt: 1 }}>
+                                <strong>Allergy:</strong> {r.child.allergies}
+                              </Alert>
+                            )}
+                            {r.parentInstructions && (
+                              <Typography variant="body2" color="text.secondary">
+                                <strong>Notes:</strong> {r.parentInstructions}
+                              </Typography>
+                            )}
+                          </Stack>
                         </Grid>
                         <Grid item xs={12} md={4}>
-                          <Stack direction={{ xs: 'column', sm: 'row', md: 'column' }} spacing={1}>
+                          <Stack spacing={2}>
                             <Button
-                              fullWidth
                               variant="contained"
-                              sx={{
-                                bgcolor: '#14B8A6',
-                                color: 'white',
-                                fontWeight: 'bold',
-                                '&:hover': {
-                                  bgcolor: '#0F766E'
-                                }
-                              }}
-                              onClick={() => handleRequestAction(r.id, 'accepted')}
+                              fullWidth
+                              sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#45a049' } }}
                               startIcon={<CheckCircle />}
+                              onClick={() => handleRequestAction(r._id, 'accepted')}
                             >
-                              Accept Booking
+                              Accept
                             </Button>
                             <Button
-                              fullWidth
                               variant="outlined"
-                              sx={{
-                                borderColor: '#14B8A6',
-                                color: '#14B8A6',
-                                bgcolor: '#f5f5f5',
-                                '&:hover': {
-                                  bgcolor: '#e8f5e9',
-                                  borderColor: '#0F766E'
-                                }
-                              }}
-                              onClick={() => handleRequestAction(r.id, 'declined')}
+                              fullWidth
+                              color="error"
                               startIcon={<Cancel />}
+                              onClick={() => handleRequestAction(r._id, 'rejected')}
                             >
                               Decline
                             </Button>
                             <Button
+                              variant="text"
                               fullWidth
-                              variant="outlined"
-                              sx={{
-                                borderColor: '#14B8A6',
-                                color: '#14B8A6',
-                                bgcolor: '#e8f5e9',
-                                '&:hover': {
-                                  bgcolor: '#c8e6c9',
-                                  borderColor: '#0F766E'
-                                }
-                              }}
                               startIcon={<Visibility />}
                             >
                               View Details
@@ -359,111 +361,247 @@ const NannyDashboard = () => {
 
       {/* My Schedule */}
       {tab === 1 && (
-        <Paper sx={{ p: 2, borderRadius: 2 }}>
-          <Typography variant="h6" sx={{ mb: 1 }}>Upcoming Schedule</Typography>
-          <List>
-            {schedule.map((s) => (
-              <React.Fragment key={s.id}>
-                <ListItem
-                  secondaryAction={<Chip label={`${s.hours} hrs`} color="primary" />}
-                >
-                  <ListItemText
-                    primary={`${s.parent} — Child: ${s.child}`}
-                    secondary={`${fmtDate(s.date)} • ${s.time}`}
-                  />
-                </ListItem>
-                <Divider component="li" />
-              </React.Fragment>
-            ))}
-          </List>
-        </Paper>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            My Schedule
+          </Typography>
+          {schedule.length === 0 ? (
+            <Typography color="text.secondary">No scheduled bookings.</Typography>
+          ) : (
+            <Grid container spacing={3}>
+              {schedule.map((s) => (
+                <Grid item xs={12} md={6} key={s._id}>
+                  <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                    <CardContent sx={{ p: 3 }}>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
+                        <Typography variant="h6" fontWeight={700}>
+                          {s.parentName}
+                        </Typography>
+                        <Chip
+                          label={s.status === 'accepted' ? 'Confirmed' : 'In Progress'}
+                          color={s.status === 'accepted' ? 'success' : 'info'}
+                          size="small"
+                        />
+                      </Box>
+                      <Divider sx={{ my: 2 }} />
+                      <Stack spacing={1}>
+                        <Typography variant="body2"><strong>Child:</strong> {s.child.name}</Typography>
+                        <Typography variant="body2"><strong>Date:</strong> {fmtDate(s.serviceDate)}</Typography>
+                        <Typography variant="body2"><strong>Time:</strong> {s.startTime} - {s.endTime}</Typography>
+                        <Typography variant="body2"><strong>Hours:</strong> {s.hours} hrs</Typography>
+                        <Typography variant="body2"><strong>Amount:</strong> ${s.totalAmount}</Typography>
+                      </Stack>
+                      {s.status === 'accepted' && (
+                        <Button
+                          variant="contained"
+                          fullWidth
+                          sx={{ mt: 2, bgcolor: '#2196f3', '&:hover': { bgcolor: '#1976d2' } }}
+                          startIcon={<PlayArrow />}
+                          onClick={() => handleStartService(s._id)}
+                        >
+                          Start Service
+                        </Button>
+                      )}
+                      <Button
+                        variant="outlined"
+                        fullWidth
+                        sx={{ mt: 2 }}
+                        startIcon={<Notes />}
+                        onClick={() => {
+                          setSelectedBooking(s._id);
+                          setNoteDialog(true);
+                        }}
+                      >
+                        Add Service Note
+                      </Button>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Box>
       )}
 
       {/* Active Service */}
       {tab === 2 && (
-        <Paper sx={{ p: 2, borderRadius: 2 }}>
-          <Typography variant="h6" sx={{ mb: 1 }}>Active Service</Typography>
-          <Typography variant="body1" fontWeight={600}>{activeService.parent} — Child: {activeService.child}</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            {fmtDate(activeService.date)} • {activeService.time}
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Active Service
           </Typography>
-          <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-            {!activeService.started && (
-              <Button variant="contained" startIcon={<PlayArrow />} onClick={handleStartService}>
-                Start Service
-              </Button>
-            )}
-            {activeService.started && !activeService.endTime && (
-              <Button variant="contained" startIcon={<Stop />} onClick={handleEndService}>
-                End Service
-              </Button>
-            )}
-            <Button variant="outlined" startIcon={<Chat />} onClick={() => setSuccess('Message sent to admin (placeholder).')}>
-              Contact Admin
-            </Button>
-          </Stack>
-          <TextField
-            fullWidth
-            multiline
-            minRows={3}
-            label="Service Notes & Child Activity Updates"
-            placeholder="Add feeding, hygiene, play, basic education activities, incidents..."
-            value={activeService.notes}
-            onChange={(e) => setActiveService((p) => ({ ...p, notes: e.target.value }))}
-            sx={{ mb: 2 }}
-          />
-          <Button variant="outlined" startIcon={<Notes />} onClick={handleSaveNotes}>
-            Upload / Save Notes
-          </Button>
-          {activeService.startTime && (
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              Started at: {new Date(activeService.startTime).toLocaleTimeString()} {activeService.endTime ? `• Ended at: ${new Date(activeService.endTime).toLocaleTimeString()}` : ''}
-            </Typography>
+          {schedule.filter(s => s.status === 'in-progress').length === 0 ? (
+            <Typography color="text.secondary">No active service at the moment.</Typography>
+          ) : (
+            <Grid container spacing={3}>
+              {schedule.filter(s => s.status === 'in-progress').map((s) => (
+                <Grid item xs={12} key={s._id}>
+                  <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                    <CardContent sx={{ p: 3 }}>
+                      <Typography variant="h6" fontWeight={700} gutterBottom>
+                        {s.parentName} — Child: {s.child.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        {fmtDate(s.serviceDate)} • {s.startTime} - {s.endTime}
+                      </Typography>
+                      {s.actualStartTime && (
+                        <Alert severity="info" sx={{ mb: 2 }}>
+                          Started at: {new Date(s.actualStartTime).toLocaleTimeString()}
+                        </Alert>
+                      )}
+                      <Stack spacing={2}>
+                        <Button
+                          variant="contained"
+                          fullWidth
+                          color="error"
+                          startIcon={<Stop />}
+                          onClick={() => handleEndService(s._id)}
+                        >
+                          End Service
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          fullWidth
+                          startIcon={<Notes />}
+                          onClick={() => {
+                            setSelectedBooking(s._id);
+                            setNoteDialog(true);
+                          }}
+                        >
+                          Add Service Note
+                        </Button>
+                        <Button
+                          variant="outlined"
+                          fullWidth
+                          startIcon={<Description />}
+                          onClick={() => {
+                            setSelectedBooking(s._id);
+                            setActivityDialog(true);
+                          }}
+                        >
+                          Add Activity Update
+                        </Button>
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
           )}
-        </Paper>
+        </Box>
       )}
 
       {/* Service History */}
       {tab === 3 && (
-        <Paper sx={{ p: 2, borderRadius: 2 }}>
-          <Typography variant="h6" sx={{ mb: 1 }}>Service History</Typography>
-          <List>
-            {history.map((h) => (
-              <React.Fragment key={h.id}>
-                <ListItem
-                  secondaryAction={<Chip label={`$${h.amount}`} color="secondary" />}
-                >
-                  <ListItemText
-                    primary={`${h.parent} — Child: ${h.child}`}
-                    secondary={`${fmtDate(h.date)} • ${h.hours} hrs • ${h.status}`}
-                  />
-                </ListItem>
-                <Divider component="li" />
-              </React.Fragment>
-            ))}
-          </List>
-        </Paper>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Service History
+          </Typography>
+          {history.length === 0 ? (
+            <Typography color="text.secondary">No completed services yet.</Typography>
+          ) : (
+            <List>
+              {history.map((h) => (
+                <React.Fragment key={h._id}>
+                  <ListItem
+                    sx={{ bgcolor: 'white', borderRadius: 1, mb: 1, boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}
+                    secondaryAction={
+                      <Stack alignItems="flex-end">
+                        <Chip label={`$${h.totalAmount}`} color="success" />
+                        <Typography variant="caption" color="text.secondary">
+                          {h.actualHours || h.hours} hrs
+                        </Typography>
+                      </Stack>
+                    }
+                  >
+                    <ListItemText
+                      primary={`${h.parentName} — Child: {h.child.name}`}
+                      secondary={`${fmtDate(h.serviceDate)} • Completed`}
+                    />
+                  </ListItem>
+                </React.Fragment>
+              ))}
+            </List>
+          )}
+        </Box>
       )}
 
       {/* Reviews */}
       {tab === 4 && (
-        <Stack spacing={2}>
-          {reviews.map((r) => (
-            <Paper key={r.id} sx={{ p: 2, borderRadius: 2 }}>
-              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                <Typography variant="subtitle1" fontWeight={600}>{r.parent}</Typography>
-                <Rating value={r.rating} precision={0.1} readOnly size="small" />
-                <Typography variant="body2" color="text.secondary">{r.rating.toFixed(1)}</Typography>
-              </Stack>
-              <Typography variant="body2" color="text.secondary">{r.text}</Typography>
-            </Paper>
-          ))}
-        </Stack>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Reviews & Ratings
+          </Typography>
+          {history.filter(h => h.rating).length === 0 ? (
+            <Typography color="text.secondary">No reviews yet.</Typography>
+          ) : (
+            <Stack spacing={2}>
+              {history.filter(h => h.rating).map((h) => (
+                <Paper key={h._id} sx={{ p: 3, borderRadius: 2 }}>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                    <Typography variant="subtitle1" fontWeight={600}>{h.parentName}</Typography>
+                    <Rating value={h.rating} precision={0.1} readOnly size="small" />
+                    <Typography variant="body2" color="text.secondary">{h.rating.toFixed(1)}</Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    {fmtDate(h.reviewDate || h.serviceDate)}
+                  </Typography>
+                  <Typography variant="body2">{h.review}</Typography>
+                </Paper>
+              ))}
+            </Stack>
+          )}
+        </Box>
       )}
+
+      {/* Service Note Dialog */}
+      <Dialog open={noteDialog} onClose={() => setNoteDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Service Note</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            label="Service Notes"
+            placeholder="Add notes about feeding, hygiene, activities, etc..."
+            value={serviceNote}
+            onChange={(e) => setServiceNote(e.target.value)}
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNoteDialog(false)}>Cancel</Button>
+          <Button onClick={handleSaveNote} variant="contained" color="primary">
+            Save Note
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Activity Update Dialog */}
+      <Dialog open={activityDialog} onClose={() => setActivityDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Add Activity Update</DialogTitle>
+        <DialogContent>
+          <TextField
+            fullWidth
+            multiline
+            rows={4}
+            label="Activity Description"
+            placeholder="Describe the child's activities, play time, learning moments..."
+            value={activityUpdate}
+            onChange={(e) => setActivityUpdate(e.target.value)}
+            sx={{ mt: 2 }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setActivityDialog(false)}>Cancel</Button>
+          <Button onClick={handleSaveActivity} variant="contained" color="primary">
+            Save Activity
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       </Box>
     </Box>
   );
 };
 
 export default NannyDashboard;
-

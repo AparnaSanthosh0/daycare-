@@ -35,16 +35,17 @@ import {
   DirectionsCar,
   Report,
   Assignment,
-  CheckCircle,
   Refresh,
   QrCodeScanner,
   History,
   Assessment,
   Add
 } from '@mui/icons-material';
+import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
 
 const DriverDashboard = () => {
+  const { user } = useAuth();
   // Driver dashboard component
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -52,7 +53,7 @@ const DriverDashboard = () => {
   const [routes, setRoutes] = useState([]);
   const [todayTrips, setTodayTrips] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
-  const [selectedTrip, setSelectedTrip] = useState(null);
+  const [selectedTrip] = useState(null);
   const [tripDialog, setTripDialog] = useState({ open: false, trip: null });
   const [otpDialog, setOtpDialog] = useState({ open: false, trip: null, child: null, action: '' });
   const [otpCode, setOtpCode] = useState('');
@@ -152,41 +153,6 @@ const DriverDashboard = () => {
     }
   }, [locationTracking, selectedTrip]);
 
-  // Start trip
-  const handleStartTrip = async (trip) => {
-    try {
-      if (!navigator.geolocation) {
-        setError('Geolocation is not supported by your browser');
-        return;
-      }
-
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          try {
-            await api.post(`/api/driver/trips/${trip._id}/start`, {
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-              speed: position.coords.speed || 0,
-              heading: position.coords.heading || 0
-            });
-            setSelectedTrip(trip);
-            setLocationTracking(true);
-            setTripDialog({ open: true, trip: { ...trip, status: 'in-progress' } });
-            setSuccess('Trip started successfully');
-            fetchTodayTrips();
-          } catch (error) {
-            setError('Failed to start trip');
-          }
-        },
-        (error) => {
-          setError('Failed to get location. Please enable location services.');
-        }
-      );
-    } catch (error) {
-      setError('Failed to start trip');
-    }
-  };
-
   // Generate OTP
   const handleGenerateOTP = async (trip, child, action) => {
     try {
@@ -213,21 +179,6 @@ const DriverDashboard = () => {
       fetchTodayTrips();
     } catch (error) {
       setError('Invalid or expired OTP');
-    }
-  };
-
-  // Complete trip
-  const handleCompleteTrip = async (trip) => {
-    try {
-      await api.post(`/api/driver/trips/${trip._id}/complete`);
-      setLocationTracking(false);
-      setSelectedTrip(null);
-      setTripDialog({ open: false, trip: null });
-      setSuccess('Trip completed successfully');
-      fetchTodayTrips();
-      fetchComplianceReport();
-    } catch (error) {
-      setError('Failed to complete trip');
     }
   };
 
@@ -280,6 +231,17 @@ const DriverDashboard = () => {
     }
   };
 
+  const totalRoutes = routes.length;
+  const totalChildren = routes.reduce((sum, route) => sum + (route.assignedChildren?.length || 0), 0);
+  const totalStops = routes.reduce((sum, route) => sum + (route.stops?.length || 0), 0);
+  const onTimeRate =
+    complianceReport && complianceReport.totalTrips
+      ? Math.round(((complianceReport.onTimeTrips || 0) / Math.max(1, complianceReport.totalTrips)) * 100)
+      : complianceReport?.onTimeRate || complianceReport?.onTimePercentage || null;
+
+  const activeTrip =
+    todayTrips.find((t) => t.status === 'in-progress') || todayTrips.find((t) => t.status === 'scheduled') || null;
+
   if (loading) {
     return (
       <Box sx={{ p: 3 }}>
@@ -303,7 +265,14 @@ const DriverDashboard = () => {
       )}
 
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4">Driver Dashboard</Typography>
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 0.5 }}>
+            Driver Dashboard
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {user?.firstName || user?.name || 'Driver'}
+          </Typography>
+        </Box>
         <Box>
           <Button
             variant="outlined"
@@ -314,154 +283,266 @@ const DriverDashboard = () => {
               fetchVehicleLogs();
               fetchComplianceReport();
             }}
-            sx={{ mr: 1 }}
           >
             Refresh
           </Button>
         </Box>
       </Box>
 
-      <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
-        <Tab label="Today's Trips" icon={<Assignment />} />
-        <Tab label="Routes & Schedules" icon={<DirectionsCar />} />
-        <Tab label="Vehicle Log" icon={<History />} />
-        <Tab label="Compliance Report" icon={<Assessment />} />
+      <Tabs
+        value={activeTab}
+        onChange={(e, v) => setActiveTab(v)}
+        sx={{
+          mb: 3,
+          '& .MuiTab-root': {
+            textTransform: 'none',
+            fontWeight: 500,
+          },
+          '& .MuiTabs-indicator': {
+            height: 3,
+          },
+        }}
+      >
+        <Tab label="Routes" icon={<DirectionsCar />} iconPosition="start" />
+        <Tab label="Active Route" icon={<Assignment />} iconPosition="start" />
+        <Tab label="Assigned Children" icon={<History />} iconPosition="start" />
+        <Tab label="Incidents" icon={<Report />} iconPosition="start" />
+        <Tab label="Vehicle Info" icon={<Assessment />} iconPosition="start" />
       </Tabs>
 
-      {/* Today's Trips Tab */}
+      {/* Tab 0: Routes overview + Today's schedule */}
       {activeTab === 0 && (
-        <Grid container spacing={3}>
-          {todayTrips.length === 0 ? (
-            <Grid item xs={12}>
-              <Paper sx={{ p: 3, textAlign: 'center' }}>
-                <Typography color="text.secondary">No trips scheduled for today</Typography>
+        <Box>
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={3}>
+              <Paper sx={{ p: 2.5, borderRadius: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Today's Routes
+                </Typography>
+                <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold' }}>
+                  {totalRoutes}
+                </Typography>
               </Paper>
             </Grid>
+            <Grid item xs={12} sm={3}>
+              <Paper sx={{ p: 2.5, borderRadius: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Total Children
+                </Typography>
+                <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold', color: 'primary.main' }}>
+                  {totalChildren}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={3}>
+              <Paper sx={{ p: 2.5, borderRadius: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  Total Stops
+                </Typography>
+                <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold', color: 'secondary.main' }}>
+                  {totalStops}
+                </Typography>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} sm={3}>
+              <Paper sx={{ p: 2.5, borderRadius: 2 }}>
+                <Typography variant="body2" color="text.secondary">
+                  On-Time Rate
+                </Typography>
+                <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold', color: 'success.main' }}>
+                  {onTimeRate != null ? `${onTimeRate}%` : '--'}
+                </Typography>
+              </Paper>
+            </Grid>
+          </Grid>
+
+          <Typography variant="h6" sx={{ mb: 2 }}>
+            Today's Schedule - {new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+          </Typography>
+
+          {todayTrips.length === 0 ? (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography color="text.secondary">No trips scheduled for today</Typography>
+            </Paper>
           ) : (
-            todayTrips.map((trip) => (
-              <Grid item xs={12} md={6} key={trip._id}>
-                <Card>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                      <Typography variant="h6">{trip.routeName}</Typography>
-                      <Chip
-                        label={trip.status}
-                        color={
-                          trip.status === 'completed' ? 'success' :
-                          trip.status === 'in-progress' ? 'primary' :
-                          trip.status === 'delayed' ? 'warning' : 'default'
-                        }
-                        size="small"
-                      />
-                    </Box>
-                    <Typography variant="body2" color="text.secondary" gutterBottom>
-                      Type: {trip.tripType} | Scheduled: {trip.scheduledTime}
+            <Grid container spacing={2}>
+              {todayTrips.map((trip) => {
+                const statusLabel =
+                  trip.status === 'completed'
+                    ? 'Completed'
+                    : trip.status === 'in-progress'
+                    ? 'In Progress'
+                    : 'Scheduled';
+                const statusColor =
+                  trip.status === 'completed'
+                    ? 'success'
+                    : trip.status === 'in-progress'
+                    ? 'info'
+                    : 'default';
+
+                return (
+                  <Grid item xs={12} key={trip._id}>
+                    <Paper sx={{ p: 2.5, borderRadius: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Box>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                          {trip.routeName}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {trip.stops?.length || 0} stops • {trip.children?.length || 0} children
+                        </Typography>
+                      </Box>
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {trip.scheduledTime}
+                        </Typography>
+                        <Chip label={statusLabel} color={statusColor} size="small" sx={{ mt: 1 }} />
+                      </Box>
+                    </Paper>
+                  </Grid>
+                );
+              })}
+            </Grid>
+          )}
+        </Box>
+      )}
+
+      {/* Tab 1: Active Route */}
+      {activeTab === 1 && (
+        <Box>
+          {activeTrip ? (
+            <>
+              <Paper
+                sx={{
+                  p: 4,
+                  mb: 3,
+                  borderRadius: 3,
+                  background: 'linear-gradient(90deg, #FFB300 0%, #FB8C00 100%)',
+                  color: 'white',
+                }}
+              >
+                <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
+                  {activeTrip.routeName}
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="body2">Started</Typography>
+                    <Typography variant="h6">{activeTrip.startTime || activeTrip.scheduledTime || '--'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <Typography variant="body2">Est. Completion</Typography>
+                    <Typography variant="h6">{activeTrip.estimatedEndTime || '--'}</Typography>
+                  </Grid>
+                  <Grid item xs={12} sx={{ mt: 2 }}>
+                    <Typography variant="body2" sx={{ mb: 1 }}>
+                      Route Progress
                     </Typography>
-                    {trip.actualTime && (
-                      <Typography variant="body2" color="text.secondary">
-                        Actual: {trip.actualTime}
+                    <LinearProgress
+                      variant="determinate"
+                      value={
+                        activeTrip.totalStops
+                          ? Math.min(100, ((activeTrip.completedStops || 0) / activeTrip.totalStops) * 100)
+                          : 0
+                      }
+                      sx={{
+                        height: 8,
+                        borderRadius: 4,
+                        backgroundColor: 'rgba(255,255,255,0.3)',
+                        '& .MuiLinearProgress-bar': {
+                          backgroundColor: '#FFE082',
+                        },
+                      }}
+                    />
+                    {activeTrip.totalStops && (
+                      <Typography variant="caption">
+                        {(activeTrip.completedStops || 0)} of {activeTrip.totalStops} stops
                       </Typography>
                     )}
-                    <Typography variant="body2" sx={{ mt: 1 }}>
-                      Children: {trip.children?.length || 0}
-                    </Typography>
-                    <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                      {trip.status === 'scheduled' && (
-                        <Button
-                          variant="contained"
-                          size="small"
-                          startIcon={<CheckCircle />}
-                          onClick={() => handleStartTrip(trip)}
-                        >
-                          Start Trip
-                        </Button>
-                      )}
-                      {trip.status === 'in-progress' && (
-                        <>
-                          <Button
-                            variant="outlined"
-                            size="small"
-                            onClick={() => setTripDialog({ open: true, trip })}
-                          >
-                            View Details
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            color="warning"
-                            size="small"
-                            startIcon={<Report />}
-                            onClick={() => {
-                              setIncidentDialog({ open: true, trip });
-                            }}
-                          >
-                            Report Incident
-                          </Button>
-                          <Button
-                            variant="outlined"
-                            color="error"
-                            size="small"
-                            startIcon={<DirectionsCar />}
-                            onClick={() => {
-                              setVehicleIssueDialog({ open: true, trip });
-                            }}
-                          >
-                            Vehicle Issue
-                          </Button>
-                          <Button
-                            variant="contained"
-                            color="success"
-                            size="small"
-                            onClick={() => handleCompleteTrip(trip)}
-                          >
-                            Complete Trip
-                          </Button>
-                        </>
-                      )}
-                    </Box>
-                  </CardContent>
-                </Card>
-              </Grid>
-            ))
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              <Paper sx={{ p: 3, borderRadius: 2 }}>
+                <Typography variant="h6" sx={{ mb: 1 }}>
+                  Current Trip
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Type: {activeTrip.tripType} • Scheduled: {activeTrip.scheduledTime}
+                </Typography>
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    onClick={() => setTripDialog({ open: true, trip: activeTrip })}
+                  >
+                    View Full Details
+                  </Button>
+                </Box>
+              </Paper>
+            </>
+          ) : (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography color="text.secondary">
+                No active route. Start a trip from the Routes tab to see it here.
+              </Typography>
+            </Paper>
           )}
-        </Grid>
+        </Box>
       )}
 
-      {/* Routes & Schedules Tab */}
-      {activeTab === 1 && (
-        <Grid container spacing={3}>
-          {routes.map((route) => (
-            <Grid item xs={12} key={route._id}>
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>{route.routeName}</Typography>
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    Type: {route.routeType} | Vehicle: {route.vehicle?.vehicleNumber || 'N/A'}
-                  </Typography>
-                  <Typography variant="body2" sx={{ mt: 1 }}>
-                    Assigned Children: {route.assignedChildren?.length || 0}
-                  </Typography>
-                  <Box sx={{ mt: 2 }}>
-                    <Typography variant="subtitle2">Schedule:</Typography>
-                    {Object.entries(route.schedule || {}).map(([day, schedule]) => (
-                      schedule.enabled && (
-                        <Chip
-                          key={day}
-                          label={`${day}: ${schedule.pickupTime} - ${schedule.dropoffTime}`}
-                          size="small"
-                          sx={{ mr: 1, mb: 1 }}
-                        />
-                      )
-                    ))}
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* Vehicle Log Tab */}
+      {/* Tab 2: Assigned Children for active trip */}
       {activeTab === 2 && (
+        <Box>
+          {activeTrip && activeTrip.children?.length ? (
+            <Paper sx={{ p: 3, borderRadius: 2 }}>
+              <Typography variant="h6" sx={{ mb: 2 }}>
+                Assigned Children - {activeTrip.routeName}
+              </Typography>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Name</TableCell>
+                      <TableCell>Boarding Status</TableCell>
+                      <TableCell>Deboarding Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {activeTrip.children.map((childTrip) => (
+                      <TableRow key={childTrip.child?._id || childTrip.child}>
+                        <TableCell>
+                          {childTrip.child?.firstName || 'Unknown'} {childTrip.child?.lastName || ''}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={childTrip.boardingStatus || 'pending'}
+                            size="small"
+                            color={childTrip.boardingStatus === 'otp-verified' ? 'success' : 'default'}
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={childTrip.deboardingStatus || 'pending'}
+                            size="small"
+                            color={childTrip.deboardingStatus === 'otp-verified' ? 'success' : 'default'}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          ) : (
+            <Paper sx={{ p: 3, textAlign: 'center' }}>
+              <Typography color="text.secondary">
+                No active trip with assigned children. Start a trip from the Routes tab.
+              </Typography>
+            </Paper>
+          )}
+        </Box>
+      )}
+
+      {/* Tab 4: Vehicle Info - Vehicle Logs */}
+      {activeTab === 4 && (
         <Grid container spacing={3}>
           <Grid item xs={12}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
@@ -512,7 +593,7 @@ const DriverDashboard = () => {
         </Grid>
       )}
 
-      {/* Compliance Report Tab */}
+      {/* Tab 3: Incidents & Compliance */}
       {activeTab === 3 && complianceReport && (
         <Grid container spacing={3}>
           <Grid item xs={12} md={6}>
