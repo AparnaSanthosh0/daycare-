@@ -7,8 +7,6 @@ import {
   Typography,
   Button,
   Alert,
-  Card,
-  CardContent,
   Chip,
   Table,
   TableBody,
@@ -23,36 +21,27 @@ import {
   TextField,
   Tabs,
   Tab,
-  List,
-  ListItem,
-  ListItemText,
   LinearProgress,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  IconButton,
-  Tooltip,
   Stack,
   Divider
 } from '@mui/material';
 import {
   DirectionsCar,
-  Report,
-  Assignment,
-  Refresh,
   QrCodeScanner,
-  History,
   Assessment,
   Add,
   LocationOn,
-  MyLocation,
   Warning,
   People,
   Route,
   Phone,
   Logout,
-  GpsFixed
+  GpsFixed,
+  ShoppingCart
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
@@ -300,7 +289,7 @@ const DriverDashboard = () => {
       <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, color: '#f57c00', mb: 0.5 }}>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#14B8A6', mb: 0.5 }}>
               Driver Dashboard
             </Typography>
             <Typography variant="body2" color="text.secondary">
@@ -308,6 +297,20 @@ const DriverDashboard = () => {
             </Typography>
           </Box>
           <Stack direction="row" spacing={1}>
+            <Button
+              variant="contained"
+              startIcon={<ShoppingCart />}
+              onClick={() => navigate('/shop')}
+              sx={{
+                bgcolor: '#14B8A6',
+                '&:hover': { bgcolor: '#0d9488' },
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 3
+              }}
+            >
+              Shop
+            </Button>
             <Button
               variant="contained"
               startIcon={<Warning />}
@@ -334,8 +337,8 @@ const DriverDashboard = () => {
                 }
               }}
               sx={{
-                bgcolor: '#4caf50',
-                '&:hover': { bgcolor: '#388e3c' },
+                bgcolor: '#14B8A6',
+                '&:hover': { bgcolor: '#0d9488' },
                 textTransform: 'none',
                 fontWeight: 600,
                 px: 3
@@ -376,13 +379,13 @@ const DriverDashboard = () => {
               minHeight: 56,
               color: '#757575',
               '&.Mui-selected': {
-                color: '#f57c00',
+                color: '#14B8A6',
                 fontWeight: 600
               }
             },
             '& .MuiTabs-indicator': {
               height: 3,
-              bgcolor: '#f57c00'
+              bgcolor: '#14B8A6'
             }
           }}
         >
@@ -404,7 +407,7 @@ const DriverDashboard = () => {
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Today's Routes
                 </Typography>
-                <Typography variant="h3" sx={{ fontWeight: 700, color: '#f57c00' }}>
+                <Typography variant="h3" sx={{ fontWeight: 700, color: '#14B8A6' }}>
                   {totalRoutes}
                 </Typography>
               </Paper>
@@ -542,9 +545,9 @@ const DriverDashboard = () => {
                   p: 4,
                   mb: 3,
                   borderRadius: 3,
-                  background: 'linear-gradient(135deg, #fb8c00 0%, #f57c00 100%)',
+                  background: 'linear-gradient(135deg, #14B8A6 0%, #0d9488 100%)',
                   color: 'white',
-                  boxShadow: '0 4px 20px rgba(245,124,0,0.3)'
+                  boxShadow: '0 4px 20px rgba(20,184,166,0.3)'
                 }}
               >
                 <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
@@ -651,8 +654,8 @@ const DriverDashboard = () => {
             <Chip 
               label={`${routes.reduce((sum, r) => sum + (r.assignedChildren?.length || 0), 0)} Children`}
               sx={{ 
-                bgcolor: '#fff9c4',
-                color: '#f57c00',
+                bgcolor: '#e0f2f1',
+                color: '#14B8A6',
                 fontWeight: 600
               }} 
             />
@@ -706,8 +709,8 @@ const DriverDashboard = () => {
                               <Chip 
                                 label={child.otp || Math.floor(1000 + Math.random() * 9000)}
                                 sx={{ 
-                                  bgcolor: '#fff9c4',
-                                  color: '#f57c00',
+                                  bgcolor: '#e0f2f1',
+                                  color: '#14B8A6',
                                   fontWeight: 700,
                                   fontFamily: 'monospace',
                                   fontSize: '0.95rem'
@@ -885,9 +888,9 @@ const DriverDashboard = () => {
                             size="small"
                             sx={{
                               bgcolor: log.fuelLevel === 'full' ? '#e8f5e9' :
-                                      log.fuelLevel === 'half' ? '#fff3e0' : '#ffebee',
+                                      log.fuelLevel === 'half' ? '#e0f2f1' : '#ffebee',
                               color: log.fuelLevel === 'full' ? '#4caf50' :
-                                    log.fuelLevel === 'half' ? '#f57c00' : '#f44336',
+                                    log.fuelLevel === 'half' ? '#14B8A6' : '#f44336',
                               fontWeight: 600,
                               textTransform: 'capitalize'
                             }}

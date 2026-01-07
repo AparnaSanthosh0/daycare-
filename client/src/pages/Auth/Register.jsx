@@ -71,7 +71,8 @@ const Register = ({ fixedRole, fixedStaffType }) => {
     availability: '',
 
     // Child admission details (for parents)
-    hasTwins: isTwinsRegistration,
+    hasMultipleChildren: isTwinsRegistration,
+    numberOfChildren: isTwinsRegistration ? 2 : 1,
     childName: '',
     childDob: '',
     childGender: 'male',
@@ -79,12 +80,8 @@ const Register = ({ fixedRole, fixedStaffType }) => {
     medicalInfo: '',
     emergencyContactName: '',
     emergencyContactPhone: '',
-    // Twin child details
-    twinName: '',
-    twinDob: '',
-    twinGender: 'male',
-    twinProgram: 'preschool',
-    twinMedicalInfo: '',
+    // Additional children details (for twins, triplets, etc.)
+    additionalChildren: [],
 
     // Account
     password: '',
@@ -171,23 +168,26 @@ const Register = ({ fixedRole, fixedStaffType }) => {
         return;
       }
       
-      // Validate twin if hasTwins is true
-      if (formData.hasTwins) {
-        if (!formData.twinName || !formData.twinDob) {
-          setError("Twin child name and date of birth are required");
-          setLoading(false);
-          return;
-        }
-        const twinDob = new Date(formData.twinDob);
-        if (isNaN(twinDob.getTime())) {
-          setError('Invalid twin date of birth');
-          setLoading(false);
-          return;
-        }
-        if (!(twinDob >= minDob && twinDob <= maxDob)) {
-          setError('Twin age must be between 1 and 7 years');
-          setLoading(false);
-          return;
+      // Validate additional children if hasMultipleChildren is true
+      if (formData.hasMultipleChildren && formData.additionalChildren.length > 0) {
+        for (let i = 0; i < formData.additionalChildren.length; i++) {
+          const child = formData.additionalChildren[i];
+          if (!child.name || !child.dob) {
+            setError(`Child ${i + 2} name and date of birth are required`);
+            setLoading(false);
+            return;
+          }
+          const childDob = new Date(child.dob);
+          if (isNaN(childDob.getTime())) {
+            setError(`Invalid date of birth for child ${i + 2}`);
+            setLoading(false);
+            return;
+          }
+          if (!(childDob >= minDob && childDob <= maxDob)) {
+            setError(`Child ${i + 2} age must be between 1 and 7 years`);
+            setLoading(false);
+            return;
+          }
         }
       }
       
@@ -313,9 +313,11 @@ const Register = ({ fixedRole, fixedStaffType }) => {
         if (serviceArea) rest.serviceArea = serviceArea;
         if (availability) rest.availability = availability;
       }
-      // Include twins data if hasTwins is true
-      if (rest.hasTwins) {
-        rest.hasTwins = true; // Ensure it's a boolean
+      // Include multiple children data if hasMultipleChildren is true
+      if (rest.hasMultipleChildren) {
+        rest.hasMultipleChildren = true;
+        rest.numberOfChildren = rest.numberOfChildren || 1;
+        rest.additionalChildren = rest.additionalChildren || [];
       }
       payload = rest;
     }
@@ -513,17 +515,6 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                   </Grid>
 
                   <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      name="city"
-                      label="City (optional)"
-                      value={formData.city}
-                      onChange={handleChange}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
                     <Typography variant="subtitle1" sx={{ fontWeight: 700, mt: 1 }}>
                       Child Details
                     </Typography>
@@ -568,59 +559,164 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                   </Grid>
 
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                       <input
-                        id="hasTwins"
+                        id="hasMultipleChildren"
                         type="checkbox"
-                        checked={!!formData.hasTwins}
-                        onChange={(e) => setFormData(prev => ({ ...prev, hasTwins: e.target.checked }))}
+                        checked={!!formData.hasMultipleChildren}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            hasMultipleChildren: checked,
+                            numberOfChildren: checked ? 2 : 1,
+                            additionalChildren: checked ? [{ name: '', dob: '', gender: 'male', program: 'preschool', medicalInfo: '' }] : []
+                          }));
+                        }}
                       />
-                      <label htmlFor="hasTwins" style={{ fontWeight: 600, cursor: 'pointer' }}>
-                        I have twins (registering both children)
+                      <label htmlFor="hasMultipleChildren" style={{ fontWeight: 600, cursor: 'pointer' }}>
+                        I am registering multiple children (twins, triplets, etc.)
                       </label>
                     </Box>
                   </Grid>
 
-                  {formData.hasTwins && (
+                  {formData.hasMultipleChildren && (
                     <>
                       <Grid item xs={12} sm={6}>
                         <TextField
-                          required
+                          select
                           fullWidth
-                          name="twinName"
-                          label="Twin Child's Name"
-                          value={formData.twinName}
-                          onChange={handleChange}
-                          InputProps={{
-                            startAdornment: (
-                              <InputAdornment position="start">
-                                <Person />
-                              </InputAdornment>
-                            ),
+                          label="Number of Children"
+                          value={formData.numberOfChildren}
+                          onChange={(e) => {
+                            const count = parseInt(e.target.value);
+                            const currentChildren = formData.additionalChildren || [];
+                            const newChildren = [];
+                            for (let i = 0; i < count - 1; i++) {
+                              newChildren.push(currentChildren[i] || { name: '', dob: '', gender: 'male', program: 'preschool', medicalInfo: '' });
+                            }
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              numberOfChildren: count,
+                              additionalChildren: newChildren
+                            }));
                           }}
                           sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                        />
+                        >
+                          <MenuItem value={2}>Twins (2 children)</MenuItem>
+                          <MenuItem value={3}>Triplets (3 children)</MenuItem>
+                          <MenuItem value={4}>Quadruplets (4 children)</MenuItem>
+                          <MenuItem value={5}>5 children</MenuItem>
+                        </TextField>
                       </Grid>
                       <Grid item xs={12} sm={6}>
-                        <TextField
-                          required
-                          fullWidth
-                          name="twinDob"
-                          label="Twin's Date of Birth"
-                          type="date"
-                          value={formData.twinDob}
-                          onChange={handleChange}
-                          InputLabelProps={{ shrink: true }}
-                          InputProps={{
-                            startAdornment: (
-                              <InputAdornment position="start">
-                                <Event />
-                              </InputAdornment>
-                            ),
-                          }}
-                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                        />
+                        {/* Spacer for alignment */}
                       </Grid>
+
+                      {formData.additionalChildren.map((child, index) => (
+                        <React.Fragment key={index}>
+                          <Grid item xs={12}>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 700, mt: 2, color: 'primary.main' }}>
+                              Child {index + 2} Details
+                            </Typography>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              required
+                              fullWidth
+                              label={`Child ${index + 2}'s Name`}
+                              value={child.name}
+                              onChange={(e) => {
+                                const newChildren = [...formData.additionalChildren];
+                                newChildren[index] = { ...newChildren[index], name: e.target.value };
+                                setFormData(prev => ({ ...prev, additionalChildren: newChildren }));
+                              }}
+                              InputProps={{
+                                startAdornment: (
+                                  <InputAdornment position="start">
+                                    <Person />
+                                  </InputAdornment>
+                                ),
+                              }}
+                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              required
+                              fullWidth
+                              label={`Child ${index + 2}'s Date of Birth`}
+                              type="date"
+                              value={child.dob}
+                              onChange={(e) => {
+                                const newChildren = [...formData.additionalChildren];
+                                newChildren[index] = { ...newChildren[index], dob: e.target.value };
+                                setFormData(prev => ({ ...prev, additionalChildren: newChildren }));
+                              }}
+                              InputLabelProps={{ shrink: true }}
+                              InputProps={{
+                                startAdornment: (
+                                  <InputAdornment position="start">
+                                    <Event />
+                                  </InputAdornment>
+                                ),
+                              }}
+                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                            />
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              select
+                              fullWidth
+                              label={`Child ${index + 2}'s Gender`}
+                              value={child.gender}
+                              onChange={(e) => {
+                                const newChildren = [...formData.additionalChildren];
+                                newChildren[index] = { ...newChildren[index], gender: e.target.value };
+                                setFormData(prev => ({ ...prev, additionalChildren: newChildren }));
+                              }}
+                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                            >
+                              <MenuItem value="male">Male</MenuItem>
+                              <MenuItem value="female">Female</MenuItem>
+                            </TextField>
+                          </Grid>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              select
+                              fullWidth
+                              label={`Child ${index + 2}'s Program`}
+                              value={child.program}
+                              onChange={(e) => {
+                                const newChildren = [...formData.additionalChildren];
+                                newChildren[index] = { ...newChildren[index], program: e.target.value };
+                                setFormData(prev => ({ ...prev, additionalChildren: newChildren }));
+                              }}
+                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                            >
+                              <MenuItem value="toddler">Toddler (1-2 years)</MenuItem>
+                              <MenuItem value="preschool">Preschool (3-4 years)</MenuItem>
+                              <MenuItem value="prekindergarten">Pre-Kindergarten (5-7 years)</MenuItem>
+                            </TextField>
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              multiline
+                              minRows={2}
+                              label={`Child ${index + 2}'s Medical Information (optional)`}
+                              placeholder="Any allergies, medications, or medical conditions..."
+                              value={child.medicalInfo}
+                              onChange={(e) => {
+                                const newChildren = [...formData.additionalChildren];
+                                newChildren[index] = { ...newChildren[index], medicalInfo: e.target.value };
+                                setFormData(prev => ({ ...prev, additionalChildren: newChildren }));
+                              }}
+                              sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                            />
+                          </Grid>
+                        </React.Fragment>
+                      ))}
                     </>
                   )}
 
@@ -731,7 +827,7 @@ const Register = ({ fixedRole, fixedStaffType }) => {
 
       {/* Static background image - children with their teacher playing */}
       <Box aria-hidden sx={{ position: 'absolute', inset: 0, zIndex: 0,
-        backgroundImage: "linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.15)), url('https://images.unsplash.com/photo-1588072432836-e10032774350?q=80&w=1920&auto=format&fit=crop')",
+        backgroundImage: "linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.15)), url('https://images.unsplash.com/photo-1587654780291-39c9404d746b?q=80&w=1920&auto=format&fit=crop')",
         backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.95)'
       }} />
 
@@ -1163,20 +1259,63 @@ const Register = ({ fixedRole, fixedStaffType }) => {
               {/* Parent-only child details */}
               {formData.role !== 'staff' && (
                 <>
-                  {/* Twins checkbox */}
+                  {/* Multiple children checkbox */}
                       <Grid item xs={12}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                           <input
-                        id="hasTwins"
+                        id="hasMultipleChildren2"
                         type="checkbox"
-                        checked={!!formData.hasTwins}
-                        onChange={(e) => setFormData(prev => ({ ...prev, hasTwins: e.target.checked }))}
+                        checked={!!formData.hasMultipleChildren}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setFormData(prev => ({ 
+                            ...prev, 
+                            hasMultipleChildren: checked,
+                            numberOfChildren: checked ? 2 : 1,
+                            additionalChildren: checked ? [{ name: '', dob: '', gender: 'male', program: 'preschool', medicalInfo: '' }] : []
+                          }));
+                        }}
                           />
-                      <label htmlFor="hasTwins" style={{ fontWeight: 600, cursor: 'pointer' }}>
-                        I have twins (registering both children)
+                      <label htmlFor="hasMultipleChildren2" style={{ fontWeight: 600, cursor: 'pointer' }}>
+                        I am registering multiple children (twins, triplets, etc.)
                           </label>
                         </Box>
                       </Grid>
+
+                  {formData.hasMultipleChildren && (
+                    <>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          select
+                          fullWidth
+                          label="Number of Children"
+                          value={formData.numberOfChildren}
+                          onChange={(e) => {
+                            const count = parseInt(e.target.value);
+                            const currentChildren = formData.additionalChildren || [];
+                            const newChildren = [];
+                            for (let i = 0; i < count - 1; i++) {
+                              newChildren.push(currentChildren[i] || { name: '', dob: '', gender: 'male', program: 'preschool', medicalInfo: '' });
+                            }
+                            setFormData(prev => ({ 
+                              ...prev, 
+                              numberOfChildren: count,
+                              additionalChildren: newChildren
+                            }));
+                          }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        >
+                          <MenuItem value={2}>Twins (2 children)</MenuItem>
+                          <MenuItem value={3}>Triplets (3 children)</MenuItem>
+                          <MenuItem value={4}>Quadruplets (4 children)</MenuItem>
+                          <MenuItem value={5}>5 children</MenuItem>
+                        </TextField>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        {/* Spacer for alignment */}
+                      </Grid>
+                    </>
+                  )}
 
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -1291,22 +1430,25 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                     />
                   </Grid>
                   
-                  {/* Twin child details - shown only if hasTwins is true */}
-                  {formData.hasTwins && (
-                    <>
+                  {/* Additional children details - shown only if hasMultipleChildren is true */}
+                  {formData.hasMultipleChildren && formData.additionalChildren.map((child, index) => (
+                    <React.Fragment key={index}>
                       <Grid item xs={12}>
-                        <Typography variant="h6" sx={{ mt: 2, mb: 1, fontWeight: 600 }}>
-                          Twin Child Details
+                        <Typography variant="h6" sx={{ mt: 2, mb: 1, fontWeight: 600, color: 'primary.main' }}>
+                          Child {index + 2} Details
                         </Typography>
                       </Grid>
                       <Grid item xs={12} sm={6}>
                         <TextField
                           required
                           fullWidth
-                          name="twinName"
-                          label="Twin Child's Name"
-                          value={formData.twinName}
-                          onChange={handleChange}
+                          label={`Child ${index + 2}'s Name`}
+                          value={child.name}
+                          onChange={(e) => {
+                            const newChildren = [...formData.additionalChildren];
+                            newChildren[index] = { ...newChildren[index], name: e.target.value };
+                            setFormData(prev => ({ ...prev, additionalChildren: newChildren }));
+                          }}
                           InputProps={{
                             startAdornment: (
                               <InputAdornment position="start">
@@ -1321,11 +1463,14 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                         <TextField
                           required
                           fullWidth
-                          name="twinDob"
-                          label="Twin's Date of Birth"
+                          label={`Child ${index + 2}'s Date of Birth`}
                           type="date"
-                          value={formData.twinDob}
-                          onChange={handleChange}
+                          value={child.dob}
+                          onChange={(e) => {
+                            const newChildren = [...formData.additionalChildren];
+                            newChildren[index] = { ...newChildren[index], dob: e.target.value };
+                            setFormData(prev => ({ ...prev, additionalChildren: newChildren }));
+                          }}
                           InputLabelProps={{ shrink: true }}
                           InputProps={{
                             startAdornment: (
@@ -1341,10 +1486,14 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                         <TextField
                           select
                           fullWidth
-                          name="twinGender"
-                          label="Twin's Gender"
-                          value={formData.twinGender}
-                          onChange={handleChange}
+                          label={`Child ${index + 2}'s Gender`}
+                          value={child.gender}
+                          onChange={(e) => {
+                            const newChildren = [...formData.additionalChildren];
+                            newChildren[index] = { ...newChildren[index], gender: e.target.value };
+                            setFormData(prev => ({ ...prev, additionalChildren: newChildren }));
+                          }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                         >
                           <MenuItem value="male">Male</MenuItem>
                           <MenuItem value="female">Female</MenuItem>
@@ -1354,10 +1503,14 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                         <TextField
                           select
                           fullWidth
-                          name="twinProgram"
-                          label="Twin's Program"
-                          value={formData.twinProgram}
-                          onChange={handleChange}
+                          label={`Child ${index + 2}'s Program`}
+                          value={child.program}
+                          onChange={(e) => {
+                            const newChildren = [...formData.additionalChildren];
+                            newChildren[index] = { ...newChildren[index], program: e.target.value };
+                            setFormData(prev => ({ ...prev, additionalChildren: newChildren }));
+                          }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                         >
                           <MenuItem value="toddler">Toddler (1-2 years)</MenuItem>
                           <MenuItem value="preschool">Preschool (3-4 years)</MenuItem>
@@ -1368,17 +1521,20 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                         <TextField
                           fullWidth
                           multiline
-                          minRows={3}
-                          name="twinMedicalInfo"
-                          label="Twin's Medical Information (allergies, medications, conditions)"
+                          minRows={2}
+                          label={`Child ${index + 2}'s Medical Information (optional)`}
                           placeholder="Any allergies, medications, or medical conditions..."
-                          value={formData.twinMedicalInfo}
-                          onChange={handleChange}
-                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
-                    />
-                  </Grid>
-                    </>
-                  )}
+                          value={child.medicalInfo}
+                          onChange={(e) => {
+                            const newChildren = [...formData.additionalChildren];
+                            newChildren[index] = { ...newChildren[index], medicalInfo: e.target.value };
+                            setFormData(prev => ({ ...prev, additionalChildren: newChildren }));
+                          }}
+                          sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                        />
+                      </Grid>
+                    </React.Fragment>
+                  ))}
                 </>
               )}
 

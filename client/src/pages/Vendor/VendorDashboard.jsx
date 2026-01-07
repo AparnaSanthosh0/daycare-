@@ -18,8 +18,9 @@ import {
   MenuItem,
   InputLabel,
   FormControl,
-  Avatar,
+  Avatar
 } from '@mui/material';
+import { ShoppingCart } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import api, { API_BASE_URL } from '../../config/api';
 import ProductsTab from './ProductsTab';
@@ -219,9 +220,30 @@ const VendorDashboard = () => {
           Vendor Portal
         </Typography>
         <Stack direction="row" spacing={1}>
+          <Button 
+            variant="contained" 
+            startIcon={<ShoppingCart />}
+            onClick={() => navigate('/shop')}
+            sx={{
+              bgcolor: '#14B8A6',
+              '&:hover': { bgcolor: '#0d9488' },
+              textTransform: 'none'
+            }}
+          >
+            Shop
+          </Button>
           <Button variant="outlined" onClick={() => navigate('/vendor')}>Profile</Button>
           {tab !== null && (
-            <Button variant="contained" onClick={() => navigate('/vendor')}>Go to Profile</Button>
+            <Button 
+              variant="contained" 
+              onClick={() => navigate('/vendor')}
+              sx={{
+                bgcolor: '#14B8A6',
+                '&:hover': { bgcolor: '#0d9488' }
+              }}
+            >
+              Go to Profile
+            </Button>
           )}
         </Stack>
       </Stack>
@@ -233,29 +255,48 @@ const VendorDashboard = () => {
               <Paper sx={{ p: 3, background: (theme) => theme.palette.mode === 'light' ? 'linear-gradient(135deg,#f5f0ff,#e8f3ff)' : 'inherit' }}>
                 <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} sx={{ mb: 2 }}>
                   <Typography variant="h6" fontWeight={700}>Quick Actions</Typography>
-                  <Button variant="contained" onClick={async () => {
-                    try {
-                      const input = document.createElement('input');
-                      input.type = 'file';
-                      input.accept = 'image/*';
-                      input.onchange = async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const form = new FormData();
-                        form.append('image', file);
-                        await api.post('/api/auth/profile/image', form);
-                        await refreshUser?.();
-                        toast.success('Profile image updated');
-                      };
-                      input.click();
-                    } catch (err) {
-                      toast.error(err?.response?.data?.message || 'Failed to upload');
-                    }
-                  }}>Upload Profile Photo</Button>
+                  <Button 
+                    variant="contained" 
+                    onClick={async () => {
+                      try {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.accept = 'image/*';
+                        input.onchange = async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          const form = new FormData();
+                          form.append('image', file);
+                          await api.post('/api/auth/profile/image', form);
+                          await refreshUser?.();
+                          toast.success('Profile image updated');
+                        };
+                        input.click();
+                      } catch (err) {
+                        toast.error(err?.response?.data?.message || 'Failed to upload');
+                      }
+                    }}
+                    sx={{
+                      bgcolor: '#14B8A6',
+                      '&:hover': { bgcolor: '#0d9488' }
+                    }}
+                  >
+                    Upload Profile Photo
+                  </Button>
                 </Stack>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={3}>
-                    <Button fullWidth variant="contained" onClick={() => navigate('/vendor?tab=0')}>Manage POs & Deliveries</Button>
+                    <Button 
+                      fullWidth 
+                      variant="contained" 
+                      onClick={() => navigate('/vendor?tab=0')}
+                      sx={{
+                        bgcolor: '#14B8A6',
+                        '&:hover': { bgcolor: '#0d9488' }
+                      }}
+                    >
+                      Manage POs & Deliveries
+                    </Button>
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Button fullWidth variant="outlined" onClick={() => navigate('/vendor/customers')}>Customer Management</Button>

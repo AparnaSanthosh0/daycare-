@@ -71,7 +71,7 @@ router.post('/register', upload.single('certificate'), [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { firstName, lastName, email, password, role, phone, address, yearsOfExperience, qualification, username, notifyByEmail, staffType, licenseNumber, vehicleType, deliveryArea, serviceArea, availability, certification } = req.body;
+    const { firstName, lastName, email, password, role, phone, address, yearsOfExperience, qualification, username, notifyByEmail, staffType, licenseNumber, vehicleType, deliveryArea, serviceArea, availability, certification, hasMultipleChildren, numberOfChildren, additionalChildren } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ $or: [{ email }, ...(username ? [{ username }] : [])] });
@@ -114,7 +114,7 @@ router.post('/register', upload.single('certificate'), [
     // For parent registrations, capture admission request details
     if (roleToEvaluate === 'parent') {
       const AdmissionRequest = require('../models/AdmissionRequest');
-      // Extract child/admission fields from body
+      // Extract child/admission fields from body (support both old twins format and new multiple children format)
       const { childName, childDob, childGender, medicalInfo, emergencyContactName, emergencyContactPhone, program, hasTwins, twinName, twinDob, twinGender, twinProgram, twinMedicalInfo } = req.body || {};
 
       // Validate child DOB between 1 and 7 years
@@ -156,39 +156,77 @@ router.post('/register', upload.single('certificate'), [
         status: 'pending'
       });
 
-      // If twins, create admission request for second child
-      if (hasTwins === true || hasTwins === 'true') {
-        if (!twinName || !twinDob) {
-          return res.status(400).json({ message: 'Twin child name and date of birth are required' });
-        }
-        const twinDobDate = twinDob ? new Date(twinDob) : null;
-        if (!twinDobDate || isNaN(twinDobDate.getTime())) {
-          return res.status(400).json({ message: 'Invalid twin date of birth' });
-        }
-        if (!(twinDobDate >= minDob && twinDobDate <= maxDob)) {
-          return res.status(400).json({ message: 'Twin age must be between 1 and 7 years' });
+      // If multiple children, create admission request for additional children
+      if (hasMultipleChildren === true || hasMultipleChildren === 'true') {
+        const additionalChildren = req.body.additionalChildren;
+        if (!Array.isArray(additionalChildren) || additionalChildren.length === 0) {
+          return res.status(400).json({ message: 'Additional children information is required when registering multiple children' });
         }
 
-        await AdmissionRequest.create({
-          parentUser: user._id,
-          parent: {
-            firstName,
-            lastName,
-            email,
-            phone,
-            address
-          },
-          child: {
-            name: twinName,
-            dateOfBirth: twinDobDate,
-            gender: twinGender || 'male',
-            program: twinProgram || null,
-            medicalInfo: twinMedicalInfo || '',
-            emergencyContactName: emergencyContactName || '',
-            emergencyContactPhone: emergencyContactPhone || ''
-          },
-          status: 'pending'
-        });
+        for (let i = 0; i < additionalChildren.length; i++) {
+          const child = additionalChildren[i];
+          if (!child.name || !child.dob) {
+            return res.status(400).json({ message: `Child ${i + 2} name and date of birth are required` });
+          }
+          
+          const childDobDate = child.dob ? new Date(child.dob) : null;
+          if (!childDobDate || isNaN(childDobDate.getTime())) {
+            return res.status(400).json({ message: `Invalid date of birth for child ${i + 2}` });
+          }
+          if (!(childDobDate >= minDob && childDobDate <= maxDob)) {
+            return res.status(400).json({ message: `Child ${i + 2} age must be between 1 and 7 years` });
+          }
+
+          await AdmissionRequest.create({
+            parentUser: user._id,
+            parent: {
+              firstName,
+              lastName,
+              email,
+              phone,
+              address
+            },
+            child: {
+              name: child.name,
+              dateOfBirth: childDobDate,
+              gender: child.gender || 'male',
+              program: child.program || null,
+              medicalInfo: child.medicalInfo || '',
+              emergencyContactName: emergencyContactName || '',
+              emergencyContactPhone: emergencyContactPhone || ''
+            },
+            status: 'pending'
+          });
+        }
+      }
+      
+      // Backward compatibility: Support old hasTwins format
+      if (!hasMultipleChildren && (hasTwins === true || hasTwins === 'true')) {
+        if (twinName && twinDob) {
+          const twinDobDate = twinDob ? new Date(twinDob) : null;
+          if (twinDobDate && !isNaN(twinDobDate.getTime()) && (twinDobDate >= minDob && twinDobDate <= maxDob)) {
+            await AdmissionRequest.create({
+              parentUser: user._id,
+              parent: {
+                firstName,
+                lastName,
+                email,
+                phone,
+                address
+              },
+              child: {
+                name: twinName,
+                dateOfBirth: twinDobDate,
+                gender: twinGender || 'male',
+                program: twinProgram || null,
+                medicalInfo: twinMedicalInfo || '',
+                emergencyContactName: emergencyContactName || '',
+                emergencyContactPhone: emergencyContactPhone || ''
+              },
+              status: 'pending'
+            });
+          }
+        }
       }
     }
 

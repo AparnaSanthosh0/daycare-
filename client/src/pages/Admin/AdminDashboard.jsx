@@ -522,9 +522,12 @@ const AdminDashboard = () => {
           <Typography variant="h5">Pending Approvals</Typography>
           <Button
             variant="contained"
-            color="primary"
             startIcon={<Add />}
             onClick={() => setCreateChildDialog(true)}
+            sx={{
+              bgcolor: '#14B8A6',
+              '&:hover': { bgcolor: '#0d9488' }
+            }}
           >
             Create Child Profile
           </Button>
@@ -602,6 +605,10 @@ const AdminDashboard = () => {
                         selectedStaffId: '', 
                         selectedChildId: '' 
                       })}
+                      sx={{
+                        bgcolor: '#14B8A6',
+                        '&:hover': { bgcolor: '#0d9488' }
+                      }}
                     >
                       New Assignment
                     </Button>
@@ -1034,6 +1041,11 @@ const AdminDashboard = () => {
             onClick={handleStaffAssignment}
             variant="contained"
             disabled={!assignmentDialog.selectedChildId || !assignmentDialog.selectedStaffId}
+            sx={{
+              bgcolor: '#14B8A6',
+              '&:hover': { bgcolor: '#0d9488' },
+              '&:disabled': { bgcolor: '#e0e0e0' }
+            }}
           >
             Assign Staff
           </Button>
@@ -1384,7 +1396,14 @@ const AdminDashboard = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setCreateChildDialog(false)}>Cancel</Button>
-          <Button onClick={handleCreateChild} variant="contained">
+          <Button 
+            onClick={handleCreateChild} 
+            variant="contained"
+            sx={{
+              bgcolor: '#14B8A6',
+              '&:hover': { bgcolor: '#0d9488' }
+            }}
+          >
             Create Child Profile
           </Button>
         </DialogActions>

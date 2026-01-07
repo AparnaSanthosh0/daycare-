@@ -300,7 +300,7 @@ function App() {
           />
           <Route
             path="/driver"
-            element={user?.role === 'staff' && user?.staff?.staffType === 'driver' ? <Layout><DriverDashboard /></Layout> : <Navigate to="/" replace />} 
+            element={user?.role === 'staff' && user?.staff?.staffType === 'driver' ? <DriverDashboard /> : <Navigate to="/" replace />} 
           />
           <Route
             path="/delivery"

@@ -331,9 +331,14 @@ const DoctorDashboard = () => {
         <Stack direction="row" spacing={1}>
           <Button
             variant="contained"
-            color="primary"
             startIcon={<ShoppingCart />}
             onClick={() => navigate('/shop')}
+            sx={{
+              bgcolor: '#14B8A6',
+              '&:hover': { bgcolor: '#0d9488' },
+              textTransform: 'none',
+              fontWeight: 600
+            }}
           >
             Shop
           </Button>

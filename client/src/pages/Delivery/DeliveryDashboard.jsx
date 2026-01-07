@@ -130,7 +130,7 @@ const DeliveryDashboard = () => {
           </Tooltip>
           <Tooltip title="Profile">
             <IconButton size="large" sx={{ ml: 1 }} onClick={() => navigate('/profile')}>
-              <Avatar sx={{ bgcolor: '#16a34a' }}>
+              <Avatar sx={{ bgcolor: '#14B8A6' }}>
                 <AccountCircle />
               </Avatar>
             </IconButton>
@@ -224,8 +224,8 @@ const DeliveryDashboard = () => {
                   fullWidth
                   variant="contained"
                   sx={{
-                    backgroundColor: '#16a34a',
-                    '&:hover': { backgroundColor: '#15803d' }
+                    backgroundColor: '#14B8A6',
+                    '&:hover': { backgroundColor: '#0d9488' }
                   }}
                   onClick={() => handleAccept(o.id)}
                 >
