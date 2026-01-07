@@ -329,10 +329,9 @@ export default function MealPlanning() {
                 onChange={(e) => setFormData({ ...formData, program: e.target.value })}
               >
                 <MenuItem value="all">All Programs</MenuItem>
-                <MenuItem value="infant">Infant</MenuItem>
-                <MenuItem value="toddler">Toddler</MenuItem>
-                <MenuItem value="preschool">Preschool</MenuItem>
-                <MenuItem value="prekindergarten">Pre-Kindergarten</MenuItem>
+                <MenuItem value="toddler">Toddler (1-2 years)</MenuItem>
+                <MenuItem value="preschool">Preschool (3-4 years)</MenuItem>
+                <MenuItem value="prekindergarten">Pre-Kindergarten (5-7 years)</MenuItem>
               </Select>
             </FormControl>
           </Grid>

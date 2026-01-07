@@ -14,6 +14,11 @@ const Profile = () => {
     return <EcommerceProfile />;
   }
 
+  // If user is delivery staff, render profile without Layout (like delivery dashboard)
+  if (user?.role === 'staff' && user?.staff?.staffType === 'delivery') {
+    return <DashboardProfile />;
+  }
+
   // For all other users (admin, staff, parent, vendor), show dashboard profile with Layout
   return (
     <Layout>

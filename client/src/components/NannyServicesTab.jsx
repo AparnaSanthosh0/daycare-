@@ -62,10 +62,19 @@ const NannyServicesTab = () => {
 
   const fetchNannies = async () => {
     try {
+      console.log('🔍 Fetching nannies from API...');
       const response = await api.get('/api/nanny/nannies');
+      console.log('✅ API Response:', response.data);
+      console.log('📊 Number of nannies:', response.data?.length || 0);
       setNannies(response.data || []);
+      if (response.data && response.data.length > 0) {
+        console.log('👥 Nannies:', response.data.map(n => `${n.firstName} ${n.lastName}`));
+      } else {
+        console.warn('⚠️ No nannies returned from API');
+      }
     } catch (error) {
-      console.error('Error fetching nannies:', error);
+      console.error('❌ Error fetching nannies:', error);
+      console.error('Error details:', error.response?.data || error.message);
     }
   };
 

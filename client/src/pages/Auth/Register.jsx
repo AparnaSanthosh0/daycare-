@@ -1238,10 +1238,9 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                       value={formData.program}
                       onChange={handleChange}
                     >
-                      <MenuItem value="infant">Infant</MenuItem>
-                      <MenuItem value="toddler">Toddler</MenuItem>
-                      <MenuItem value="preschool">Preschool</MenuItem>
-                      <MenuItem value="prekindergarten">Pre-Kindergarten</MenuItem>
+                      <MenuItem value="toddler">Toddler (1-2 years)</MenuItem>
+                      <MenuItem value="preschool">Preschool (3-4 years)</MenuItem>
+                      <MenuItem value="prekindergarten">Pre-Kindergarten (5-7 years)</MenuItem>
                     </TextField>
                   </Grid>
                   <Grid item xs={12}>
@@ -1360,10 +1359,9 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                           value={formData.twinProgram}
                           onChange={handleChange}
                         >
-                          <MenuItem value="infant">Infant</MenuItem>
-                          <MenuItem value="toddler">Toddler</MenuItem>
-                          <MenuItem value="preschool">Preschool</MenuItem>
-                          <MenuItem value="prekindergarten">Pre-Kindergarten</MenuItem>
+                          <MenuItem value="toddler">Toddler (1-2 years)</MenuItem>
+                          <MenuItem value="preschool">Preschool (3-4 years)</MenuItem>
+                          <MenuItem value="prekindergarten">Pre-Kindergarten (5-7 years)</MenuItem>
                         </TextField>
                       </Grid>
                       <Grid item xs={12}>

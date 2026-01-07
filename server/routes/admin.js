@@ -948,7 +948,7 @@ router.post('/children', adminOnly, [
   body('dateOfBirth').isISO8601().withMessage('Valid date of birth is required'),
   body('gender').isIn(['male', 'female']).withMessage('Gender must be male or female'),
   body('parentId').notEmpty().withMessage('Parent ID is required'),
-  body('program').isIn(['infant', 'toddler', 'preschool', 'prekindergarten']).withMessage('Valid program is required')
+  body('program').isIn(['toddler', 'preschool', 'prekindergarten']).withMessage('Valid program is required')
 ], async (req, res) => {
   try {
     console.log('Admin creating child with body:', req.body);

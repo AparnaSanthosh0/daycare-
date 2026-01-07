@@ -28,13 +28,16 @@ import {
   DoneAll,
   AccountCircle,
   ShoppingCart,
+  Logout,
 } from '@mui/icons-material';
 import { Avatar, IconButton, Tooltip } from '@mui/material';
+import { useAuth } from '../../contexts/AuthContext';
 
 const fmtCurrency = (v) => `$${v.toFixed(2)}`;
 
 const DeliveryDashboard = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [tab, setTab] = useState(0);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -132,6 +135,26 @@ const DeliveryDashboard = () => {
               </Avatar>
             </IconButton>
           </Tooltip>
+          <Button 
+            variant="outlined" 
+            startIcon={<Logout />}
+            onClick={() => {
+              logout();
+              navigate('/');
+            }}
+            sx={{ 
+              ml: 1,
+              textTransform: 'none',
+              borderColor: '#d32f2f',
+              color: '#d32f2f',
+              '&:hover': {
+                borderColor: '#b71c1c',
+                backgroundColor: 'rgba(211, 47, 47, 0.04)'
+              }
+            }}
+          >
+            Logout
+          </Button>
         </Stack>
       </Paper>
 

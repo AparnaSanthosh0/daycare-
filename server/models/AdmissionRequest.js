@@ -18,7 +18,7 @@ const admissionRequestSchema = new mongoose.Schema({
     name: { type: String, required: true },
     dateOfBirth: { type: Date, required: true },
     gender: { type: String, enum: ['male', 'female'], required: true },
-    program: { type: String, enum: ['infant', 'toddler', 'preschool', 'prekindergarten'], default: null },
+    program: { type: String, enum: ['toddler', 'preschool', 'prekindergarten'], default: null },
     medicalInfo: { type: String, default: '' },
     emergencyContactName: { type: String, default: '' },
     emergencyContactPhone: { type: String, default: '' },

@@ -99,10 +99,9 @@ const Activities = () => {
           <Grid item xs={12} md={2}>
             <TextField select label="Program" fullWidth value={program} onChange={(e) => setProgram(e.target.value)}>
               <MenuItem value="general">General</MenuItem>
-              <MenuItem value="infant">Infant</MenuItem>
-              <MenuItem value="toddler">Toddler</MenuItem>
-              <MenuItem value="preschool">Preschool</MenuItem>
-              <MenuItem value="prekindergarten">Pre-K</MenuItem>
+              <MenuItem value="toddler">Toddler (1-2 years)</MenuItem>
+              <MenuItem value="preschool">Preschool (3-4 years)</MenuItem>
+              <MenuItem value="prekindergarten">Pre-Kindergarten (5-7 years)</MenuItem>
             </TextField>
           </Grid>
           <Grid item xs={12} md={2}>
@@ -151,10 +150,9 @@ const Activities = () => {
             <TextField select label="Program" fullWidth value={program} onChange={(e) => setProgram(e.target.value)}>
               <MenuItem value="">All</MenuItem>
               <MenuItem value="general">General</MenuItem>
-              <MenuItem value="infant">Infant</MenuItem>
-              <MenuItem value="toddler">Toddler</MenuItem>
-              <MenuItem value="preschool">Preschool</MenuItem>
-              <MenuItem value="prekindergarten">Pre-K</MenuItem>
+              <MenuItem value="toddler">Toddler (1-2 years)</MenuItem>
+              <MenuItem value="preschool">Preschool (3-4 years)</MenuItem>
+              <MenuItem value="prekindergarten">Pre-Kindergarten (5-7 years)</MenuItem>
             </TextField>
           </Grid>
           <Grid item xs={12} md={3}>

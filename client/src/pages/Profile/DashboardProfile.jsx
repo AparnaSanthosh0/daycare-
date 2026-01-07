@@ -11,7 +11,9 @@ import {
   Divider,
   IconButton,
   Chip,
-  InputAdornment
+  InputAdornment,
+  Stack,
+  Tooltip
 } from '@mui/material';
 import {
   Person,
@@ -24,7 +26,9 @@ import {
   ChildCare,
   AdminPanelSettings,
   Visibility,
-  VisibilityOff
+  VisibilityOff,
+  ArrowBack,
+  ShoppingCart
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import api from '../../config/api';
@@ -181,23 +185,65 @@ const DashboardProfile = () => {
     );
   }
 
+  // Check if user is delivery staff
+  const isDeliveryStaff = user?.role === 'staff' && user?.staff?.staffType === 'delivery';
+
   return (
-    <Box sx={{ maxWidth: 1000, mx: 'auto', p: 2 }}>
+    <Box sx={{ 
+      maxWidth: 1000, 
+      mx: 'auto', 
+      p: isDeliveryStaff ? 3 : 2,
+      bgcolor: isDeliveryStaff ? '#f7f8fb' : 'transparent',
+      minHeight: isDeliveryStaff ? '100vh' : 'auto'
+    }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
-        <Typography variant="h4">My Profile</Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          {getRoleIcon()}
-          <Chip 
-            label={user.role?.charAt(0).toUpperCase() + user.role?.slice(1)} 
-            sx={{ 
-              backgroundColor: getRoleColor(), 
-              color: 'white',
-              fontWeight: 600
-            }} 
-          />
+      <Paper sx={{ 
+        p: 2.5, 
+        mb: 3, 
+        borderRadius: 2, 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between',
+        boxShadow: isDeliveryStaff ? '0 10px 30px rgba(0,0,0,0.05)' : 'none'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          {isDeliveryStaff && (
+            <Tooltip title="Back to Dashboard">
+              <IconButton onClick={() => navigate('/delivery')}>
+                <ArrowBack />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Box>
+            <Typography variant="h5" fontWeight={700}>My Profile</Typography>
+            {isDeliveryStaff && (
+              <Typography variant="body2" color="text.secondary">
+                {user?.firstName} {user?.lastName} - Delivery Agent
+              </Typography>
+            )}
+          </Box>
         </Box>
-      </Box>
+        <Stack direction="row" spacing={1} alignItems="center">
+          {isDeliveryStaff && (
+            <Tooltip title="Shop">
+              <IconButton size="large" onClick={() => navigate('/shop')}>
+                <ShoppingCart />
+              </IconButton>
+            </Tooltip>
+          )}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {getRoleIcon()}
+            <Chip 
+              label={user.role?.charAt(0).toUpperCase() + user.role?.slice(1)} 
+              sx={{ 
+                backgroundColor: getRoleColor(), 
+                color: 'white',
+                fontWeight: 600
+              }} 
+            />
+          </Box>
+        </Stack>
+      </Paper>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {message && <Alert severity="success" sx={{ mb: 2 }}>{message}</Alert>}
@@ -205,10 +251,15 @@ const DashboardProfile = () => {
       <Grid container spacing={3}>
         {/* Profile Summary Card */}
         <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 3, textAlign: 'center' }}>
+          <Paper sx={{ 
+            p: 3, 
+            textAlign: 'center',
+            borderRadius: 2,
+            boxShadow: isDeliveryStaff ? '0 10px 24px rgba(0,0,0,0.05)' : undefined
+          }}>
             <Avatar
               src={user?.profileImage}
-              sx={{ width: 100, height: 100, mx: 'auto', mb: 2 }}
+              sx={{ width: 100, height: 100, mx: 'auto', mb: 2, bgcolor: isDeliveryStaff ? '#16a34a' : 'primary.main' }}
             >
               {user?.firstName?.charAt(0)}
             </Avatar>
@@ -230,7 +281,11 @@ const DashboardProfile = () => {
 
         {/* Profile Details */}
         <Grid item xs={12} md={8}>
-          <Paper sx={{ p: 3 }}>
+          <Paper sx={{ 
+            p: 3,
+            borderRadius: 2,
+            boxShadow: isDeliveryStaff ? '0 10px 24px rgba(0,0,0,0.05)' : undefined
+          }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
               <Typography variant="h6">Personal Information</Typography>
               {!editing ? (
@@ -295,9 +350,14 @@ const DashboardProfile = () => {
           </Paper>
 
           {/* Address Information */}
-          <Paper sx={{ p: 3, mt: 3 }}>
+          <Paper sx={{ 
+            p: 3, 
+            mt: 3,
+            borderRadius: 2,
+            boxShadow: isDeliveryStaff ? '0 10px 24px rgba(0,0,0,0.05)' : undefined
+          }}>
             <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-              <LocationOn sx={{ mr: 1, color: 'primary.main' }} />
+              <LocationOn sx={{ mr: 1, color: isDeliveryStaff ? '#16a34a' : 'primary.main' }} />
               <Typography variant="h6">Address Information</Typography>
             </Box>
 
@@ -346,7 +406,12 @@ const DashboardProfile = () => {
           </Paper>
 
           {/* Emergency Contact */}
-          <Paper sx={{ p: 3, mt: 3 }}>
+          <Paper sx={{ 
+            p: 3, 
+            mt: 3,
+            borderRadius: 2,
+            boxShadow: isDeliveryStaff ? '0 10px 24px rgba(0,0,0,0.05)' : undefined
+          }}>
             <Typography variant="h6" gutterBottom>Emergency Contact</Typography>
 
             <Grid container spacing={2}>
@@ -385,7 +450,12 @@ const DashboardProfile = () => {
 
           {/* Role-specific Information */}
           {user?.role === 'parent' && (
-            <Paper sx={{ p: 3, mt: 3 }}>
+            <Paper sx={{ 
+              p: 3, 
+              mt: 3,
+              borderRadius: 2,
+              boxShadow: isDeliveryStaff ? '0 10px 24px rgba(0,0,0,0.05)' : undefined
+            }}>
               <Typography variant="h6" gutterBottom>Parent Information</Typography>
               <Typography variant="body2" color="text.secondary">
                 Additional parent-specific information and settings will be displayed here.
@@ -394,7 +464,12 @@ const DashboardProfile = () => {
           )}
 
           {user?.role === 'staff' && (
-            <Paper sx={{ p: 3, mt: 3 }}>
+            <Paper sx={{ 
+              p: 3, 
+              mt: 3,
+              borderRadius: 2,
+              boxShadow: isDeliveryStaff ? '0 10px 24px rgba(0,0,0,0.05)' : undefined
+            }}>
               <Typography variant="h6" gutterBottom>Staff Information</Typography>
               <Typography variant="body2" color="text.secondary">
                 Staff-specific information, schedules, and performance metrics will be displayed here.
@@ -403,7 +478,12 @@ const DashboardProfile = () => {
           )}
 
           {user?.role === 'vendor' && (
-            <Paper sx={{ p: 3, mt: 3 }}>
+            <Paper sx={{ 
+              p: 3, 
+              mt: 3,
+              borderRadius: 2,
+              boxShadow: isDeliveryStaff ? '0 10px 24px rgba(0,0,0,0.05)' : undefined
+            }}>
               <Typography variant="h6" gutterBottom>Vendor Information</Typography>
               <Typography variant="body2" color="text.secondary">
                 Vendor-specific information, products, and business details will be displayed here.
@@ -412,7 +492,12 @@ const DashboardProfile = () => {
           )}
 
           {user?.role === 'admin' && (
-            <Paper sx={{ p: 3, mt: 3 }}>
+            <Paper sx={{ 
+              p: 3, 
+              mt: 3,
+              borderRadius: 2,
+              boxShadow: isDeliveryStaff ? '0 10px 24px rgba(0,0,0,0.05)' : undefined
+            }}>
               <Typography variant="h6" gutterBottom>Administrator Information</Typography>
               <Typography variant="body2" color="text.secondary">
                 Administrative tools and system information will be displayed here.
@@ -421,7 +506,12 @@ const DashboardProfile = () => {
           )}
 
           {/* Password Change Section - Available for all users */}
-          <Paper sx={{ p: 3, mt: 3 }}>
+          <Paper sx={{ 
+            p: 3, 
+            mt: 3,
+            borderRadius: 2,
+            boxShadow: isDeliveryStaff ? '0 10px 24px rgba(0,0,0,0.05)' : undefined
+          }}>
             <PasswordChangeSection />
           </Paper>
         </Grid>

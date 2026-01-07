@@ -195,10 +195,9 @@ const Families = () => {
             </Grid>
             <Grid item xs={12} md={6}>
               <TextField select fullWidth label="Program" value={admissionForm.program} onChange={(e) => setAdmissionForm({ ...admissionForm, program: e.target.value })}>
-                <MenuItem value="infant">Infant</MenuItem>
-                <MenuItem value="toddler">Toddler</MenuItem>
-                <MenuItem value="preschool">Preschool</MenuItem>
-                <MenuItem value="prekindergarten">Pre-K</MenuItem>
+                <MenuItem value="toddler">Toddler (1-2 years)</MenuItem>
+                <MenuItem value="preschool">Preschool (3-4 years)</MenuItem>
+                <MenuItem value="prekindergarten">Pre-Kindergarten (5-7 years)</MenuItem>
               </TextField>
             </Grid>
             <Grid item xs={12}><TextField fullWidth multiline minRows={2} label="Medical Info" placeholder="Allergies, conditions, medications, instructions" value={admissionForm.medicalInfo} onChange={(e) => setAdmissionForm({ ...admissionForm, medicalInfo: e.target.value })} /></Grid>

@@ -37,7 +37,7 @@ const childSchema = new mongoose.Schema({
   },
   program: {
     type: String,
-    enum: ['infant', 'toddler', 'preschool', 'prekindergarten'],
+    enum: ['toddler', 'preschool', 'prekindergarten'],
     required: true
   },
   allergies: [{

@@ -52,13 +52,15 @@ import {
   Message,
   ShoppingCart,
   Notifications,
-  Logout as LogoutIcon
+  Logout as LogoutIcon,
+  DirectionsCar
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import MealRecommendation from '../../components/MealRecommendation';
 import NannyServicesTab from '../../components/NannyServicesTab';
+import TransportTracking from '../../components/TransportTracking';
 
 // Simple helper to format date strings
 const formatDate = (d) => {
@@ -153,6 +155,21 @@ const ParentDashboard = ({ initialTab }) => {
     notes: ''
   });
 
+  // Add Child Dialog State
+  const [addChildDialog, setAddChildDialog] = useState(false);
+  const [addChildForm, setAddChildForm] = useState({
+    childName: '',
+    childDob: '',
+    childGender: 'male',
+    program: 'preschool',
+    medicalInfo: '',
+    emergencyContactName: '',
+    emergencyContactPhone: ''
+  });
+  const [addChildLoading, setAddChildLoading] = useState(false);
+  const [addChildSuccess, setAddChildSuccess] = useState('');
+  const [addChildError, setAddChildError] = useState('');
+
   // AI Recommendations state (kept for future use)
   // const [socialRecommendations, setSocialRecommendations] = useState(null);
   // const [nutritionRecommendations, setNutritionRecommendations] = useState(null);
@@ -222,6 +239,61 @@ const ParentDashboard = ({ initialTab }) => {
   useEffect(() => {
     loadChildren();
   }, [loadChildren]);
+
+  // Handle Add New Child
+  const handleAddChild = async () => {
+    try {
+      setAddChildLoading(true);
+      setAddChildError('');
+      setAddChildSuccess('');
+
+      // Validate form
+      if (!addChildForm.childName || !addChildForm.childDob) {
+        setAddChildError('Child name and date of birth are required');
+        setAddChildLoading(false);
+        return;
+      }
+
+      // Validate DOB (1-7 years)
+      const dob = new Date(addChildForm.childDob);
+      const today = new Date();
+      const age = (today - dob) / (365.25 * 24 * 60 * 60 * 1000);
+      if (age < 1 || age > 7) {
+        setAddChildError('Child must be between 1 and 7 years old');
+        setAddChildLoading(false);
+        return;
+      }
+
+      // Submit admission request
+      await api.post('/api/parents/me/admissions', addChildForm);
+      
+      setAddChildSuccess('Child admission request submitted successfully! Awaiting admin approval.');
+      
+      // Reset form
+      setAddChildForm({
+        childName: '',
+        childDob: '',
+        childGender: 'male',
+        program: 'preschool',
+        medicalInfo: '',
+        emergencyContactName: '',
+        emergencyContactPhone: ''
+      });
+
+      // Close dialog after 2 seconds
+      setTimeout(() => {
+        setAddChildDialog(false);
+        setAddChildSuccess('');
+        loadChildren(); // Refresh children list
+      }, 2000);
+
+    } catch (error) {
+      console.error('Add child error:', error);
+      setAddChildError(error.response?.data?.message || 'Failed to submit admission request');
+    } finally {
+      setAddChildLoading(false);
+    }
+  };
 
   // Fetch notifications
   const fetchNotifications = useCallback(async () => {
@@ -994,7 +1066,7 @@ const ParentDashboard = ({ initialTab }) => {
 
   // Load appointments when tab changes
   useEffect(() => {
-    if (tab === 7 && user?.role === 'parent') {
+    if (tab === 8 && user?.role === 'parent') {
       fetchAppointments();
     }
   }, [tab, user?.role]);
@@ -1266,6 +1338,7 @@ const ParentDashboard = ({ initialTab }) => {
             <Tab icon={<Home />} label="Home" iconPosition="start" />
             <Tab icon={<ChildCare />} label="Daycare" iconPosition="start" />
             <Tab icon={<Favorite />} label="Services" iconPosition="start" />
+            <Tab icon={<DirectionsCar />} label="Transport" iconPosition="start" />
             <Tab icon={<ShoppingBag />} label="My Orders" iconPosition="start" />
             <Tab icon={<Receipt />} label="Billing" iconPosition="start" />
             <Tab icon={<Message />} label="Messages" iconPosition="start" />
@@ -1289,7 +1362,7 @@ const ParentDashboard = ({ initialTab }) => {
         {children.length > 0 && (
           <Paper sx={{ p: 2, mb: 3, display: 'flex', alignItems: 'center', gap: 2 }}>
             <Avatar sx={{ bgcolor: '#e91e63' }}><Person /></Avatar>
-            <FormControl size="small" sx={{ minWidth: 250 }}>
+            <FormControl size="small" sx={{ minWidth: 250, flex: 1 }}>
               <InputLabel>Select Child</InputLabel>
               <Select
                 value={activeChildId}
@@ -1301,6 +1374,18 @@ const ParentDashboard = ({ initialTab }) => {
                 ))}
               </Select>
             </FormControl>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => setAddChildDialog(true)}
+              sx={{ 
+                bgcolor: '#14B8A6', 
+                '&:hover': { bgcolor: '#0F766E' },
+                textTransform: 'none'
+              }}
+            >
+              Add Child
+            </Button>
             <IconButton onClick={() => activeChildId && fetchChildData(activeChildId)} color="primary">
               <Refresh />
             </IconButton>
@@ -1308,17 +1393,26 @@ const ParentDashboard = ({ initialTab }) => {
         )}
 
         {/* No Children State */}
-        {user?.role === 'parent' && children.length === 0 && (
-          <Paper sx={{ p: 4, textAlign: 'center' }}>
+        {user?.role === 'parent' && children.length === 0 && !errorMsg && (
+          <Paper sx={{ p: 4, textAlign: 'center', mb: 3 }}>
             <ChildCare sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
             <Typography variant="h6" gutterBottom>
               No Child Profiles Found
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Your child profile has not been created yet. Please contact the administration.
+              Add your first child to get started with TinyTots services
             </Typography>
-            <Button variant="contained" sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#45a049' } }}>
-              Contact Admin
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => setAddChildDialog(true)}
+              sx={{ 
+                bgcolor: '#14B8A6', 
+                '&:hover': { bgcolor: '#0F766E' },
+                textTransform: 'none'
+              }}
+            >
+              Add Your First Child
             </Button>
           </Paper>
         )}
@@ -2384,8 +2478,15 @@ const ParentDashboard = ({ initialTab }) => {
               </Box>
             )}
 
-            {/* Tab 3: My Orders */}
+            {/* Tab 3: Transport */}
             {tab === 3 && (
+              <Box>
+                <TransportTracking />
+              </Box>
+            )}
+
+            {/* Tab 4: My Orders */}
+            {tab === 4 && (
               <Paper sx={{ p: 4, textAlign: 'center' }}>
                 <ShoppingBag sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
                 <Typography variant="h5" gutterBottom>My Orders</Typography>
@@ -2395,8 +2496,8 @@ const ParentDashboard = ({ initialTab }) => {
               </Paper>
             )}
 
-            {/* Tab 4: Billing & Payments */}
-            {tab === 4 && (
+            {/* Tab 5: Billing & Payments */}
+            {tab === 5 && (
               <Box>
                 {/* Child Tuition Overview */}
                 <Card sx={{ mb: 3 }}>
@@ -2544,8 +2645,8 @@ const ParentDashboard = ({ initialTab }) => {
               </Box>
             )}
 
-            {/* Tab 5: Messages */}
-            {tab === 5 && (
+            {/* Tab 6: Messages */}
+            {tab === 6 && (
               <Paper sx={{ p: 4, textAlign: 'center' }}>
                 <Message sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
                 <Typography variant="h5" gutterBottom>Messages Coming Soon</Typography>
@@ -2556,8 +2657,8 @@ const ParentDashboard = ({ initialTab }) => {
             )}
 
 
-            {/* Tab 7: Feedback & Complaints with AI Classification */}
-            {tab === 7 && (
+            {/* Tab 8: Feedback & Complaints with AI Classification */}
+            {tab === 8 && (
               <Box>
                 <Card key="feedback-card-2024">
                   <CardHeader 
@@ -2751,7 +2852,8 @@ const ParentDashboard = ({ initialTab }) => {
             )}
 
             {/* Tab 6: Doctor Appointments */}
-            {tab === 6 && (
+            {/* Tab 7: Doctor Appointments */}
+            {tab === 7 && (
               <Box>
                 {/* Success/Error Messages */}
                 {appointmentSuccess && (
@@ -3081,6 +3183,147 @@ const ParentDashboard = ({ initialTab }) => {
             startIcon={appointmentLoading ? <CircularProgress size={20} /> : <CheckCircle />}
           >
             {appointmentLoading ? 'Booking...' : 'Book Appointment'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Add Child Dialog */}
+      <Dialog 
+        open={addChildDialog} 
+        onClose={() => {
+          setAddChildDialog(false);
+          setAddChildError('');
+          setAddChildSuccess('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#14B8A6', color: 'white' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Add />
+            Add New Child
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {addChildError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {addChildError}
+            </Alert>
+          )}
+          {addChildSuccess && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              {addChildSuccess}
+            </Alert>
+          )}
+
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Submit an admission request for your child. The admin will review and approve the registration.
+          </Typography>
+
+          <Grid container spacing={2}>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Child's Full Name"
+                value={addChildForm.childName}
+                onChange={(e) => setAddChildForm({ ...addChildForm, childName: e.target.value })}
+                required
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Date of Birth"
+                type="date"
+                value={addChildForm.childDob}
+                onChange={(e) => setAddChildForm({ ...addChildForm, childDob: e.target.value })}
+                InputLabelProps={{ shrink: true }}
+                required
+                helperText="Age must be between 1-7 years"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Gender</InputLabel>
+                <Select
+                  value={addChildForm.childGender}
+                  onChange={(e) => setAddChildForm({ ...addChildForm, childGender: e.target.value })}
+                  label="Gender"
+                >
+                  <MenuItem value="male">Male</MenuItem>
+                  <MenuItem value="female">Female</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Program</InputLabel>
+                <Select
+                  value={addChildForm.program}
+                  onChange={(e) => setAddChildForm({ ...addChildForm, program: e.target.value })}
+                  label="Program"
+                >
+                  <MenuItem value="toddler">Toddler (1-2 years)</MenuItem>
+                  <MenuItem value="preschool">Preschool (3-4 years)</MenuItem>
+                  <MenuItem value="prekindergarten">Pre-Kindergarten (5-7 years)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Medical Information (Optional)"
+                value={addChildForm.medicalInfo}
+                onChange={(e) => setAddChildForm({ ...addChildForm, medicalInfo: e.target.value })}
+                multiline
+                rows={2}
+                helperText="Any allergies, medications, or medical conditions"
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Emergency Contact Name"
+                value={addChildForm.emergencyContactName}
+                onChange={(e) => setAddChildForm({ ...addChildForm, emergencyContactName: e.target.value })}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Emergency Contact Phone"
+                value={addChildForm.emergencyContactPhone}
+                onChange={(e) => setAddChildForm({ ...addChildForm, emergencyContactPhone: e.target.value })}
+                helperText="10 digits only"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button 
+            onClick={() => {
+              setAddChildDialog(false);
+              setAddChildError('');
+              setAddChildSuccess('');
+            }}
+            disabled={addChildLoading}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleAddChild}
+            variant="contained"
+            disabled={addChildLoading}
+            startIcon={addChildLoading ? <CircularProgress size={20} /> : <CheckCircle />}
+            sx={{ bgcolor: '#14B8A6', '&:hover': { bgcolor: '#0F766E' } }}
+          >
+            {addChildLoading ? 'Submitting...' : 'Submit Request'}
           </Button>
         </DialogActions>
       </Dialog>

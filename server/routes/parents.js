@@ -39,7 +39,7 @@ router.post('/me/admissions', auth, [
   body('childName').trim().notEmpty().withMessage("Child name is required"),
   body('childDob').notEmpty().withMessage('Date of birth is required'),
   body('childGender').isIn(['male', 'female']).withMessage('Gender must be male or female'),
-  body('program').optional().isIn(['infant', 'toddler', 'preschool', 'prekindergarten']).withMessage('Invalid program'),
+  body('program').optional().isIn(['toddler', 'preschool', 'prekindergarten']).withMessage('Invalid program'),
   body('medicalInfo').optional().isString(),
   body('emergencyContactName').optional().isString(),
   body('emergencyContactPhone').optional().custom((value) => {
@@ -309,6 +309,197 @@ router.get('/me/attendance/:childId', auth, async (req, res) => {
   } catch (error) {
     console.error('Get child attendance error:', error);
     res.status(500).json({ message: 'Server error fetching child attendance' });
+  }
+});
+
+// Get driver and transport details for parent's child
+router.get('/me/children/:childId/driver', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'parent') {
+      return res.status(403).json({ message: 'Only parents can access this resource' });
+    }
+
+    const { childId } = req.params;
+    
+    // Verify child belongs to parent
+    const child = await Child.findOne({ _id: childId, parents: req.user.userId });
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found or access denied' });
+    }
+
+    const Transport = require('../models/Transport');
+    
+    // Find transport routes assigned to this child
+    const transportRoutes = await Transport.find({
+      'assignedChildren.child': childId,
+      'assignedChildren.isActive': true,
+      isActive: true
+    })
+    .populate('driver', 'firstName lastName phone staff.licenseNumber staff.vehicleType profileImage')
+    .select('routeName routeType vehicle schedule assignedChildren dailyTrips');
+
+    if (!transportRoutes || transportRoutes.length === 0) {
+      return res.json({ 
+        hasTransport: false,
+        message: 'No transport assigned to this child'
+      });
+    }
+
+    // Format response with driver details and today's trips
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const transportInfo = transportRoutes.map(route => {
+      const childInfo = route.assignedChildren.find(ac => ac.child.toString() === childId);
+      
+      // Get today's trips for this child
+      const todayTrips = route.dailyTrips.filter(trip => {
+        const tripDate = new Date(trip.date);
+        return tripDate >= today && tripDate < tomorrow;
+      }).map(trip => {
+        const childTrip = trip.children.find(c => c.child.toString() === childId);
+        return {
+          tripType: trip.tripType,
+          scheduledTime: trip.scheduledTime,
+          actualTime: trip.actualTime,
+          status: trip.status,
+          boardingStatus: childTrip?.boardingStatus || 'pending',
+          boardingTime: childTrip?.boardingTime,
+          deboardingStatus: childTrip?.deboardingStatus || 'pending',
+          deboardingTime: childTrip?.deboardingTime,
+          handoverTo: childTrip?.handoverTo
+        };
+      });
+
+      return {
+        routeId: route._id,
+        routeName: route.routeName,
+        routeType: route.routeType,
+        driver: route.driver ? {
+          id: route.driver._id,
+          name: `${route.driver.firstName} ${route.driver.lastName}`,
+          phone: route.driver.phone,
+          licenseNumber: route.driver.staff?.licenseNumber,
+          vehicleType: route.driver.staff?.vehicleType,
+          profileImage: route.driver.profileImage
+        } : null,
+        vehicle: route.vehicle,
+        schedule: route.schedule,
+        pickupAddress: childInfo?.pickupAddress,
+        dropoffAddress: childInfo?.dropoffAddress,
+        todayTrips
+      };
+    });
+
+    res.json({
+      hasTransport: true,
+      child: {
+        id: child._id,
+        name: `${child.firstName} ${child.lastName}`
+      },
+      transportInfo
+    });
+
+  } catch (error) {
+    console.error('Get child driver info error:', error);
+    res.status(500).json({ message: 'Server error fetching driver information' });
+  }
+});
+
+// Get all transport info for parent (all their children)
+router.get('/me/transport', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'parent') {
+      return res.status(403).json({ message: 'Only parents can access this resource' });
+    }
+
+    // Get all parent's children
+    const children = await Child.find({ parents: req.user.userId }).select('firstName lastName profileImage');
+    
+    if (children.length === 0) {
+      return res.json({ children: [], message: 'No children found' });
+    }
+
+    const Transport = require('../models/Transport');
+    const childIds = children.map(c => c._id);
+
+    // Find all transport routes for parent's children
+    const transportRoutes = await Transport.find({
+      'assignedChildren.child': { $in: childIds },
+      isActive: true
+    })
+    .populate('driver', 'firstName lastName phone staff.licenseNumber staff.vehicleType profileImage')
+    .populate('assignedChildren.child', 'firstName lastName profileImage')
+    .select('routeName routeType vehicle schedule assignedChildren dailyTrips');
+
+    // Get today's date range
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    // Format response grouped by child
+    const childrenTransport = children.map(child => {
+      const childRoutes = transportRoutes.filter(route => 
+        route.assignedChildren.some(ac => ac.child._id.toString() === child._id.toString() && ac.isActive)
+      );
+
+      const routes = childRoutes.map(route => {
+        const childInfo = route.assignedChildren.find(ac => ac.child._id.toString() === child._id.toString());
+        
+        // Get today's trips
+        const todayTrips = route.dailyTrips.filter(trip => {
+          const tripDate = new Date(trip.date);
+          return tripDate >= today && tripDate < tomorrow;
+        }).map(trip => {
+          const childTrip = trip.children.find(c => c.child.toString() === child._id.toString());
+          return {
+            tripType: trip.tripType,
+            scheduledTime: trip.scheduledTime,
+            actualTime: trip.actualTime,
+            status: trip.status,
+            boardingStatus: childTrip?.boardingStatus || 'pending',
+            boardingTime: childTrip?.boardingTime,
+            deboardingStatus: childTrip?.deboardingStatus || 'pending',
+            deboardingTime: childTrip?.deboardingTime
+          };
+        });
+
+        return {
+          routeId: route._id,
+          routeName: route.routeName,
+          routeType: route.routeType,
+          driver: route.driver ? {
+            id: route.driver._id,
+            name: `${route.driver.firstName} ${route.driver.lastName}`,
+            phone: route.driver.phone,
+            licenseNumber: route.driver.staff?.licenseNumber,
+            vehicleType: route.driver.staff?.vehicleType,
+            profileImage: route.driver.profileImage
+          } : null,
+          vehicle: route.vehicle,
+          pickupAddress: childInfo?.pickupAddress,
+          dropoffAddress: childInfo?.dropoffAddress,
+          todayTrips
+        };
+      });
+
+      return {
+        childId: child._id,
+        childName: `${child.firstName} ${child.lastName}`,
+        childImage: child.profileImage,
+        hasTransport: routes.length > 0,
+        routes
+      };
+    });
+
+    res.json({ childrenTransport });
+
+  } catch (error) {
+    console.error('Get parent transport info error:', error);
+    res.status(500).json({ message: 'Server error fetching transport information' });
   }
 });
 
