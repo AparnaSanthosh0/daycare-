@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Grid,
@@ -29,7 +30,11 @@ import {
   FormControl,
   InputLabel,
   Select,
-  MenuItem
+  MenuItem,
+  IconButton,
+  Tooltip,
+  Stack,
+  Divider
 } from '@mui/material';
 import {
   DirectionsCar,
@@ -39,13 +44,22 @@ import {
   QrCodeScanner,
   History,
   Assessment,
-  Add
+  Add,
+  LocationOn,
+  MyLocation,
+  Warning,
+  People,
+  Route,
+  Phone,
+  Logout,
+  GpsFixed
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
 
 const DriverDashboard = () => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   // Driver dashboard component
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -68,6 +82,7 @@ const DriverDashboard = () => {
   const [incidentForm, setIncidentForm] = useState({ type: '', description: '' });
   const [vehicleIssueForm, setVehicleIssueForm] = useState({ issueType: '', description: '', severity: 'medium' });
   const [vehicleLogForm, setVehicleLogForm] = useState({ date: '', startMileage: '', endMileage: '', fuelLevel: 'full', maintenanceIssues: '', driverNotes: '' });
+  const [incidents, setIncidents] = useState([]);
 
   // Fetch routes
   const fetchRoutes = async () => {
@@ -113,11 +128,22 @@ const DriverDashboard = () => {
     }
   };
 
+  // Fetch incidents
+  const fetchIncidents = async () => {
+    try {
+      const response = await api.get('/api/driver/incidents');
+      setIncidents(response.data || []);
+    } catch (error) {
+      console.error('Error fetching incidents:', error);
+    }
+  };
+
   useEffect(() => {
     fetchRoutes();
     fetchTodayTrips();
     fetchVehicleLogs();
     fetchComplianceReport();
+    fetchIncidents();
   }, []);
 
   // Start location tracking
@@ -245,14 +271,20 @@ const DriverDashboard = () => {
   if (loading) {
     return (
       <Box sx={{ p: 3 }}>
-        <LinearProgress />
+        <LinearProgress sx={{ bgcolor: '#e8f5e9', '& .MuiLinearProgress-bar': { bgcolor: '#4caf50' } }} />
         <Typography sx={{ mt: 2 }}>Loading dashboard...</Typography>
       </Box>
     );
   }
 
+  const driverName = user?.firstName && user?.lastName 
+    ? `${user.firstName} ${user.lastName}` 
+    : user?.name || 'Driver';
+  
+  const vehicleNumber = user?.staff?.vehicleNumber || user?.vehicleNumber || '#2';
+
   return (
-    <Box sx={{ p: 3 }}>
+    <Box sx={{ bgcolor: '#fafafa', minHeight: '100vh', p: 3 }}>
       {error && (
         <Alert severity="error" sx={{ mb: 3 }} onClose={() => setError('')}>
           {error}
@@ -264,108 +296,162 @@ const DriverDashboard = () => {
         </Alert>
       )}
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Box>
-          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 0.5 }}>
-            Driver Dashboard
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {user?.firstName || user?.name || 'Driver'}
-          </Typography>
+      {/* Header */}
+      <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="h5" sx={{ fontWeight: 700, color: '#f57c00', mb: 0.5 }}>
+              Driver Dashboard
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {driverName} - Bus {vehicleNumber}
+            </Typography>
+          </Box>
+          <Stack direction="row" spacing={1}>
+            <Button
+              variant="contained"
+              startIcon={<Warning />}
+              onClick={() => setIncidentDialog({ open: true, trip: activeTrip })}
+              sx={{
+                bgcolor: '#d32f2f',
+                '&:hover': { bgcolor: '#c62828' },
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 3
+              }}
+            >
+              Report Incident
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<GpsFixed />}
+              onClick={() => {
+                setLocationTracking(!locationTracking);
+                if (!locationTracking) {
+                  setSuccess('Location sharing started');
+                } else {
+                  setSuccess('Location sharing stopped');
+                }
+              }}
+              sx={{
+                bgcolor: '#4caf50',
+                '&:hover': { bgcolor: '#388e3c' },
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 3
+              }}
+            >
+              {locationTracking ? 'Stop Sharing' : 'Share Location'}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<Logout />}
+              onClick={() => {
+                logout();
+                navigate('/');
+              }}
+              sx={{
+                textTransform: 'none',
+                borderColor: '#9e9e9e',
+                color: '#616161',
+                '&:hover': { borderColor: '#757575', bgcolor: 'rgba(0,0,0,0.04)' }
+              }}
+            >
+              Logout
+            </Button>
+          </Stack>
         </Box>
-        <Box>
-          <Button
-            variant="outlined"
-            startIcon={<Refresh />}
-            onClick={() => {
-              fetchRoutes();
-              fetchTodayTrips();
-              fetchVehicleLogs();
-              fetchComplianceReport();
-            }}
-          >
-            Refresh
-          </Button>
-        </Box>
-      </Box>
+      </Paper>
 
-      <Tabs
-        value={activeTab}
-        onChange={(e, v) => setActiveTab(v)}
-        sx={{
-          mb: 3,
-          '& .MuiTab-root': {
-            textTransform: 'none',
-            fontWeight: 500,
-          },
-          '& .MuiTabs-indicator': {
-            height: 3,
-          },
-        }}
-      >
-        <Tab label="Routes" icon={<DirectionsCar />} iconPosition="start" />
-        <Tab label="Active Route" icon={<Assignment />} iconPosition="start" />
-        <Tab label="Assigned Children" icon={<History />} iconPosition="start" />
-        <Tab label="Incidents" icon={<Report />} iconPosition="start" />
-        <Tab label="Vehicle Info" icon={<Assessment />} iconPosition="start" />
-      </Tabs>
+      {/* Tabs */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs
+          value={activeTab}
+          onChange={(e, v) => setActiveTab(v)}
+          sx={{
+            '& .MuiTab-root': {
+              textTransform: 'none',
+              fontWeight: 500,
+              fontSize: '0.95rem',
+              minHeight: 56,
+              color: '#757575',
+              '&.Mui-selected': {
+                color: '#f57c00',
+                fontWeight: 600
+              }
+            },
+            '& .MuiTabs-indicator': {
+              height: 3,
+              bgcolor: '#f57c00'
+            }
+          }}
+        >
+          <Tab icon={<Route />} iconPosition="start" label="Routes" />
+          <Tab icon={<DirectionsCar />} iconPosition="start" label="Active Route" />
+          <Tab icon={<People />} iconPosition="start" label="Assigned Children" />
+          <Tab icon={<Warning />} iconPosition="start" label="Incidents" />
+          <Tab icon={<Assessment />} iconPosition="start" label="Vehicle Info" />
+        </Tabs>
+      </Box>
 
       {/* Tab 0: Routes overview + Today's schedule */}
       {activeTab === 0 && (
         <Box>
-          <Grid container spacing={3} sx={{ mb: 3 }}>
-            <Grid item xs={12} sm={3}>
-              <Paper sx={{ p: 2.5, borderRadius: 2 }}>
-                <Typography variant="body2" color="text.secondary">
+          {/* Stats Cards */}
+          <Grid container spacing={2.5} sx={{ mb: 3 }}>
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', bgcolor: '#fff' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Today's Routes
                 </Typography>
-                <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold' }}>
+                <Typography variant="h3" sx={{ fontWeight: 700, color: '#f57c00' }}>
                   {totalRoutes}
                 </Typography>
               </Paper>
             </Grid>
-            <Grid item xs={12} sm={3}>
-              <Paper sx={{ p: 2.5, borderRadius: 2 }}>
-                <Typography variant="body2" color="text.secondary">
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', bgcolor: '#fff' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Total Children
                 </Typography>
-                <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold', color: 'primary.main' }}>
+                <Typography variant="h3" sx={{ fontWeight: 700, color: '#2196f3' }}>
                   {totalChildren}
                 </Typography>
               </Paper>
             </Grid>
-            <Grid item xs={12} sm={3}>
-              <Paper sx={{ p: 2.5, borderRadius: 2 }}>
-                <Typography variant="body2" color="text.secondary">
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', bgcolor: '#fff' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   Total Stops
                 </Typography>
-                <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold', color: 'secondary.main' }}>
+                <Typography variant="h3" sx={{ fontWeight: 700, color: '#9c27b0' }}>
                   {totalStops}
                 </Typography>
               </Paper>
             </Grid>
-            <Grid item xs={12} sm={3}>
-              <Paper sx={{ p: 2.5, borderRadius: 2 }}>
-                <Typography variant="body2" color="text.secondary">
+            <Grid item xs={12} sm={6} md={3}>
+              <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', bgcolor: '#fff' }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
                   On-Time Rate
                 </Typography>
-                <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold', color: 'success.main' }}>
+                <Typography variant="h3" sx={{ fontWeight: 700, color: '#4caf50' }}>
                   {onTimeRate != null ? `${onTimeRate}%` : '--'}
                 </Typography>
               </Paper>
             </Grid>
           </Grid>
 
-          <Typography variant="h6" sx={{ mb: 2 }}>
+          {/* Today's Schedule */}
+          <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}>
             Today's Schedule - {new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
           </Typography>
 
           {todayTrips.length === 0 ? (
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
+            <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
               <Typography color="text.secondary">No trips scheduled for today</Typography>
             </Paper>
           ) : (
-            <Grid container spacing={2}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {todayTrips.map((trip) => {
                 const statusLabel =
                   trip.status === 'completed'
@@ -375,33 +461,55 @@ const DriverDashboard = () => {
                     : 'Scheduled';
                 const statusColor =
                   trip.status === 'completed'
-                    ? 'success'
+                    ? '#e8f5e9'
                     : trip.status === 'in-progress'
-                    ? 'info'
-                    : 'default';
+                    ? '#e3f2fd'
+                    : '#f5f5f5';
+                const statusTextColor =
+                  trip.status === 'completed'
+                    ? '#4caf50'
+                    : trip.status === 'in-progress'
+                    ? '#2196f3'
+                    : '#757575';
 
                 return (
-                  <Grid item xs={12} key={trip._id}>
-                    <Paper sx={{ p: 2.5, borderRadius: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Paper 
+                    key={trip._id} 
+                    sx={{ 
+                      p: 2.5, 
+                      borderRadius: 2, 
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                      border: trip.status === 'in-progress' ? '2px solid #2196f3' : 'none'
+                    }}
+                  >
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Box>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                          {trip.routeName}
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
+                          {trip.routeName || trip.route?.routeName || 'Route'}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          {trip.stops?.length || 0} stops • {trip.children?.length || 0} children
+                          {trip.stops?.length || 0} stops • {trip.children?.length || trip.assignedChildren?.length || 0} children
                         </Typography>
                       </Box>
                       <Box sx={{ textAlign: 'right' }}>
-                        <Typography variant="body2" color="text.secondary">
-                          {trip.scheduledTime}
+                        <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.5 }}>
+                          {trip.scheduledTime || trip.startTime || 'Not scheduled'}
                         </Typography>
-                        <Chip label={statusLabel} color={statusColor} size="small" sx={{ mt: 1 }} />
+                        <Chip 
+                          label={statusLabel} 
+                          sx={{ 
+                            bgcolor: statusColor,
+                            color: statusTextColor,
+                            fontWeight: 600
+                          }} 
+                          size="small" 
+                        />
                       </Box>
-                    </Paper>
-                  </Grid>
+                    </Box>
+                  </Paper>
                 );
               })}
-            </Grid>
+            </Box>
           )}
         </Box>
       )}
@@ -409,178 +517,381 @@ const DriverDashboard = () => {
       {/* Tab 1: Active Route */}
       {activeTab === 1 && (
         <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Active Route
+            </Typography>
+            {activeTrip && activeTrip.status === 'in-progress' && (
+              <Chip 
+                icon={<DirectionsCar />}
+                label="In Progress" 
+                sx={{ 
+                  bgcolor: '#e3f2fd',
+                  color: '#2196f3',
+                  fontWeight: 600
+                }} 
+              />
+            )}
+          </Box>
+
           {activeTrip ? (
             <>
+              {/* Active Route Card */}
               <Paper
                 sx={{
                   p: 4,
                   mb: 3,
                   borderRadius: 3,
-                  background: 'linear-gradient(90deg, #FFB300 0%, #FB8C00 100%)',
+                  background: 'linear-gradient(135deg, #fb8c00 0%, #f57c00 100%)',
                   color: 'white',
+                  boxShadow: '0 4px 20px rgba(245,124,0,0.3)'
                 }}
               >
-                <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 1 }}>
-                  {activeTrip.routeName}
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 2 }}>
+                  {activeTrip.routeName || activeTrip.route?.routeName || 'Active Route'}
                 </Typography>
-                <Grid container spacing={2}>
+                
+                <Grid container spacing={3}>
                   <Grid item xs={12} sm={6}>
-                    <Typography variant="body2">Started</Typography>
-                    <Typography variant="h6">{activeTrip.startTime || activeTrip.scheduledTime || '--'}</Typography>
+                    <Typography variant="body2" sx={{ opacity: 0.9, mb: 0.5 }}>Started</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      {activeTrip.actualStartTime || activeTrip.startTime || activeTrip.scheduledTime || '--'}
+                    </Typography>
                   </Grid>
                   <Grid item xs={12} sm={6}>
-                    <Typography variant="body2">Est. Completion</Typography>
-                    <Typography variant="h6">{activeTrip.estimatedEndTime || '--'}</Typography>
+                    <Typography variant="body2" sx={{ opacity: 0.9, mb: 0.5 }}>Est. Completion</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      {activeTrip.estimatedEndTime || activeTrip.endTime || '--'}
+                    </Typography>
                   </Grid>
-                  <Grid item xs={12} sx={{ mt: 2 }}>
-                    <Typography variant="body2" sx={{ mb: 1 }}>
+                  <Grid item xs={12} sx={{ mt: 1 }}>
+                    <Typography variant="body2" sx={{ opacity: 0.9, mb: 1.5 }}>
                       Route Progress
                     </Typography>
                     <LinearProgress
                       variant="determinate"
                       value={
-                        activeTrip.totalStops
-                          ? Math.min(100, ((activeTrip.completedStops || 0) / activeTrip.totalStops) * 100)
+                        activeTrip.stops?.length
+                          ? Math.min(100, ((activeTrip.completedStops || 0) / activeTrip.stops.length) * 100)
                           : 0
                       }
                       sx={{
-                        height: 8,
-                        borderRadius: 4,
+                        height: 10,
+                        borderRadius: 5,
                         backgroundColor: 'rgba(255,255,255,0.3)',
                         '& .MuiLinearProgress-bar': {
-                          backgroundColor: '#FFE082',
-                        },
+                          backgroundColor: '#fff',
+                          borderRadius: 5
+                        }
                       }}
                     />
-                    {activeTrip.totalStops && (
-                      <Typography variant="caption">
-                        {(activeTrip.completedStops || 0)} of {activeTrip.totalStops} stops
+                    <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {activeTrip.completedStops || 0} of {activeTrip.stops?.length || activeTrip.totalStops || 0} stops
                       </Typography>
-                    )}
+                    </Box>
                   </Grid>
                 </Grid>
               </Paper>
 
-              <Paper sx={{ p: 3, borderRadius: 2 }}>
-                <Typography variant="h6" sx={{ mb: 1 }}>
-                  Current Trip
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Type: {activeTrip.tripType} • Scheduled: {activeTrip.scheduledTime}
-                </Typography>
-                <Box sx={{ mt: 2 }}>
-                  <Button
-                    variant="contained"
-                    onClick={() => setTripDialog({ open: true, trip: activeTrip })}
-                  >
-                    View Full Details
-                  </Button>
+              {/* Current Stop */}
+              {activeTrip.stops && activeTrip.stops.length > 0 && (
+                <Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Current Stop
+                    </Typography>
+                    <Chip 
+                      label={`Stop ${(activeTrip.completedStops || 0) + 1}`} 
+                      sx={{ 
+                        bgcolor: '#e8f5e9',
+                        color: '#4caf50',
+                        fontWeight: 600
+                      }} 
+                    />
+                  </Box>
+
+                  <Paper sx={{ p: 3, borderRadius: 2, bgcolor: '#f5f5f5' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+                      <LocationOn sx={{ color: '#2196f3', fontSize: 40 }} />
+                      <Box sx={{ flex: 1 }}>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
+                          {activeTrip.stops[activeTrip.completedStops || 0]?.name || 'Stop'}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Arriving in {activeTrip.stops[activeTrip.completedStops || 0]?.eta || '2 minutes'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Paper>
                 </Box>
-              </Paper>
+              )}
             </>
           ) : (
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
-              <Typography color="text.secondary">
-                No active route. Start a trip from the Routes tab to see it here.
+            <Paper sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}>
+              <DirectionsCar sx={{ fontSize: 60, color: '#bdbdbd', mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+                No Active Route
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Start a trip from the Routes tab to see it here
               </Typography>
             </Paper>
           )}
         </Box>
       )}
 
-      {/* Tab 2: Assigned Children for active trip */}
+      {/* Tab 2: Assigned Children */}
       {activeTab === 2 && (
         <Box>
-          {activeTrip && activeTrip.children?.length ? (
-            <Paper sx={{ p: 3, borderRadius: 2 }}>
-              <Typography variant="h6" sx={{ mb: 2 }}>
-                Assigned Children - {activeTrip.routeName}
-              </Typography>
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Name</TableCell>
-                      <TableCell>Boarding Status</TableCell>
-                      <TableCell>Deboarding Status</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {activeTrip.children.map((childTrip) => (
-                      <TableRow key={childTrip.child?._id || childTrip.child}>
-                        <TableCell>
-                          {childTrip.child?.firstName || 'Unknown'} {childTrip.child?.lastName || ''}
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={childTrip.boardingStatus || 'pending'}
-                            size="small"
-                            color={childTrip.boardingStatus === 'otp-verified' ? 'success' : 'default'}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={childTrip.deboardingStatus || 'pending'}
-                            size="small"
-                            color={childTrip.deboardingStatus === 'otp-verified' ? 'success' : 'default'}
-                          />
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
-          ) : (
-            <Paper sx={{ p: 3, textAlign: 'center' }}>
-              <Typography color="text.secondary">
-                No active trip with assigned children. Start a trip from the Routes tab.
-              </Typography>
-            </Paper>
-          )}
-        </Box>
-      )}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Assigned Children
+            </Typography>
+            <Chip 
+              label={`${routes.reduce((sum, r) => sum + (r.assignedChildren?.length || 0), 0)} Children`}
+              sx={{ 
+                bgcolor: '#fff9c4',
+                color: '#f57c00',
+                fontWeight: 600
+              }} 
+            />
+          </Box>
 
-      {/* Tab 4: Vehicle Info - Vehicle Logs */}
-      {activeTab === 4 && (
-        <Grid container spacing={3}>
-          <Grid item xs={12}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-              <Typography variant="h6">Vehicle Logs</Typography>
-              <Button
-                variant="contained"
-                startIcon={<Add />}
-                onClick={() => {
-                  const today = new Date().toISOString().split('T')[0];
-                  setVehicleLogForm({ ...vehicleLogForm, date: today });
-                  setVehicleLogDialog({ open: true });
-                }}
-              >
-                Add Log Entry
-              </Button>
-            </Box>
-            <Paper sx={{ p: 2 }}>
+          {routes.length > 0 && routes.some(r => r.assignedChildren?.length > 0) ? (
+            <Paper sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
               <TableContainer>
                 <Table>
                   <TableHead>
-                    <TableRow>
-                      <TableCell>Date</TableCell>
-                      <TableCell>Start Mileage</TableCell>
-                      <TableCell>End Mileage</TableCell>
-                      <TableCell>Distance</TableCell>
-                      <TableCell>Fuel Level</TableCell>
-                      <TableCell>Notes</TableCell>
+                    <TableRow sx={{ bgcolor: '#f5f5f5' }}>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Child Name</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Age</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Address</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Parent</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Contact</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>OTP</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {routes.map((route) =>
+                      route.assignedChildren?.map((child) => {
+                        const childAge = child.child?.dateOfBirth 
+                          ? Math.floor((new Date() - new Date(child.child.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000))
+                          : child.child?.age || '--';
+                        const parentName = child.child?.parent?.firstName && child.child?.parent?.lastName
+                          ? `${child.child.parent.firstName} ${child.child.parent.lastName}`
+                          : child.child?.parent?.name || 'N/A';
+                        const parentPhone = child.child?.parent?.phone || child.child?.parent?.contactNumber || 'N/A';
+                        const childAddress = child.child?.address?.street || child.child?.address || 'N/A';
+
+                        return (
+                          <TableRow key={child.child?._id || Math.random()} hover>
+                            <TableCell sx={{ fontWeight: 500 }}>
+                              {child.child?.firstName || 'Unknown'} {child.child?.lastName || ''}
+                            </TableCell>
+                            <TableCell>{childAge} yrs</TableCell>
+                            <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                              {childAddress}
+                            </TableCell>
+                            <TableCell>{parentName}</TableCell>
+                            <TableCell>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                <Phone sx={{ fontSize: 16, color: '#2196f3' }} />
+                                <Typography variant="body2" sx={{ color: '#2196f3' }}>
+                                  {parentPhone}
+                                </Typography>
+                              </Box>
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label={child.otp || Math.floor(1000 + Math.random() * 9000)}
+                                sx={{ 
+                                  bgcolor: '#fff9c4',
+                                  color: '#f57c00',
+                                  fontWeight: 700,
+                                  fontFamily: 'monospace',
+                                  fontSize: '0.95rem'
+                                }} 
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              {/* Safety Protocols */}
+              <Box sx={{ p: 3, bgcolor: '#fafafa', borderTop: '1px solid #e0e0e0' }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                  Safety Protocols
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={6}>
+                    <Paper sx={{ p: 2.5, bgcolor: '#e3f2fd', borderRadius: 2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#1976d2', mb: 1 }}>
+                        OTP Verification
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Always verify OTP before pickup and drop-off
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                  <Grid item xs={12} md={6}>
+                    <Paper sx={{ p: 2.5, bgcolor: '#e8f5e9', borderRadius: 2 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, color: '#388e3c', mb: 1 }}>
+                        Guardian Authorization
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Only release child to authorized guardians
+                      </Typography>
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </Box>
+            </Paper>
+          ) : (
+            <Paper sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}>
+              <People sx={{ fontSize: 60, color: '#bdbdbd', mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+                No Assigned Children
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Children will appear here once assigned to your routes
+              </Typography>
+            </Paper>
+          )}
+        </Box>
+      )}
+
+      {/* Tab 4: Vehicle Info */}
+      {activeTab === 4 && (
+        <Box>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 3 }}>
+            Vehicle Information
+          </Typography>
+
+          {/* Vehicle Details Card */}
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
+                  Vehicle Details
+                </Typography>
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Bus Number</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      #{vehicleNumber}
+                    </Typography>
+                  </Box>
+                  <Divider />
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Vehicle Type</Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                      {user?.staff?.vehicleType || 'School Bus'}
+                    </Typography>
+                  </Box>
+                  <Divider />
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">License Plate</Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                      {user?.staff?.licensePlate || 'N/A'}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
+                  Driver Information
+                </Typography>
+                <Stack spacing={2}>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Driver Name</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      {driverName}
+                    </Typography>
+                  </Box>
+                  <Divider />
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">License Number</Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                      {user?.staff?.licenseNumber || 'N/A'}
+                    </Typography>
+                  </Box>
+                  <Divider />
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">Contact</Typography>
+                    <Typography variant="body1" sx={{ fontWeight: 500 }}>
+                      {user?.phone || user?.email || 'N/A'}
+                    </Typography>
+                  </Box>
+                </Stack>
+              </Paper>
+            </Grid>
+          </Grid>
+
+          {/* Vehicle Logs */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Vehicle Logs
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => {
+                const today = new Date().toISOString().split('T')[0];
+                setVehicleLogForm({ ...vehicleLogForm, date: today });
+                setVehicleLogDialog({ open: true });
+              }}
+              sx={{
+                bgcolor: '#4caf50',
+                '&:hover': { bgcolor: '#388e3c' },
+                textTransform: 'none',
+                fontWeight: 600
+              }}
+            >
+              Add Log Entry
+            </Button>
+          </Box>
+
+          {vehicleLogs.length > 0 ? (
+            <Paper sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: '#f5f5f5' }}>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Date</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Start Mileage</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>End Mileage</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Distance</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Fuel Level</TableCell>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Notes</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {vehicleLogs.map((log, index) => (
-                      <TableRow key={index}>
+                      <TableRow key={log._id || index} hover>
                         <TableCell>{new Date(log.date).toLocaleDateString()}</TableCell>
                         <TableCell>{log.startMileage}</TableCell>
                         <TableCell>{log.endMileage}</TableCell>
-                        <TableCell>{log.endMileage - log.startMileage}</TableCell>
+                        <TableCell sx={{ fontWeight: 600 }}>{log.endMileage - log.startMileage} km</TableCell>
                         <TableCell>
-                          <Chip label={log.fuelLevel} size="small" />
+                          <Chip 
+                            label={log.fuelLevel} 
+                            size="small"
+                            sx={{
+                              bgcolor: log.fuelLevel === 'full' ? '#e8f5e9' :
+                                      log.fuelLevel === 'half' ? '#fff3e0' : '#ffebee',
+                              color: log.fuelLevel === 'full' ? '#4caf50' :
+                                    log.fuelLevel === 'half' ? '#f57c00' : '#f44336',
+                              fontWeight: 600,
+                              textTransform: 'capitalize'
+                            }}
+                          />
                         </TableCell>
                         <TableCell>{log.driverNotes || '-'}</TableCell>
                       </TableRow>
@@ -589,58 +900,119 @@ const DriverDashboard = () => {
                 </Table>
               </TableContainer>
             </Paper>
-          </Grid>
-        </Grid>
+          ) : (
+            <Paper sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}>
+              <Assessment sx={{ fontSize: 60, color: '#bdbdbd', mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+                No Vehicle Logs
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Start adding vehicle logs to track maintenance and usage
+              </Typography>
+            </Paper>
+          )}
+        </Box>
       )}
 
-      {/* Tab 3: Incidents & Compliance */}
-      {activeTab === 3 && complianceReport && (
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>Compliance Score</Typography>
-                <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
-                  <Box sx={{ width: '100%', mr: 1 }}>
-                    <LinearProgress
-                      variant="determinate"
-                      value={complianceReport.complianceScore}
-                      sx={{ height: 20, borderRadius: 1 }}
-                    />
-                  </Box>
-                  <Typography variant="h6">{complianceReport.complianceScore}%</Typography>
-                </Box>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Card>
-              <CardContent>
-                <Typography variant="h6" gutterBottom>Trip Statistics</Typography>
-                <List>
-                  <ListItem>
-                    <ListItemText primary="Total Trips" secondary={complianceReport.totalTrips} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="On-Time Trips" secondary={complianceReport.onTimeTrips} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Delayed Trips" secondary={complianceReport.delayedTrips} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Average Delay" secondary={`${complianceReport.averageDelay} minutes`} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Incidents" secondary={complianceReport.incidents} />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemText primary="Vehicle Issues" secondary={complianceReport.vehicleIssues} />
-                  </ListItem>
-                </List>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+      {/* Tab 3: Incidents */}
+      {activeTab === 3 && (
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Incident Reports
+            </Typography>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => setIncidentDialog({ open: true, trip: activeTrip })}
+              sx={{
+                bgcolor: '#d32f2f',
+                '&:hover': { bgcolor: '#c62828' },
+                textTransform: 'none',
+                fontWeight: 600
+              }}
+            >
+              Report New Incident
+            </Button>
+          </Box>
+
+          {incidents.length > 0 ? (
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {incidents.map((incident, index) => {
+                const severityColor = 
+                  incident.severity === 'high' ? '#f44336' :
+                  incident.severity === 'medium' ? '#ff9800' :
+                  '#ffc107';
+                const severityBg =
+                  incident.severity === 'high' ? '#ffebee' :
+                  incident.severity === 'medium' ? '#fff3e0' :
+                  '#fff8e1';
+                const statusColor =
+                  incident.status === 'resolved' ? '#4caf50' :
+                  incident.status === 'investigating' ? '#2196f3' :
+                  '#ff9800';
+                const statusBg =
+                  incident.status === 'resolved' ? '#e8f5e9' :
+                  incident.status === 'investigating' ? '#e3f2fd' :
+                  '#fff3e0';
+
+                return (
+                  <Paper key={incident._id || index} sx={{ p: 3, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
+                      <Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                          <Chip 
+                            label={(incident.severity || 'Low') + ' Severity'}
+                            sx={{ 
+                              bgcolor: severityBg,
+                              color: severityColor,
+                              fontWeight: 600,
+                              textTransform: 'capitalize'
+                            }} 
+                            size="small"
+                          />
+                          <Typography variant="caption" color="text.secondary">
+                            {incident.date ? new Date(incident.date).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric', 
+                              year: 'numeric' 
+                            }) : 'Recent'}
+                          </Typography>
+                          <Chip 
+                            label={(incident.status || 'Pending')}
+                            sx={{ 
+                              bgcolor: statusBg,
+                              color: statusColor,
+                              fontWeight: 600,
+                              textTransform: 'capitalize'
+                            }} 
+                            size="small"
+                          />
+                        </Box>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                          {incident.type || incident.incidentType || 'Incident'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {incident.description || 'No description provided'}
+                    </Typography>
+                  </Paper>
+                );
+              })}
+            </Box>
+          ) : (
+            <Paper sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}>
+              <Warning sx={{ fontSize: 60, color: '#bdbdbd', mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+                No Incidents Reported
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                All clear! No incidents have been reported
+              </Typography>
+            </Paper>
+          )}
+        </Box>
       )}
 
       {/* Trip Details Dialog */}
