@@ -362,7 +362,7 @@ const Register = ({ fixedRole, fixedStaffType }) => {
         px: 2,
         position: 'relative',
         overflow: 'hidden',
-        background: 'linear-gradient(90deg, #d6f5d1 0%, #e8fbe4 100%)'
+        background: '#f8f9fa'
       }}
     >
       <Box
@@ -370,10 +370,10 @@ const Register = ({ fixedRole, fixedStaffType }) => {
         sx={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: "url('https://images.unsplash.com/photo-1503457574462-bd27054394c1?q=80&w=1400&auto=format&fit=crop')",
+          backgroundImage: "url('/child-toys-bg.jpg?v=3')",
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          opacity: 0.12
+          opacity: 0.8
         }}
       />
 
@@ -381,10 +381,20 @@ const Register = ({ fixedRole, fixedStaffType }) => {
         <Grid container spacing={3} alignItems="center">
           <Grid item xs={12} md={6}>
             <Box sx={{ pr: { md: 4 }, mb: { xs: 3, md: 0 } }}>
-              <Typography variant="h3" sx={{ fontWeight: 800, color: '#1b3c2a', lineHeight: 1.1, mb: 1 }}>
+              <Typography variant="h3" sx={{ 
+                fontWeight: 800, 
+                color: '#000', 
+                lineHeight: 1.1, 
+                mb: 1,
+                textShadow: '2px 2px 4px rgba(255,255,255,0.9), -1px -1px 2px rgba(255,255,255,0.9)'
+              }}>
                 Learning that feels like joy!
               </Typography>
-              <Typography variant="h6" sx={{ color: '#2f4f3f', fontWeight: 500 }}>
+              <Typography variant="h6" sx={{ 
+                color: '#000', 
+                fontWeight: 600,
+                textShadow: '1px 1px 3px rgba(255,255,255,0.9), -1px -1px 2px rgba(255,255,255,0.9)'
+              }}>
                 Block your child's seat with a quick admission request.
               </Typography>
             </Box>
@@ -827,7 +837,7 @@ const Register = ({ fixedRole, fixedStaffType }) => {
 
       {/* Static background image - children with their teacher playing */}
       <Box aria-hidden sx={{ position: 'absolute', inset: 0, zIndex: 0,
-        backgroundImage: "linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.15)), url('https://images.unsplash.com/photo-1587654780291-39c9404d746b?q=80&w=1920&auto=format&fit=crop')",
+        backgroundImage: "linear-gradient(rgba(0,0,0,0.15), rgba(0,0,0,0.15)), url('/child-toys-bg.jpg?v=2')",
         backgroundSize: 'cover', backgroundPosition: 'center', filter: 'brightness(0.95)'
       }} />
 

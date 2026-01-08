@@ -7,17 +7,148 @@ import {
   Box,
   Avatar,
   Menu,
-  MenuItem
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Divider,
+  Drawer,
+  List,
+  ListItem,
+  ListItemButton
 } from '@mui/material';
-import { AccountCircle, Logout, ShoppingCart } from '@mui/icons-material';
+import { 
+  AccountCircle, 
+  Logout, 
+  ShoppingCart,
+  Menu as MenuIcon,
+  Dashboard,
+  ChildCare,
+  People,
+  Group,
+  AccessTime,
+  Payment,
+  LocalActivity,
+  Assessment,
+  Email,
+  Person,
+  SupervisorAccount,
+  ManageAccounts,
+  Inventory2,
+  LocalHospital,
+  DirectionsCar
+} from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE_URL } from '../../config/api';
+
+const getMenuItems = (userRole, user) => {
+  if (userRole === 'admin') {
+    return [
+      { text: 'Admin Home', icon: <SupervisorAccount />, path: '/admin' },
+      { text: 'Users', icon: <ManageAccounts />, path: '/admin/users' },
+      { text: 'Doctor Management', icon: <LocalHospital />, path: '/admin/doctors' },
+      { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
+      { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
+      { text: 'Billing', icon: <Payment />, path: '/billing' },
+      { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
+      { text: 'Visitor Management', icon: <People />, path: '/visitors' },
+      { text: 'Emergency Response', icon: <Assessment />, path: '/emergency' },
+      { text: 'Transport & Pickup', icon: <Group />, path: '/transport' },
+      { text: 'Communication', icon: <Email />, path: '/communication' },
+      { text: 'Reports', icon: <Assessment />, path: '/reports' },
+      { text: 'Inventory', icon: <Inventory2 />, path: '/admin/inventory' },
+      { text: 'Meal Plan Approval', icon: <LocalActivity />, path: '/meal-plan-approval' },
+      { text: 'Profile', icon: <Person />, path: '/profile' },
+    ];
+  }
+  if (userRole === 'vendor') {
+    return [
+      { text: 'Supplier & Vendor Management', icon: <LocalActivity />, path: '/vendor?tab=0' },
+      { text: 'Performance & Contract', icon: <Assessment />, path: '/vendor?tab=1' },
+      { text: 'Invoices & Payments', icon: <Payment />, path: '/vendor?tab=2' },
+      { text: 'Products', icon: <ChildCare />, path: '/vendor?tab=7' },
+      { text: 'Profile', icon: <Person />, path: '/vendor' },
+    ];
+  }
+  if (userRole === 'staff') {
+    const isDriver = user?.staff?.staffType === 'driver';
+    const isNanny = user?.staff?.staffType === 'nanny';
+    const isDelivery = user?.staff?.staffType === 'delivery';
+    const isTeacher = user?.staff?.staffType === 'teacher';
+    
+    if (isDriver) {
+      return [
+        { text: 'Driver Dashboard', icon: <DirectionsCar />, path: '/driver' },
+        { text: 'Profile', icon: <Person />, path: '/profile' },
+      ];
+    }
+    if (isNanny) {
+      return [
+        { text: 'Nanny Dashboard', icon: <ChildCare />, path: '/nanny' },
+        { text: 'Profile', icon: <Person />, path: '/profile' },
+      ];
+    }
+    if (isDelivery) {
+      return [
+        { text: 'Delivery Dashboard', icon: <LocalActivity />, path: '/delivery' },
+        { text: 'Profile', icon: <Person />, path: '/profile' },
+      ];
+    }
+    if (isTeacher) {
+      return [
+        { text: 'Teacher Dashboard', icon: <Group />, path: '/teacher' },
+        { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
+        { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
+        { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
+        { text: 'Visitor Management', icon: <People />, path: '/visitors' },
+        { text: 'Emergency Response', icon: <Assessment />, path: '/emergency' },
+        { text: 'Transport & Pickup', icon: <Group />, path: '/transport' },
+        { text: 'Communication', icon: <Email />, path: '/communication' },
+        { text: 'Reports', icon: <Assessment />, path: '/reports' },
+        { text: 'Feedback', icon: <Assessment />, path: '/parent/feedback' },
+        { text: 'Profile', icon: <Person />, path: '/profile' },
+      ];
+    }
+    return [
+      { text: 'Staff Dashboard', icon: <Group />, path: '/staff' },
+      { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
+      { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
+      { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
+      { text: 'Profile', icon: <Person />, path: '/profile' },
+    ];
+  }
+  if (userRole === 'doctor') {
+    return [
+      { text: 'Doctor Dashboard', icon: <LocalHospital />, path: '/doctor' },
+      { text: 'Profile', icon: <Person />, path: '/profile' },
+    ];
+  }
+  if (userRole === 'parent') {
+    return [
+      { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+      { text: 'Staff', icon: <People />, path: '/parent/staff' },
+      { text: 'Reports', icon: <Assessment />, path: '/parent/reports' },
+      { text: 'Admissions', icon: <Assessment />, path: '/parent/admissions' },
+      { text: 'Notifications', icon: <Assessment />, path: '/parent/notifications' },
+      { text: 'Messaging', icon: <Email />, path: '/parent/messaging' },
+      { text: 'Billing & Payments', icon: <Payment />, path: '/parent/billing' },
+      { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
+      { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
+      { text: 'Profile', icon: <Person />, path: '/profile' },
+    ];
+  }
+  return [
+    { text: 'Dashboard', icon: <Dashboard />, path: '/dashboard' },
+    { text: 'Profile', icon: <Person />, path: '/profile' },
+  ];
+};
 
 const DashboardHeader = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [anchorEl, setAnchorEl] = React.useState(null);
+  const [drawerOpen, setDrawerOpen] = React.useState(false);
 
   const handleMenu = (event) => {
     setAnchorEl(event.currentTarget);
@@ -32,6 +163,16 @@ const DashboardHeader = () => {
     handleClose();
   };
 
+  const toggleDrawer = (open) => (event) => {
+    if (event.type === 'keydown' && (event.key === 'Tab' || event.key === 'Shift')) {
+      return;
+    }
+    setDrawerOpen(open);
+  };
+
+  const menuItems = getMenuItems(user?.role, user);
+  const isTeacher = user?.role === 'staff' && user?.staff?.staffType === 'teacher';
+
   const toAbsolute = (maybePath) => {
     if (!maybePath) return '';
     if (/^https?:\/\//i.test(maybePath)) return maybePath;
@@ -44,15 +185,15 @@ const DashboardHeader = () => {
   };
 
   return (
+    <>
     <AppBar
       position="fixed"
       sx={{
-        width: { sm: `calc(100% - 240px)` },
-        ml: { sm: `240px` },
+        width: '100%',
         backgroundColor: 'transparent',
         boxShadow: 'none',
         zIndex: 1100,
-        top: { xs: 0, md: -20 } // Move header further up to eliminate conflicts with headings
+        top: { xs: 0, md: -20 }
       }}
     >
       <Box sx={{ height: 6, backgroundColor: '#4b314d', width: '100%' }} />
@@ -69,9 +210,22 @@ const DashboardHeader = () => {
           border: '1px solid rgba(75,49,77,0.1)',
           px: 3,
           py: 1.5,
-          mt: { xs: 0, md: 0.5 } // Reduced margin-top
+          mt: { xs: 0, md: 0.5 }
         }}
       >
+        {/* Control Panel Button */}
+        <IconButton
+          onClick={toggleDrawer(true)}
+          sx={{
+            backgroundColor: 'rgba(26,188,156,0.08)',
+            '&:hover': { backgroundColor: 'rgba(26,188,156,0.18)' },
+            color: '#1abc9c'
+          }}
+          aria-label="Open control panel"
+        >
+          <MenuIcon />
+        </IconButton>
+
         {/* TinyTots Logo */}
         <Box
           onClick={() => navigate('/dashboard')}
@@ -181,7 +335,111 @@ const DashboardHeader = () => {
           Logout
         </MenuItem>
       </Menu>
+
+      {/* Control Panel Drawer */}
+      <Drawer
+        anchor="left"
+        open={drawerOpen}
+        onClose={toggleDrawer(false)}
+        sx={{
+          '& .MuiDrawer-paper': {
+            width: 280,
+            boxSizing: 'border-box'
+          }
+        }}
+      >
+        <Box
+          sx={{ width: 280 }}
+          role="presentation"
+        >
+          {isTeacher ? (
+            <Box
+              sx={{
+                backgroundColor: '#5CE1E6',
+                color: '#fff',
+                p: 2,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5
+              }}
+            >
+              <People sx={{ fontSize: 32 }} />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Teacher Dashboard
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{ p: 2, backgroundColor: '#1abc9c', color: '#fff' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                Control Panel
+              </Typography>
+            </Box>
+          )}
+          <Divider />
+          <List sx={{ pt: 2 }}>
+            {menuItems.map((item) => (
+              <ListItem key={item.text} disablePadding>
+                <ListItemButton
+                  selected={(location.pathname + location.search) === item.path}
+                  onClick={() => {
+                    navigate(item.path);
+                    setDrawerOpen(false);
+                  }}
+                  sx={{
+                    py: 1.5,
+                    px: 2,
+                    ...(isTeacher ? {
+                      '&.Mui-selected': {
+                        backgroundColor: '#5CE1E6',
+                        color: '#fff',
+                        '& .MuiListItemIcon-root': {
+                          color: '#fff',
+                        },
+                        '&:hover': {
+                          backgroundColor: '#4AC5C9',
+                        },
+                      },
+                      '&:hover': {
+                        backgroundColor: 'rgba(92, 225, 230, 0.08)',
+                      },
+                    } : {
+                      '&.Mui-selected': {
+                        backgroundColor: 'rgba(26,188,156,0.12)',
+                        color: '#1abc9c',
+                        '&:hover': {
+                          backgroundColor: 'rgba(26,188,156,0.2)',
+                        },
+                      },
+                    }),
+                  }}
+                >
+                  <ListItemIcon
+                    sx={{
+                      color: isTeacher 
+                        ? ((location.pathname + location.search) === item.path ? '#fff' : '#333')
+                        : ((location.pathname + location.search) === item.path ? '#1abc9c' : 'inherit'),
+                      minWidth: 40
+                    }}
+                  >
+                    {item.icon}
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={item.text}
+                    primaryTypographyProps={{
+                      sx: {
+                        fontSize: '1rem',
+                        fontWeight: isTeacher ? 400 : 500
+                      }
+                    }}
+                  />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </List>
+        </Box>
+      </Drawer>
     </AppBar>
+    </>
   );
 };
 

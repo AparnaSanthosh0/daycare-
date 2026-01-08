@@ -160,7 +160,10 @@ const Login = () => {
           break;
         case 'staff':
           // Check staffType for specific navigation
-          if (userStaffType === 'driver') {
+          if (userStaffType === 'teacher') {
+            console.log('Navigating to /teacher');
+            navigate('/teacher');
+          } else if (userStaffType === 'driver') {
             console.log('Navigating to /driver');
             navigate('/driver');
           } else if (userStaffType === 'delivery') {
@@ -454,7 +457,17 @@ const Login = () => {
                               navigate('/admin');
                               break;
                             case 'staff':
-                              navigate('/staff');
+                              if (userStaffType === 'teacher') {
+                                navigate('/teacher');
+                              } else if (userStaffType === 'driver') {
+                                navigate('/driver');
+                              } else if (userStaffType === 'delivery') {
+                                navigate('/delivery');
+                              } else if (userStaffType === 'nanny') {
+                                navigate('/nanny');
+                              } else {
+                                navigate('/staff');
+                              }
                               break;
                             case 'vendor':
                               navigate('/vendor');

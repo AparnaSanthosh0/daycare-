@@ -74,6 +74,7 @@ const getMenuItems = (userRole, user) => {
     const isDriver = user?.staff?.staffType === 'driver';
     const isNanny = user?.staff?.staffType === 'nanny';
     const isDelivery = user?.staff?.staffType === 'delivery';
+    const isTeacher = user?.staff?.staffType === 'teacher';
     
     if (isDriver) {
       return [
@@ -92,6 +93,22 @@ const getMenuItems = (userRole, user) => {
     if (isDelivery) {
       return [
         { text: 'Delivery Dashboard', icon: <LocalActivity />, path: '/delivery' },
+        { text: 'Profile', icon: <Person />, path: '/profile' },
+      ];
+    }
+
+    if (isTeacher) {
+      return [
+        { text: 'Teacher Dashboard', icon: <Group />, path: '/teacher' },
+        { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
+        { text: 'Meal Planning', icon: <LocalActivity />, path: '/meal-planning' },
+        { text: 'Activities', icon: <LocalActivity />, path: '/activities' },
+        { text: 'Visitor Management', icon: <People />, path: '/visitors' },
+        { text: 'Emergency Response', icon: <Assessment />, path: '/emergency' },
+        { text: 'Transport & Pickup', icon: <Group />, path: '/transport' },
+        { text: 'Communication', icon: <Email />, path: '/communication' },
+        { text: 'Reports', icon: <Assessment />, path: '/reports' },
+        { text: 'Feedback', icon: <Assessment />, path: '/parent/feedback' },
         { text: 'Profile', icon: <Person />, path: '/profile' },
       ];
     }
@@ -152,39 +169,90 @@ const Sidebar = ({ mobileOpen, onDrawerToggle }) => {
   const { user } = useAuth();
   
   const menuItems = getMenuItems(user?.role, user);
+  const isTeacher = user?.role === 'staff' && user?.staff?.staffType === 'teacher';
 
   const drawer = (
     <div>
-      <Toolbar>
-        <Typography variant="h6" noWrap component="div" color="primary">
-          TinyTots
-        </Typography>
-      </Toolbar>
-      <Divider />
-      <List>
+      {isTeacher ? (
+        // Teacher-specific header with teal background
+        <Box
+          sx={{
+            backgroundColor: '#5CE1E6',
+            color: '#fff',
+            p: 2,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1.5
+          }}
+        >
+          <People sx={{ fontSize: 32 }} />
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Teacher Dashboard
+          </Typography>
+        </Box>
+      ) : (
+        <>
+          <Toolbar>
+            <Typography variant="h6" noWrap component="div" color="primary">
+              TinyTots
+            </Typography>
+          </Toolbar>
+          <Divider />
+        </>
+      )}
+      <List sx={{ pt: isTeacher ? 2 : 0 }}>
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding>
             <ListItemButton
               selected={(location.pathname + location.search) === item.path}
               onClick={() => navigate(item.path)}
               sx={{
-                '&.Mui-selected': {
-                  backgroundColor: 'primary.light',
-                  color: 'white',
-                  '&:hover': {
-                    backgroundColor: 'primary.main',
+                py: 1.5,
+                px: 2,
+                ...(isTeacher ? {
+                  '&.Mui-selected': {
+                    backgroundColor: '#5CE1E6',
+                    color: '#fff',
+                    '& .MuiListItemIcon-root': {
+                      color: '#fff',
+                    },
+                    '&:hover': {
+                      backgroundColor: '#4AC5C9',
+                    },
                   },
-                },
+                  '&:hover': {
+                    backgroundColor: 'rgba(92, 225, 230, 0.08)',
+                  },
+                } : {
+                  '&.Mui-selected': {
+                    backgroundColor: 'primary.light',
+                    color: 'white',
+                    '&:hover': {
+                      backgroundColor: 'primary.main',
+                    },
+                  },
+                }),
               }}
             >
               <ListItemIcon
                 sx={{
-                  color: (location.pathname + location.search) === item.path ? 'white' : 'inherit',
+                  color: isTeacher 
+                    ? ((location.pathname + location.search) === item.path ? '#fff' : '#333')
+                    : ((location.pathname + location.search) === item.path ? 'white' : 'inherit'),
+                  minWidth: 40
                 }}
               >
                 {item.icon}
               </ListItemIcon>
-              <ListItemText primary={item.text} />
+              <ListItemText 
+                primary={item.text}
+                primaryTypographyProps={{
+                  sx: {
+                    fontSize: '1rem',
+                    fontWeight: isTeacher ? 400 : 500
+                  }
+                }}
+              />
             </ListItemButton>
           </ListItem>
         ))}

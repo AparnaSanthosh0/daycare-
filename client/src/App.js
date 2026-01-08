@@ -18,6 +18,7 @@ import DriverDashboard from './pages/Driver/DriverDashboard';
 import DoctorDashboard from './pages/Doctor/DoctorDashboard';
 import NannyDashboard from './pages/Nanny/NannyDashboard';
 import DeliveryDashboard from './pages/Delivery/DeliveryDashboard';
+import TeacherDashboard from './components/Teacher/TeacherDashboard';
 import MealPlanApproval from './pages/MealPlan/MealPlanApproval';
 import Visitors from './pages/Staff/Visitors';
 import Emergency from './pages/Staff/Emergency';
@@ -245,7 +246,7 @@ function App() {
           {/* Protected Routes */}
           <Route 
             path="/dashboard" 
-            element={user?.role === 'parent' ? <ParentDashboard /> : <Navigate to={user ? (user.role === 'admin' ? '/admin' : user.role === 'staff' && user.staff?.staffType === 'driver' ? '/driver' : user.role === 'staff' && user.staff?.staffType === 'nanny' ? '/nanny' : user.role === 'staff' && user.staff?.staffType === 'delivery' ? '/delivery' : user.role === 'doctor' ? '/doctor' : user.role === 'vendor' ? '/vendor' : '/staff') : '/'} replace />} 
+            element={user?.role === 'parent' ? <ParentDashboard /> : <Navigate to={user ? (user.role === 'admin' ? '/admin' : user.role === 'staff' && user.staff?.staffType === 'teacher' ? '/teacher' : user.role === 'staff' && user.staff?.staffType === 'driver' ? '/driver' : user.role === 'staff' && user.staff?.staffType === 'nanny' ? '/nanny' : user.role === 'staff' && user.staff?.staffType === 'delivery' ? '/delivery' : user.role === 'doctor' ? '/doctor' : user.role === 'vendor' ? '/vendor' : '/staff') : '/'} replace />} 
           />
           {/* Parent sidebar routes mapped to dashboard tabs */}
           <Route 
@@ -297,6 +298,10 @@ function App() {
           <Route 
             path="/staff" 
             element={user && (user.role === 'admin' || user.role === 'staff') ? <Layout><Staff /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
+          />
+          <Route
+            path="/teacher"
+            element={user?.role === 'staff' && user?.staff?.staffType === 'teacher' ? <TeacherDashboard /> : <Navigate to="/" replace />} 
           />
           <Route
             path="/driver"

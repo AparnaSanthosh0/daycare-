@@ -1,27 +1,19 @@
 import React, { useState } from 'react';
 import { Box, CssBaseline } from '@mui/material';
-import Sidebar from './Sidebar';
 import DashboardHeader from './DashboardHeader';
 
 const Layout = ({ children }) => {
-  const [mobileOpen, setMobileOpen] = useState(false);
-
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
-
   return (
     <Box sx={{ display: 'flex' }}>
       <CssBaseline />
       <DashboardHeader />
-      <Sidebar mobileOpen={mobileOpen} onDrawerToggle={handleDrawerToggle} />
       <Box
         component="main"
         sx={{
           flexGrow: 1,
           p: 3,
-          pt: { xs: 12, sm: 12 }, // Further increased padding-top to ensure headings are fully visible
-          width: { sm: `calc(100% - 240px)` },
+          pt: { xs: 12, sm: 12 },
+          width: '100%',
           minHeight: '100vh',
           position: 'relative',
           backgroundColor: 'background.default',
