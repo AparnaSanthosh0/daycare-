@@ -170,6 +170,23 @@ router.post('/healthRecord', auth, authorize('staff'), async (req, res) => {
   }
 });
 
+// Get assigned children for staff member (staff only)
+router.get('/my-children', auth, authorize('staff'), async (req, res) => {
+  try {
+    const staffId = req.user.userId;
+    
+    // Get children assigned to this staff member
+    const assignedChildren = await Child.find({ assignedStaff: staffId, isActive: true })
+      .populate('parents', 'firstName lastName email phone')
+      .select('firstName lastName dateOfBirth gender program parents allergies medicalConditions profileImage');
+    
+    res.json(assignedChildren);
+  } catch (error) {
+    console.error('Get assigned children error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Get billing information for assigned children's parents
 router.get('/billing', auth, authorize('staff'), async (req, res) => {
   try {

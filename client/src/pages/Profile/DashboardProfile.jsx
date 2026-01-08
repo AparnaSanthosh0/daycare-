@@ -10,25 +10,15 @@ import {
   Avatar,
   Divider,
   IconButton,
-  Chip,
-  InputAdornment,
-  Stack,
-  Tooltip
+  InputAdornment
 } from '@mui/material';
 import {
-  Person,
   LocationOn,
   Edit,
   Save,
   Cancel,
-  Business,
-  School,
-  ChildCare,
-  AdminPanelSettings,
   Visibility,
-  VisibilityOff,
-  ArrowBack,
-  ShoppingCart
+  VisibilityOff
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import api from '../../config/api';
@@ -140,40 +130,6 @@ const DashboardProfile = () => {
     }
   };
 
-  const getRoleIcon = () => {
-    switch (user?.role) {
-      case 'admin':
-        return <AdminPanelSettings sx={{ color: '#d32f2f' }} />;
-      case 'staff':
-        return <School sx={{ color: '#1976d2' }} />;
-      case 'parent':
-        return <ChildCare sx={{ color: '#2e7d32' }} />;
-      case 'vendor':
-        return <Business sx={{ color: '#ed6c02' }} />;
-      case 'doctor':
-        return <Person sx={{ color: '#9c27b0' }} />;
-      default:
-        return <Person sx={{ color: '#666' }} />;
-    }
-  };
-
-  const getRoleColor = () => {
-    switch (user?.role) {
-      case 'admin':
-        return '#d32f2f';
-      case 'staff':
-        return '#1976d2';
-      case 'parent':
-        return '#2e7d32';
-      case 'vendor':
-        return '#ed6c02';
-      case 'doctor':
-        return '#9c27b0';
-      default:
-        return '#666';
-    }
-  };
-
   if (!user) {
     return (
       <Box sx={{ maxWidth: 800, mx: 'auto', p: 2, textAlign: 'center' }}>
@@ -185,8 +141,8 @@ const DashboardProfile = () => {
     );
   }
 
-  // Check if user is delivery staff
-  const isDeliveryStaff = user?.role === 'staff' && user?.staff?.staffType === 'delivery';
+  // Check if user is delivery staff or teacher
+  const isDeliveryStaff = user?.role === 'staff' && (user?.staff?.staffType === 'delivery' || user?.staff?.staffType === 'teacher');
 
   return (
     <Box sx={{ 
@@ -196,55 +152,6 @@ const DashboardProfile = () => {
       bgcolor: isDeliveryStaff ? '#f7f8fb' : 'transparent',
       minHeight: isDeliveryStaff ? '100vh' : 'auto'
     }}>
-      {/* Header */}
-      <Paper sx={{ 
-        p: 2.5, 
-        mb: 3, 
-        borderRadius: 2, 
-        display: 'flex', 
-        alignItems: 'center', 
-        justifyContent: 'space-between',
-        boxShadow: isDeliveryStaff ? '0 10px 30px rgba(0,0,0,0.05)' : 'none'
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          {isDeliveryStaff && (
-            <Tooltip title="Back to Dashboard">
-              <IconButton onClick={() => navigate('/delivery')}>
-                <ArrowBack />
-              </IconButton>
-            </Tooltip>
-          )}
-          <Box>
-            <Typography variant="h5" fontWeight={700}>My Profile</Typography>
-            {isDeliveryStaff && (
-              <Typography variant="body2" color="text.secondary">
-                {user?.firstName} {user?.lastName} - Delivery Agent
-              </Typography>
-            )}
-          </Box>
-        </Box>
-        <Stack direction="row" spacing={1} alignItems="center">
-          {isDeliveryStaff && (
-            <Tooltip title="Shop">
-              <IconButton size="large" onClick={() => navigate('/shop')}>
-                <ShoppingCart />
-              </IconButton>
-            </Tooltip>
-          )}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {getRoleIcon()}
-            <Chip 
-              label={user.role?.charAt(0).toUpperCase() + user.role?.slice(1)} 
-              sx={{ 
-                backgroundColor: getRoleColor(), 
-                color: 'white',
-                fontWeight: 600
-              }} 
-            />
-          </Box>
-        </Stack>
-      </Paper>
-
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {message && <Alert severity="success" sx={{ mb: 2 }}>{message}</Alert>}
 

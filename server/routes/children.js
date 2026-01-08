@@ -38,8 +38,8 @@ async function canAccessChild(req, childId) {
   return isParent ? { ok: true, child } : { ok: false, status: 403, message: 'Not authorized' };
 }
 
-// Get all children (admin only)
-router.get('/', auth, authorize('admin'), async (req, res) => {
+// Get all children (admin and staff can access)
+router.get('/', auth, authorize('admin', 'staff'), async (req, res) => {
   try {
     const children = await Child.find({})
       .populate('assignedStaff', 'firstName lastName email phone role')

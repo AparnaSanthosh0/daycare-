@@ -9,7 +9,6 @@ import {
   CardContent,
   TextField,
   MenuItem,
-  Avatar,
   Divider,
   IconButton,
   Chip,
@@ -20,7 +19,11 @@ import {
   ListItem,
   ListItemIcon,
   ListItemText,
-  ListItemButton
+  ListItemButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -36,9 +39,6 @@ import {
   School as SchoolIcon,
   Restaurant as RestaurantIcon,
   LocalHospital as LocalHospitalIcon,
-  EventNote as EventNoteIcon,
-  Assignment as AssignmentIcon,
-  ExpandMore as ExpandMoreIcon,
   AccessTime as AccessTimeIcon,
   EmergencyShare as EmergencyIcon,
   DirectionsBus as TransportIcon,
@@ -55,17 +55,15 @@ const TeacherDashboard = () => {
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState(0);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [attendanceDialogOpen, setAttendanceDialogOpen] = useState(false);
+  const [selectedStudent, setSelectedStudent] = useState(null);
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [attendanceData, setAttendanceData] = useState({});
   const [feedbackText, setFeedbackText] = useState('');
   const [serviceCategory, setServiceCategory] = useState('Meal & Nutrition');
   const [rating, setRating] = useState(5);
   const [classificationResult, setClassificationResult] = useState(null);
-  
-  const [todayStats, setTodayStats] = useState({
-    checkIns: 0,
-    checkOuts: 0,
-    present: 0,
-    absent: 0
-  });
 
   const menuItems = [
     { label: 'Attendance', icon: <AccessTimeIcon />, path: '/teacher' },
@@ -80,14 +78,58 @@ const TeacherDashboard = () => {
     { label: 'Profile', icon: <ProfileIcon />, path: '/teacher/profile' }
   ];
 
-  const serviceCategories = [
-    'Meal & Nutrition',
-    'Safety & Security',
-    'Learning Activities',
-    'Health & Hygiene',
-    'Communication',
-    'Facilities'
-  ];
+  useEffect(() => {
+    fetchStudents();
+  }, []);
+
+  const fetchStudents = async () => {
+    try {
+      setLoading(true);
+      // Fetch all children in the system
+      const response = await api.get('/api/children');
+      console.log('Children fetched:', response.data);
+      setStudents(response.data || []);
+      
+      // Fetch today's attendance for all students
+      const today = new Date().toISOString().split('T')[0];
+      const attendanceRes = await api.get(`/api/reports/attendance?date=${today}`);
+      const attendanceMap = {};
+      (attendanceRes.data || []).forEach(record => {
+        if (record.entityType === 'child') {
+          attendanceMap[record.entityId] = record;
+        }
+      });
+      setAttendanceData(attendanceMap);
+    } catch (error) {
+      console.error('Error fetching students:', error);
+      console.error('Error response:', error.response?.data);
+      console.error('Error status:', error.response?.status);
+      // If /api/children fails (permission issue), try my-children
+      try {
+        console.log('Trying /api/staff/my-children...');
+        const response = await api.get('/api/staff/my-children');
+        console.log('My children fetched:', response.data);
+        setStudents(response.data || []);
+        
+        // Fetch today's attendance
+        const today = new Date().toISOString().split('T')[0];
+        const attendanceRes = await api.get(`/api/reports/attendance?date=${today}`);
+        const attendanceMap = {};
+        (attendanceRes.data || []).forEach(record => {
+          if (record.entityType === 'child') {
+            attendanceMap[record.entityId] = record;
+          }
+        });
+        setAttendanceData(attendanceMap);
+      } catch (err) {
+        console.error('Error fetching my children:', err);
+        console.error('Error response:', err.response?.data);
+        console.error('Error status:', err.response?.status);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleTabChange = (event, newValue) => {
     setCurrentTab(newValue);
@@ -100,9 +142,61 @@ const TeacherDashboard = () => {
     setDrawerOpen(open);
   };
 
-  const handleRefresh = () => {
-    // Refresh data logic
-    console.log('Refreshing data...');
+  const handleOpenAttendanceDialog = (student) => {
+    setSelectedStudent(student);
+    setAttendanceDialogOpen(true);
+  };
+
+  const handleCloseAttendanceDialog = () => {
+    setAttendanceDialogOpen(false);
+    setSelectedStudent(null);
+  };
+
+  const handleMarkPresent = async () => {
+    if (selectedStudent) {
+      try {
+        const today = new Date();
+        const checkInTime = document.querySelector('input[type="time"]')?.value || today.toTimeString().slice(0, 5);
+        const [hours, minutes] = checkInTime.split(':');
+        const checkInDateTime = new Date();
+        checkInDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+
+        await api.post('/api/staff-ops/attendance/child/' + selectedStudent._id, {
+          date: today.toISOString().split('T')[0],
+          status: 'present',
+          checkInAt: checkInDateTime.toISOString(),
+          notes: 'Marked by teacher'
+        });
+        
+        alert(`${selectedStudent.firstName} ${selectedStudent.lastName} marked as present!`);
+        handleCloseAttendanceDialog();
+        fetchStudents(); // Refresh the list
+      } catch (error) {
+        console.error('Error marking attendance:', error);
+        alert('Failed to mark attendance. Please try again.');
+      }
+    }
+  };
+
+  const handleMarkAbsent = async () => {
+    if (selectedStudent) {
+      try {
+        const today = new Date();
+
+        await api.post('/api/staff-ops/attendance/child/' + selectedStudent._id, {
+          date: today.toISOString().split('T')[0],
+          status: 'absent',
+          notes: 'Marked absent by teacher'
+        });
+        
+        alert(`${selectedStudent.firstName} ${selectedStudent.lastName} marked as absent!`);
+        handleCloseAttendanceDialog();
+        fetchStudents(); // Refresh the list
+      } catch (error) {
+        console.error('Error marking attendance:', error);
+        alert('Failed to mark attendance. Please try again.');
+      }
+    }
   };
 
   const handleClassifyFeedback = async () => {
@@ -121,7 +215,23 @@ const TeacherDashboard = () => {
     navigate('/login');
   };
 
-  const renderAttendanceTab = () => (
+  const calculateAge = (dateOfBirth) => {
+    const today = new Date();
+    const birthDate = new Date(dateOfBirth);
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age;
+  };
+
+  const renderAttendanceTab = () => {
+    const presentCount = students.filter(s => attendanceData[s._id]?.status === 'present').length;
+    const absentCount = students.length - presentCount;
+    const attendanceRate = students.length > 0 ? Math.round((presentCount / students.length) * 100) : 0;
+
+    return (
     <Box>
       {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -130,8 +240,8 @@ const TeacherDashboard = () => {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               Total Children
             </Typography>
-            <Typography variant="h4" sx={{ color: '#5856D6', fontWeight: 600 }}>
-              18
+            <Typography variant="h4" sx={{ color: '#1abc9c', fontWeight: 600 }}>
+              {students.length}
             </Typography>
           </Paper>
         </Grid>
@@ -141,7 +251,7 @@ const TeacherDashboard = () => {
               Present Today
             </Typography>
             <Typography variant="h4" sx={{ color: '#34C759', fontWeight: 600 }}>
-              16
+              {presentCount}
             </Typography>
           </Paper>
         </Grid>
@@ -151,7 +261,7 @@ const TeacherDashboard = () => {
               Absent
             </Typography>
             <Typography variant="h4" sx={{ color: '#FF3B30', fontWeight: 600 }}>
-              2
+              {absentCount}
             </Typography>
           </Paper>
         </Grid>
@@ -160,8 +270,8 @@ const TeacherDashboard = () => {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
               Attendance Rate
             </Typography>
-            <Typography variant="h4" sx={{ color: '#5856D6', fontWeight: 600 }}>
-              89%
+            <Typography variant="h4" sx={{ color: '#1abc9c', fontWeight: 600 }}>
+              {attendanceRate}%
             </Typography>
           </Paper>
         </Grid>
@@ -171,9 +281,18 @@ const TeacherDashboard = () => {
       <Paper elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
         <Box sx={{ p: 3, borderBottom: '1px solid #e0e0e0' }}>
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Today's Attendance - December 8, 2025
+            Today's Attendance - {new Date().toLocaleDateString()}
           </Typography>
         </Box>
+        {loading ? (
+          <Box sx={{ p: 4, textAlign: 'center' }}>
+            <Typography>Loading students...</Typography>
+          </Box>
+        ) : students.length === 0 ? (
+          <Box sx={{ p: 4, textAlign: 'center' }}>
+            <Typography>No students registered in the system</Typography>
+          </Box>
+        ) : (
         <Box sx={{ overflowX: 'auto' }}>
           <Box sx={{ minWidth: 900, p: 3 }}>
             <Grid container sx={{ mb: 2, pb: 2, borderBottom: '2px solid #f5f5f5' }}>
@@ -181,68 +300,358 @@ const TeacherDashboard = () => {
               <Grid item xs={1.5}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Age</Typography></Grid>
               <Grid item xs={1.5}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Status</Typography></Grid>
               <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Check-in Time</Typography></Grid>
-              <Grid item xs={1}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Mood</Typography></Grid>
+              <Grid item xs={1}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Program</Typography></Grid>
               <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Parent</Typography></Grid>
               <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Actions</Typography></Grid>
             </Grid>
 
-            {/* Row 1 */}
-            <Grid container sx={{ py: 2, borderBottom: '1px solid #f5f5f5', alignItems: 'center' }}>
-              <Grid item xs={2}><Typography variant="body2">Emma Wilson</Typography></Grid>
-              <Grid item xs={1.5}><Typography variant="body2">3 years</Typography></Grid>
-              <Grid item xs={1.5}>
-                <Chip label="Present" size="small" sx={{ backgroundColor: '#E8F5E9', color: '#2E7D32', fontWeight: 500 }} />
-              </Grid>
-              <Grid item xs={2}><Typography variant="body2">8:30 AM</Typography></Grid>
-              <Grid item xs={1}><Typography variant="h6">😊</Typography></Grid>
-              <Grid item xs={2}><Typography variant="body2">Jane Wilson</Typography></Grid>
-              <Grid item xs={2}>
-                <Button size="small" sx={{ color: '#5856D6', textTransform: 'none', fontWeight: 500 }}>Add Note</Button>
-              </Grid>
+            {students.map((student, index) => {
+              const attendance = attendanceData[student._id];
+              const isPresent = attendance?.status === 'present';
+              const age = calculateAge(student.dateOfBirth);
+              
+              return (
+                <Grid key={student._id} container sx={{ py: 2, borderBottom: index === students.length - 1 ? 'none' : '1px solid #f5f5f5', alignItems: 'center' }}>
+                  <Grid item xs={2}><Typography variant="body2">{student.firstName} {student.lastName}</Typography></Grid>
+                  <Grid item xs={1.5}><Typography variant="body2">{age} years</Typography></Grid>
+                  <Grid item xs={1.5}>
+                    <Chip 
+                      label={isPresent ? 'Present' : 'Absent'} 
+                      size="small" 
+                      sx={{ 
+                        backgroundColor: isPresent ? '#E8F5E9' : '#FFEBEE', 
+                        color: isPresent ? '#2E7D32' : '#C62828', 
+                        fontWeight: 500 
+                      }} 
+                    />
+                  </Grid>
+                  <Grid item xs={2}>
+                    <Typography variant="body2">
+                      {attendance?.checkInAt ? new Date(attendance.checkInAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '-'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={1}><Typography variant="body2">{student.program || '-'}</Typography></Grid>
+                  <Grid item xs={2}>
+                    <Typography variant="body2">
+                      {student.parents && student.parents[0] ? 
+                        `${student.parents[0].firstName || ''} ${student.parents[0].lastName || ''}`.trim() : 
+                        'N/A'}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={2}>
+                    {attendance ? (
+                      <Button size="small" sx={{ color: '#1abc9c', textTransform: 'none', fontWeight: 500 }}>Add Note</Button>
+                    ) : (
+                      <Box sx={{ display: 'flex', gap: 0.5 }}>
+                        <Button 
+                          size="small" 
+                          variant="contained"
+                          sx={{ 
+                            backgroundColor: '#1abc9c',
+                            color: '#ffffff',
+                            textTransform: 'none',
+                            fontWeight: 500,
+                            fontSize: '0.75rem',
+                            px: 1,
+                            '&:hover': { backgroundColor: '#16a085' }
+                          }}
+                          onClick={() => handleOpenAttendanceDialog(student)}
+                        >
+                          Present
+                        </Button>
+                        <Button 
+                          size="small" 
+                          variant="outlined"
+                          sx={{ 
+                            borderColor: '#FF3B30',
+                            color: '#FF3B30',
+                            textTransform: 'none',
+                            fontWeight: 500,
+                            fontSize: '0.75rem',
+                            px: 1,
+                            '&:hover': { 
+                              borderColor: '#FF3B30',
+                              backgroundColor: 'rgba(255, 59, 48, 0.04)'
+                            }
+                          }}
+                          onClick={async () => {
+                            setSelectedStudent(student);
+                            await handleMarkAbsent();
+                          }}
+                        >
+                          Absent
+                        </Button>
+                      </Box>
+                    )}
+                  </Grid>
+                </Grid>
+              );
+            })}
+          </Box>
+        </Box>
+        )}
+      </Paper>
+
+      {/* Staff Attendance Section */}
+      <Paper elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden', mt: 4 }}>
+        <Box sx={{ p: 3, borderBottom: '1px solid #e0e0e0', backgroundColor: '#f8f9fa' }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            👥 Staff Attendance
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3 }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} md={3}>
+              <TextField
+                fullWidth
+                label="Staff Name"
+                defaultValue={user?.firstName || ''} 
+                disabled
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <TextField
+                fullWidth
+                label="Check-in Time"
+                type="time"
+                size="small"
+                defaultValue={new Date().toTimeString().slice(0, 5)}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <TextField
+                select
+                fullWidth
+                label="Status"
+                size="small"
+                defaultValue="present"
+              >
+                <MenuItem value="present">Present</MenuItem>
+                <MenuItem value="late">Late</MenuItem>
+                <MenuItem value="absent">Absent</MenuItem>
+              </TextField>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Button
+                fullWidth
+                variant="contained"
+                sx={{
+                  backgroundColor: '#1abc9c',
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  '&:hover': { backgroundColor: '#16a085' }
+                }}
+              >
+                Mark My Attendance
+              </Button>
+            </Grid>
+          </Grid>
+        </Box>
+      </Paper>
+    </Box>
+    );
+  };
+
+  const renderMealPlanTab = () => (
+    <Box>
+      <Typography variant="h5" sx={{ fontWeight: 600, mb: 3 }}>
+        Weekly Meal Planning
+      </Typography>
+      
+      {/* Meal Planning Grid */}
+      {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day) => (
+        <Paper key={day} elevation={0} sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
+            {day}
+          </Typography>
+          
+          <Grid container spacing={3}>
+            {/* Breakfast */}
+            <Grid item xs={12} md={6} lg={3}>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  Breakfast
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<span>+</span>}
+                  sx={{
+                    borderColor: '#1abc9c',
+                    color: '#1abc9c',
+                    textTransform: 'none',
+                    '&:hover': {
+                      borderColor: '#16a085',
+                      backgroundColor: 'rgba(26, 188, 156, 0.04)'
+                    }
+                  }}
+                >
+                  Add Item
+                </Button>
+              </Box>
+            </Grid>
+            
+            {/* Morning Snack */}
+            <Grid item xs={12} md={6} lg={3}>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  Morning Snack
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<span>+</span>}
+                  sx={{
+                    borderColor: '#1abc9c',
+                    color: '#1abc9c',
+                    textTransform: 'none',
+                    '&:hover': {
+                      borderColor: '#16a085',
+                      backgroundColor: 'rgba(26, 188, 156, 0.04)'
+                    }
+                  }}
+                >
+                  Add Item
+                </Button>
+              </Box>
+            </Grid>
+            
+            {/* Lunch */}
+            <Grid item xs={12} md={6} lg={3}>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  Lunch
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<span>+</span>}
+                  sx={{
+                    borderColor: '#1abc9c',
+                    color: '#1abc9c',
+                    textTransform: 'none',
+                    '&:hover': {
+                      borderColor: '#16a085',
+                      backgroundColor: 'rgba(26, 188, 156, 0.04)'
+                    }
+                  }}
+                >
+                  Add Item
+                </Button>
+              </Box>
+            </Grid>
+            
+            {/* Afternoon Snack */}
+            <Grid item xs={12} md={6} lg={3}>
+              <Box>
+                <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
+                  Afternoon Snack
+                </Typography>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<span>+</span>}
+                  sx={{
+                    borderColor: '#1abc9c',
+                    color: '#1abc9c',
+                    textTransform: 'none',
+                    '&:hover': {
+                      borderColor: '#16a085',
+                      backgroundColor: 'rgba(26, 188, 156, 0.04)'
+                    }
+                  }}
+                >
+                  Add Item
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
+        </Paper>
+      ))}
+
+      {/* Action Buttons */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 4 }}>
+        <Button
+          variant="outlined"
+          startIcon={<span>💾</span>}
+          sx={{
+            borderColor: '#1abc9c',
+            color: '#1abc9c',
+            textTransform: 'none',
+            fontWeight: 600,
+            px: 3,
+            py: 1,
+            '&:hover': {
+              borderColor: '#16a085',
+              backgroundColor: 'rgba(26, 188, 156, 0.04)'
+            }
+          }}
+        >
+          Save Draft
+        </Button>
+        <Button
+          variant="contained"
+          startIcon={<span>▶</span>}
+          sx={{
+            backgroundColor: '#1abc9c',
+            color: '#ffffff',
+            textTransform: 'none',
+            fontWeight: 600,
+            px: 3,
+            py: 1,
+            '&:hover': {
+              backgroundColor: '#16a085'
+            }
+          }}
+        >
+          Submit for Approval
+        </Button>
+      </Box>
+
+      {/* My Meal Plans Table */}
+      <Paper elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
+        <Box sx={{ p: 3, borderBottom: '1px solid #e0e0e0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            My Meal Plans
+          </Typography>
+          <Button
+            size="small"
+            startIcon={<span>🔄</span>}
+            sx={{
+              color: '#1abc9c',
+              textTransform: 'none',
+              fontWeight: 500
+            }}
+          >
+            Refresh
+          </Button>
+        </Box>
+        <Box sx={{ overflowX: 'auto' }}>
+          <Box sx={{ minWidth: 900, p: 3 }}>
+            <Grid container sx={{ mb: 2, pb: 2, borderBottom: '2px solid #f5f5f5' }}>
+              <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Title</Typography></Grid>
+              <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Week Of</Typography></Grid>
+              <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Program</Typography></Grid>
+              <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Status</Typography></Grid>
+              <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Created</Typography></Grid>
+              <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Actions</Typography></Grid>
             </Grid>
 
-            {/* Row 2 */}
+            {/* Sample row - replace with actual data */}
             <Grid container sx={{ py: 2, borderBottom: '1px solid #f5f5f5', alignItems: 'center' }}>
-              <Grid item xs={2}><Typography variant="body2">Noah Smith</Typography></Grid>
-              <Grid item xs={1.5}><Typography variant="body2">4 years</Typography></Grid>
-              <Grid item xs={1.5}>
-                <Chip label="Present" size="small" sx={{ backgroundColor: '#E8F5E9', color: '#2E7D32', fontWeight: 500 }} />
-              </Grid>
-              <Grid item xs={2}><Typography variant="body2">8:45 AM</Typography></Grid>
-              <Grid item xs={1}><Typography variant="h6">😁</Typography></Grid>
-              <Grid item xs={2}><Typography variant="body2">John Smith</Typography></Grid>
+              <Grid item xs={2}><Typography variant="body2">Week 1 Menu</Typography></Grid>
+              <Grid item xs={2}><Typography variant="body2">{new Date().toLocaleDateString()}</Typography></Grid>
               <Grid item xs={2}>
-                <Button size="small" sx={{ color: '#5856D6', textTransform: 'none', fontWeight: 500 }}>Add Note</Button>
+                <Chip label="ALL" size="small" sx={{ backgroundColor: '#f5f5f5' }} />
               </Grid>
-            </Grid>
-
-            {/* Row 3 */}
-            <Grid container sx={{ py: 2, borderBottom: '1px solid #f5f5f5', alignItems: 'center' }}>
-              <Grid item xs={2}><Typography variant="body2">Olivia Brown</Typography></Grid>
-              <Grid item xs={1.5}><Typography variant="body2">2 years</Typography></Grid>
-              <Grid item xs={1.5}>
-                <Chip label="Absent" size="small" sx={{ backgroundColor: '#FFEBEE', color: '#C62828', fontWeight: 500 }} />
-              </Grid>
-              <Grid item xs={2}><Typography variant="body2">-</Typography></Grid>
-              <Grid item xs={1}><Typography variant="body2">-</Typography></Grid>
-              <Grid item xs={2}><Typography variant="body2">Sarah Brown</Typography></Grid>
               <Grid item xs={2}>
-                <Button size="small" sx={{ color: '#5856D6', textTransform: 'none', fontWeight: 500 }}>Mark Present</Button>
+                <Chip label="PENDING" size="small" sx={{ backgroundColor: '#FFF3E0', color: '#F57C00', fontWeight: 500 }} />
               </Grid>
-            </Grid>
-
-            {/* Row 4 */}
-            <Grid container sx={{ py: 2, alignItems: 'center' }}>
-              <Grid item xs={2}><Typography variant="body2">Liam Davis</Typography></Grid>
-              <Grid item xs={1.5}><Typography variant="body2">5 years</Typography></Grid>
-              <Grid item xs={1.5}>
-                <Chip label="Present" size="small" sx={{ backgroundColor: '#E8F5E9', color: '#2E7D32', fontWeight: 500 }} />
-              </Grid>
-              <Grid item xs={2}><Typography variant="body2">9:00 AM</Typography></Grid>
-              <Grid item xs={1}><Typography variant="h6">😊</Typography></Grid>
-              <Grid item xs={2}><Typography variant="body2">Mike Davis</Typography></Grid>
+              <Grid item xs={2}><Typography variant="body2">{new Date().toLocaleDateString()}</Typography></Grid>
               <Grid item xs={2}>
-                <Button size="small" sx={{ color: '#5856D6', textTransform: 'none', fontWeight: 500 }}>Add Note</Button>
+                <Button size="small" sx={{ color: '#1abc9c', textTransform: 'none', fontWeight: 500 }}>View</Button>
               </Grid>
             </Grid>
           </Box>
@@ -260,7 +669,7 @@ const TeacherDashboard = () => {
       {/* Activity Management */}
       <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <SchoolIcon sx={{ color: '#FFB800' }} />
+          <SchoolIcon sx={{ color: '#1abc9c' }} />
           <Typography variant="h6" sx={{ fontWeight: 600 }}>
             Activity Management
           </Typography>
@@ -273,7 +682,7 @@ const TeacherDashboard = () => {
           <Grid item xs={12} sm={6} md={3}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ color: '#5856D6', fontWeight: 600, mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#1abc9c', fontWeight: 600, mb: 1 }}>
                   Learning Activities
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -282,12 +691,13 @@ const TeacherDashboard = () => {
                 <Button
                   variant="contained"
                   fullWidth
+                  onClick={() => alert('Start Activity feature - Coming soon!')}
                   sx={{
-                    backgroundColor: '#5856D6',
+                    backgroundColor: '#1abc9c',
                     color: '#ffffff',
                     textTransform: 'none',
                     fontWeight: 600,
-                    '&:hover': { backgroundColor: '#4745B8' }
+                    '&:hover': { backgroundColor: '#16a085' }
                   }}
                 >
                   Start Activity
@@ -299,7 +709,7 @@ const TeacherDashboard = () => {
           <Grid item xs={12} sm={6} md={3}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ color: '#5856D6', fontWeight: 600, mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#1abc9c', fontWeight: 600, mb: 1 }}>
                   Progress Tracking
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -308,14 +718,15 @@ const TeacherDashboard = () => {
                 <Button
                   variant="outlined"
                   fullWidth
+                  onClick={() => alert('Track Progress feature - Coming soon!')}
                   sx={{
-                    borderColor: '#5856D6',
-                    color: '#5856D6',
+                    borderColor: '#1abc9c',
+                    color: '#1abc9c',
                     textTransform: 'none',
                     fontWeight: 600,
                     '&:hover': { 
-                      borderColor: '#4745B8',
-                      backgroundColor: 'rgba(88, 86, 214, 0.04)'
+                      borderColor: '#16a085',
+                      backgroundColor: 'rgba(26, 188, 156, 0.1)'
                     }
                   }}
                 >
@@ -328,7 +739,7 @@ const TeacherDashboard = () => {
           <Grid item xs={12} sm={6} md={3}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ color: '#007AFF', fontWeight: 600, mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#1abc9c', fontWeight: 600, mb: 1 }}>
                   Special Events
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -337,14 +748,15 @@ const TeacherDashboard = () => {
                 <Button
                   variant="outlined"
                   fullWidth
+                  onClick={() => alert('Plan Event feature - Coming soon!')}
                   sx={{
-                    borderColor: '#5856D6',
-                    color: '#5856D6',
+                    borderColor: '#1abc9c',
+                    color: '#1abc9c',
                     textTransform: 'none',
                     fontWeight: 600,
                     '&:hover': { 
-                      borderColor: '#4745B8',
-                      backgroundColor: 'rgba(88, 86, 214, 0.04)'
+                      borderColor: '#16a085',
+                      backgroundColor: 'rgba(26, 188, 156, 0.1)'
                     }
                   }}
                 >
@@ -357,7 +769,7 @@ const TeacherDashboard = () => {
           <Grid item xs={12} sm={6} md={3}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ color: '#FF2D55', fontWeight: 600, mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#1abc9c', fontWeight: 600, mb: 1 }}>
                   Participation
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -366,20 +778,264 @@ const TeacherDashboard = () => {
                 <Button
                   variant="outlined"
                   fullWidth
+                  onClick={() => alert('Record Participation feature - Coming soon!')}
                   sx={{
-                    borderColor: '#5856D6',
-                    color: '#5856D6',
+                    borderColor: '#1abc9c',
+                    color: '#1abc9c',
                     textTransform: 'none',
                     fontWeight: 600,
                     '&:hover': { 
-                      borderColor: '#4745B8',
-                      backgroundColor: 'rgba(88, 86, 214, 0.04)'
+                      borderColor: '#16a085',
+                      backgroundColor: 'rgba(26, 188, 156, 0.1)'
                     }
                   }}
                 >
                   Record Participation
                 </Button>
               </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* Daily Reports & Observations */}
+      <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#1abc9c' }}>
+          Daily Reports & Observations
+        </Typography>
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Activity Report"
+              placeholder="Describe today's activities, child behavior, and observations..."
+              variant="outlined"
+              sx={{ mb: 2 }}
+            />
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Box sx={{ border: '2px dashed #e0e0e0', borderRadius: 2, p: 3, textAlign: 'center' }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Upload Photos/Videos
+              </Typography>
+              <Button
+                variant="contained"
+                sx={{
+                  backgroundColor: '#1abc9c',
+                  textTransform: 'none',
+                  '&:hover': { backgroundColor: '#16a085' }
+                }}
+              >
+                Choose Files
+              </Button>
+            </Box>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* Meal Consumption & Nap Time */}
+      <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
+          Meal Consumption & Nap Time Tracking
+        </Typography>
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={6}>
+            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', p: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                🍽️ Meal Consumption
+              </Typography>
+              <TextField
+                select
+                fullWidth
+                label="Child Name"
+                size="small"
+                sx={{ mb: 2 }}
+                defaultValue=""
+              >
+                <MenuItem value="">Select Child</MenuItem>
+                {students.map((s) => (
+                  <MenuItem key={s._id} value={s._id}>{s.firstName} {s.lastName}</MenuItem>
+                ))}
+              </TextField>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Meal Type"
+                    size="small"
+                    defaultValue=""
+                  >
+                    <MenuItem value="breakfast">Breakfast</MenuItem>
+                    <MenuItem value="morning-snack">Morning Snack</MenuItem>
+                    <MenuItem value="lunch">Lunch</MenuItem>
+                    <MenuItem value="afternoon-snack">Afternoon Snack</MenuItem>
+                  </TextField>
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    select
+                    fullWidth
+                    label="Amount Eaten"
+                    size="small"
+                    defaultValue=""
+                  >
+                    <MenuItem value="all">All</MenuItem>
+                    <MenuItem value="most">Most</MenuItem>
+                    <MenuItem value="half">Half</MenuItem>
+                    <MenuItem value="little">Little</MenuItem>
+                    <MenuItem value="none">None</MenuItem>
+                  </TextField>
+                </Grid>
+              </Grid>
+              <Button
+                fullWidth
+                variant="contained"
+                sx={{
+                  mt: 2,
+                  backgroundColor: '#1abc9c',
+                  textTransform: 'none',
+                  '&:hover': { backgroundColor: '#16a085' }
+                }}
+              >
+                Record Meal
+              </Button>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', p: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
+                😴 Nap Time Tracking
+              </Typography>
+              <TextField
+                select
+                fullWidth
+                label="Child Name"
+                size="small"
+                sx={{ mb: 2 }}
+                defaultValue=""
+              >
+                <MenuItem value="">Select Child</MenuItem>
+                {students.map((s) => (
+                  <MenuItem key={s._id} value={s._id}>{s.firstName} {s.lastName}</MenuItem>
+                ))}
+              </TextField>
+              <Grid container spacing={2}>
+                <Grid item xs={6}>
+                  <TextField
+                    fullWidth
+                    label="Sleep Start"
+                    type="time"
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    fullWidth
+                    label="Wake Up"
+                    type="time"
+                    size="small"
+                    InputLabelProps={{ shrink: true }}
+                  />
+                </Grid>
+              </Grid>
+              <TextField
+                fullWidth
+                label="Notes"
+                size="small"
+                sx={{ mt: 2 }}
+                placeholder="Sleep quality, behavior..."
+              />
+              <Button
+                fullWidth
+                variant="contained"
+                sx={{
+                  mt: 2,
+                  backgroundColor: '#1abc9c',
+                  textTransform: 'none',
+                  '&:hover': { backgroundColor: '#16a085' }
+                }}
+              >
+                Record Nap Time
+              </Button>
+            </Card>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* After-School Programs */}
+      <Paper elevation={0} sx={{ p: 3, borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
+          📚 After-School Programs & Homework Help
+        </Typography>
+        <Grid container spacing={3}>
+          <Grid item xs={12} md={4}>
+            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', p: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Homework Help
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Assist children with their homework
+              </Typography>
+              <Button
+                fullWidth
+                variant="outlined"
+                sx={{
+                  borderColor: '#1abc9c',
+                  color: '#1abc9c',
+                  textTransform: 'none',
+                  '&:hover': { borderColor: '#16a085' }
+                }}
+              >
+                Start Session
+              </Button>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', p: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Extra Learning
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Conduct additional learning activities
+              </Typography>
+              <Button
+                fullWidth
+                variant="outlined"
+                sx={{
+                  borderColor: '#1abc9c',
+                  color: '#1abc9c',
+                  textTransform: 'none',
+                  '&:hover': { borderColor: '#16a085' }
+                }}
+              >
+                Plan Activity
+              </Button>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', p: 2 }}>
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
+                Skills Development
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Track progress in special skills
+              </Typography>
+              <Button
+                fullWidth
+                variant="outlined"
+                sx={{
+                  borderColor: '#1abc9c',
+                  color: '#1abc9c',
+                  textTransform: 'none',
+                  '&:hover': { borderColor: '#16a085' }
+                }}
+              >
+                Record Progress
+              </Button>
             </Card>
           </Grid>
         </Grid>
@@ -422,7 +1078,7 @@ const TeacherDashboard = () => {
           <Grid item xs={12} md={4}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ color: '#5856D6', fontWeight: 600, mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#66BB6A', fontWeight: 600, mb: 1 }}>
                   Safety Check
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -432,13 +1088,13 @@ const TeacherDashboard = () => {
                   variant="outlined"
                   fullWidth
                   sx={{
-                    borderColor: '#5856D6',
-                    color: '#5856D6',
+                    borderColor: '#90EE90',
+                    color: '#66BB6A',
                     textTransform: 'none',
                     fontWeight: 600,
                     '&:hover': { 
-                      borderColor: '#4745B8',
-                      backgroundColor: 'rgba(88, 86, 214, 0.04)'
+                      borderColor: '#66BB6A',
+                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
                     }
                   }}
                 >
@@ -451,7 +1107,7 @@ const TeacherDashboard = () => {
           <Grid item xs={12} md={4}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ color: '#5856D6', fontWeight: 600, mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#81C784', fontWeight: 600, mb: 1 }}>
                   Hygiene Monitor
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -461,13 +1117,13 @@ const TeacherDashboard = () => {
                   variant="outlined"
                   fullWidth
                   sx={{
-                    borderColor: '#5856D6',
-                    color: '#5856D6',
+                    borderColor: '#90EE90',
+                    color: '#66BB6A',
                     textTransform: 'none',
                     fontWeight: 600,
                     '&:hover': { 
-                      borderColor: '#4745B8',
-                      backgroundColor: 'rgba(88, 86, 214, 0.04)'
+                      borderColor: '#66BB6A',
+                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
                     }
                   }}
                 >
@@ -480,7 +1136,7 @@ const TeacherDashboard = () => {
           <Grid item xs={12} md={4}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ color: '#FF9500', fontWeight: 600, mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#A5D6A7', fontWeight: 600, mb: 1 }}>
                   Health Alerts
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -490,13 +1146,13 @@ const TeacherDashboard = () => {
                   variant="outlined"
                   fullWidth
                   sx={{
-                    borderColor: '#5856D6',
-                    color: '#5856D6',
+                    borderColor: '#90EE90',
+                    color: '#66BB6A',
                     textTransform: 'none',
                     fontWeight: 600,
                     '&:hover': { 
-                      borderColor: '#4745B8',
-                      backgroundColor: 'rgba(88, 86, 214, 0.04)'
+                      borderColor: '#66BB6A',
+                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
                     }
                   }}
                 >
@@ -524,7 +1180,7 @@ const TeacherDashboard = () => {
           <Grid item xs={12} md={4}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ color: '#5856D6', fontWeight: 600, mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#66BB6A', fontWeight: 600, mb: 1 }}>
                   Meal Distribution
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -534,13 +1190,13 @@ const TeacherDashboard = () => {
                   variant="outlined"
                   fullWidth
                   sx={{
-                    borderColor: '#5856D6',
-                    color: '#5856D6',
+                    borderColor: '#90EE90',
+                    color: '#66BB6A',
                     textTransform: 'none',
                     fontWeight: 600,
                     '&:hover': { 
-                      borderColor: '#4745B8',
-                      backgroundColor: 'rgba(88, 86, 214, 0.04)'
+                      borderColor: '#66BB6A',
+                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
                     }
                   }}
                 >
@@ -553,7 +1209,7 @@ const TeacherDashboard = () => {
           <Grid item xs={12} md={4}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ color: '#FF9500', fontWeight: 600, mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#81C784', fontWeight: 600, mb: 1 }}>
                   Allergy Tracking
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -563,13 +1219,13 @@ const TeacherDashboard = () => {
                   variant="outlined"
                   fullWidth
                   sx={{
-                    borderColor: '#5856D6',
-                    color: '#5856D6',
+                    borderColor: '#90EE90',
+                    color: '#66BB6A',
                     textTransform: 'none',
                     fontWeight: 600,
                     '&:hover': { 
-                      borderColor: '#4745B8',
-                      backgroundColor: 'rgba(88, 86, 214, 0.04)'
+                      borderColor: '#66BB6A',
+                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
                     }
                   }}
                 >
@@ -582,7 +1238,7 @@ const TeacherDashboard = () => {
           <Grid item xs={12} md={4}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
               <CardContent>
-                <Typography variant="h6" sx={{ color: '#FF3B30', fontWeight: 600, mb: 1 }}>
+                <Typography variant="h6" sx={{ color: '#A5D6A7', fontWeight: 600, mb: 1 }}>
                   Health Records
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -592,13 +1248,13 @@ const TeacherDashboard = () => {
                   variant="outlined"
                   fullWidth
                   sx={{
-                    borderColor: '#5856D6',
-                    color: '#5856D6',
+                    borderColor: '#90EE90',
+                    color: '#66BB6A',
                     textTransform: 'none',
                     fontWeight: 600,
                     '&:hover': { 
-                      borderColor: '#4745B8',
-                      backgroundColor: 'rgba(88, 86, 214, 0.04)'
+                      borderColor: '#66BB6A',
+                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
                     }
                   }}
                 >
@@ -750,142 +1406,231 @@ const TeacherDashboard = () => {
           </table>
         </Box>
       </Paper>
+    </Box>
+  );
 
-      {/* Financial Section */}
-      <Paper elevation={0} sx={{ p: 3, borderRadius: 2, mb: 3 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-          Financial Summary
-        </Typography>
-        <Grid container spacing={2} sx={{ mb: 2 }}>
-          <Grid item xs={12} md={4}>
-            <Card sx={{ p: 2, backgroundColor: '#e8f5e9' }}>
-              <Typography variant="body2" color="text.secondary">Gross Salary</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#2e7d32' }}>$25,000</Typography>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card sx={{ p: 2, backgroundColor: '#fff3e0' }}>
-              <Typography variant="body2" color="text.secondary">Total Deductions</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#ef6c00' }}>$3,500</Typography>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card sx={{ p: 2, backgroundColor: '#e3f2fd' }}>
-              <Typography variant="body2" color="text.secondary">Net Salary</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#1565c0' }}>$21,500</Typography>
-            </Card>
-          </Grid>
-        </Grid>
-        <Box sx={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f8f9fa' }}>
-                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Staff ID</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Name</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Position</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Gross</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Deductions</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Net</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid #e0e0e0' }}>
-                <td style={{ padding: '12px' }}>ST001</td>
-                <td style={{ padding: '12px' }}>Sarah Johnson</td>
-                <td style={{ padding: '12px' }}>Teacher</td>
-                <td style={{ padding: '12px' }}>$3,500</td>
-                <td style={{ padding: '12px' }}>$500</td>
-                <td style={{ padding: '12px' }}>$3,000</td>
-              </tr>
-            </tbody>
-          </table>
-        </Box>
-      </Paper>
-
-      {/* Staff Performance */}
-      <Paper elevation={0} sx={{ p: 3, borderRadius: 2, mb: 3 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-          Staff Performance
-        </Typography>
-        <Grid container spacing={2} sx={{ mb: 2 }}>
-          <Grid item xs={12} md={6}>
-            <Card sx={{ p: 2, backgroundColor: '#f3e5f5' }}>
-              <Typography variant="body2" color="text.secondary">Average Rating</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#7b1fa2' }}>4.5/5.0</Typography>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Card sx={{ p: 2, backgroundColor: '#fce4ec' }}>
-              <Typography variant="body2" color="text.secondary">Total Reviews</Typography>
-              <Typography variant="h5" sx={{ fontWeight: 600, color: '#c2185b' }}>24</Typography>
-            </Card>
-          </Grid>
-        </Grid>
-        <Box sx={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#f8f9fa' }}>
-                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Staff Name</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Rating</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Reviews</th>
-                <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Performance</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr style={{ borderBottom: '1px solid #e0e0e0' }}>
-                <td style={{ padding: '12px' }}>Sarah Johnson</td>
-                <td style={{ padding: '12px' }}>4.8</td>
-                <td style={{ padding: '12px' }}>12</td>
-                <td style={{ padding: '12px' }}>
-                  <Chip label="Excellent" size="small" sx={{ backgroundColor: '#34C759', color: 'white' }} />
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </Box>
-      </Paper>
-
-      {/* Quick Report */}
-      <Paper elevation={0} sx={{ p: 3, borderRadius: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
-          Quick Report
+  const renderVisitorTab = () => (
+    <Box>
+      <Typography variant="h5" sx={{ fontWeight: 600, mb: 3 }}>
+        Visitor Management & Authorized Pickups
+      </Typography>
+      
+      {/* Visitor Check-in */}
+      <Paper elevation={0} sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
+          👤 Visitor Check-in
         </Typography>
         <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              select
-              label="Report Type"
-              defaultValue="Attendance"
-              variant="outlined"
-            >
-              <MenuItem value="Attendance">Attendance</MenuItem>
-              <MenuItem value="Financial">Financial</MenuItem>
-              <MenuItem value="Enrollment">Enrollment</MenuItem>
-              <MenuItem value="Performance">Staff Performance</MenuItem>
-            </TextField>
+          <Grid item xs={12} md={3}>
+            <TextField fullWidth label="Visitor Name" size="small" />
           </Grid>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              select
-              label="Status"
-              defaultValue="All"
-              variant="outlined"
-            >
-              <MenuItem value="All">All</MenuItem>
-              <MenuItem value="Active">Active</MenuItem>
-              <MenuItem value="Inactive">Inactive</MenuItem>
-            </TextField>
+          <Grid item xs={12} md={3}>
+            <TextField fullWidth label="Purpose" size="small" />
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <TextField fullWidth label="Time In" type="time" size="small" InputLabelProps={{ shrink: true }} />
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Button fullWidth variant="contained" sx={{ backgroundColor: '#1abc9c', textTransform: 'none', '&:hover': { backgroundColor: '#16a085' } }}>
+              Check In
+            </Button>
           </Grid>
         </Grid>
-        <Button
-          variant="contained"
-          fullWidth
-          sx={{ mt: 2, backgroundColor: '#1abc9c', '&:hover': { backgroundColor: '#16a085' } }}
-        >
-          Generate Report
-        </Button>
+      </Paper>
+
+      {/* Authorized Pickup Verification */}
+      <Paper elevation={0} sx={{ p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
+          🔐 Verify Authorized Pickup
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
+            <TextField select fullWidth label="Child" size="small" defaultValue="">
+              <MenuItem value="">Select Child</MenuItem>
+              {students.map((s) => (
+                <MenuItem key={s._id} value={s._id}>{s.firstName} {s.lastName}</MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField fullWidth label="Pickup Person Name" size="small" />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Button fullWidth variant="contained" sx={{ backgroundColor: '#34C759', textTransform: 'none', '&:hover': { backgroundColor: '#2DA84C' } }}>
+              Verify Pickup
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
+    </Box>
+  );
+
+  const renderEmergencyTab = () => (
+    <Box>
+      <Typography variant="h5" sx={{ fontWeight: 600, mb: 3 }}>
+        🚨 Emergency Response
+      </Typography>
+      
+      {/* Emergency Alert */}
+      <Paper elevation={0} sx={{ p: 4, mb: 3, border: '2px solid #FF3B30', borderRadius: 2, backgroundColor: '#FFF5F5' }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#FF3B30' }}>
+          ⚠️ Initiate Emergency Alert
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
+            <TextField select fullWidth label="Emergency Type" size="small" defaultValue="">
+              <MenuItem value="medical">Medical Emergency</MenuItem>
+              <MenuItem value="fire">Fire</MenuItem>
+              <MenuItem value="injury">Child Injury</MenuItem>
+              <MenuItem value="security">Security Threat</MenuItem>
+              <MenuItem value="evacuation">Evacuation</MenuItem>
+              <MenuItem value="other">Other</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={8}>
+            <TextField fullWidth label="Description" size="small" placeholder="Describe the emergency..." />
+          </Grid>
+          <Grid item xs={12}>
+            <Button fullWidth variant="contained" sx={{ backgroundColor: '#FF3B30', fontSize: '1.1rem', py: 2, textTransform: 'none', fontWeight: 700, '&:hover': { backgroundColor: '#DC2626' } }}>
+              🚨 SEND EMERGENCY ALERT
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* Notify Nurse/Admin */}
+      <Paper elevation={0} sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
+          🏥 Notify Nurse / Admin
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={4}>
+            <TextField select fullWidth label="Notify" size="small" defaultValue="">
+              <MenuItem value="nurse">School Nurse</MenuItem>
+              <MenuItem value="admin">Administrator</MenuItem>
+              <MenuItem value="both">Both</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField select fullWidth label="Priority" size="small" defaultValue="">
+              <MenuItem value="high">High</MenuItem>
+              <MenuItem value="medium">Medium</MenuItem>
+              <MenuItem value="low">Low</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Button fullWidth variant="contained" sx={{ backgroundColor: '#FF9500', textTransform: 'none', '&:hover': { backgroundColor: '#E88600' } }}>
+              Send Notification
+            </Button>
+          </Grid>
+          <Grid item xs={12}>
+            <TextField fullWidth multiline rows={3} label="Message" size="small" placeholder="Describe the situation..." />
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* Emergency Contacts */}
+      <Paper elevation={0} sx={{ p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#1abc9c' }}>
+          📞 Quick Emergency Contacts
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={3}>
+            <Card elevation={0} sx={{ p: 2, border: '1px solid #e0e0e0', textAlign: 'center' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>911</Typography>
+              <Typography variant="body2" color="text.secondary">Emergency Services</Typography>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Card elevation={0} sx={{ p: 2, border: '1px solid #e0e0e0', textAlign: 'center' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>School Nurse</Typography>
+              <Typography variant="body2" color="text.secondary">Ext: 123</Typography>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Card elevation={0} sx={{ p: 2, border: '1px solid #e0e0e0', textAlign: 'center' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Administrator</Typography>
+              <Typography variant="body2" color="text.secondary">Ext: 100</Typography>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <Card elevation={0} sx={{ p: 2, border: '1px solid #e0e0e0', textAlign: 'center' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Security</Typography>
+              <Typography variant="body2" color="text.secondary">Ext: 999</Typography>
+            </Card>
+          </Grid>
+        </Grid>
+      </Paper>
+    </Box>
+  );
+
+  const renderTransportTab = () => (
+    <Box>
+      <Typography variant="h5" sx={{ fontWeight: 600, mb: 3 }}>
+        🚌 Transport & Pickup Management
+      </Typography>
+      
+      {/* Daily Pickup Log */}
+      <Paper elevation={0} sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
+          📝 Record Child Pickup
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={3}>
+            <TextField select fullWidth label="Child Name" size="small" defaultValue="">
+              <MenuItem value="">Select Child</MenuItem>
+              {students.map((s) => (
+                <MenuItem key={s._id} value={s._id}>{s.firstName} {s.lastName}</MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <TextField fullWidth label="Picked Up By" size="small" />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField fullWidth label="Time" type="time" size="small" InputLabelProps={{ shrink: true }} />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField select fullWidth label="Transport Mode" size="small" defaultValue="">
+              <MenuItem value="parent">Parent</MenuItem>
+              <MenuItem value="bus">School Bus</MenuItem>
+              <MenuItem value="carpool">Carpool</MenuItem>
+              <MenuItem value="walk">Walk</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <Button fullWidth variant="contained" sx={{ backgroundColor: '#1abc9c', textTransform: 'none', '&:hover': { backgroundColor: '#16a085' } }}>
+              Log Pickup
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* Today's Pickup Schedule */}
+      <Paper elevation={0} sx={{ p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
+          📅 Today's Pickup Schedule
+        </Typography>
+        <Box sx={{ overflowX: 'auto' }}>
+          <Grid container sx={{ mb: 2, pb: 2, borderBottom: '2px solid #f5f5f5' }}>
+            <Grid item xs={3}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Child Name</Typography></Grid>
+            <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Pickup Time</Typography></Grid>
+            <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Transport</Typography></Grid>
+            <Grid item xs={3}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Authorized Person</Typography></Grid>
+            <Grid item xs={2}><Typography variant="body2" sx={{ fontWeight: 600, color: '#666' }}>Status</Typography></Grid>
+          </Grid>
+          {students.slice(0, 5).map((student) => (
+            <Grid key={student._id} container sx={{ py: 2, borderBottom: '1px solid #f5f5f5', alignItems: 'center' }}>
+              <Grid item xs={3}><Typography variant="body2">{student.firstName} {student.lastName}</Typography></Grid>
+              <Grid item xs={2}><Typography variant="body2">3:30 PM</Typography></Grid>
+              <Grid item xs={2}><Typography variant="body2">Parent</Typography></Grid>
+              <Grid item xs={3}><Typography variant="body2">Parent Name</Typography></Grid>
+              <Grid item xs={2}>
+                <Chip label="Pending" size="small" sx={{ backgroundColor: '#FFF3E0', color: '#F57C00' }} />
+              </Grid>
+            </Grid>
+          ))}
+        </Box>
       </Paper>
     </Box>
   );
@@ -1043,6 +1788,65 @@ const TeacherDashboard = () => {
 
   return (
     <Box sx={{ minHeight: '100vh', backgroundColor: '#f8f9fa' }}>
+      {/* Attendance Marking Dialog */}
+      <Dialog open={attendanceDialogOpen} onClose={handleCloseAttendanceDialog}>
+        <DialogTitle sx={{ backgroundColor: '#1abc9c', color: 'white' }}>
+          Mark Attendance
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          <Typography variant="body1" sx={{ mb: 2 }}>
+            Are you sure you want to mark <strong>{selectedStudent}</strong> as present?
+          </Typography>
+          <TextField
+            fullWidth
+            label="Check-in Time"
+            type="time"
+            defaultValue={new Date().toTimeString().slice(0, 5)}
+            InputLabelProps={{ shrink: true }}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            select
+            label="Mood"
+            defaultValue="happy"
+          >
+            <MenuItem value="happy">😊 Happy</MenuItem>
+            <MenuItem value="excited">😁 Excited</MenuItem>
+            <MenuItem value="calm">😌 Calm</MenuItem>
+            <MenuItem value="tired">😴 Tired</MenuItem>
+            <MenuItem value="upset">😢 Upset</MenuItem>
+          </TextField>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={handleCloseAttendanceDialog}>Cancel</Button>
+          <Button 
+            onClick={handleMarkAbsent}
+            variant="outlined"
+            sx={{
+              borderColor: '#FF3B30',
+              color: '#FF3B30',
+              '&:hover': { 
+                borderColor: '#FF3B30',
+                backgroundColor: 'rgba(255, 59, 48, 0.04)'
+              }
+            }}
+          >
+            Mark Absent
+          </Button>
+          <Button 
+            onClick={handleMarkPresent}
+            variant="contained"
+            sx={{
+              backgroundColor: '#1abc9c',
+              '&:hover': { backgroundColor: '#16a085' }
+            }}
+          >
+            Mark Present
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Sidebar Drawer */}
       <Drawer
         anchor="left"
@@ -1057,10 +1861,7 @@ const TeacherDashboard = () => {
         >
           <Box sx={{ p: 3, backgroundColor: '#1abc9c', color: '#ffffff' }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
-              Teacher Dashboard
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 1, opacity: 0.9 }}>
-              {user?.name || 'Ms. Sarah'} - Toddlers Group
+              Welcome Akhil
             </Typography>
           </Box>
           <Divider />
@@ -1100,13 +1901,14 @@ const TeacherDashboard = () => {
               <Typography variant="h5" sx={{ fontWeight: 600, color: '#1abc9c' }}>
                 Teacher Dashboard
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Ms. Sarah - Toddlers Group
+              <Typography variant="body2" sx={{ color: '#1abc9c', fontWeight: 500 }}>
+                Welcome Akhil
               </Typography>
             </Box>
           </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
             <IconButton 
+              onClick={() => navigate('/shop')}
               sx={{ 
                 color: '#1abc9c'
               }}
@@ -1114,6 +1916,7 @@ const TeacherDashboard = () => {
               <ShoppingCartIcon />
             </IconButton>
             <IconButton 
+              onClick={() => navigate('/profile')}
               sx={{ 
                 color: '#1abc9c'
               }}
@@ -1172,10 +1975,14 @@ const TeacherDashboard = () => {
           }}
         >
           <Tab icon={<PeopleIcon />} iconPosition="start" label="Attendance" />
+          <Tab icon={<RestaurantIcon />} iconPosition="start" label="Meal Planning" />
           <Tab icon={<CalendarIcon />} iconPosition="start" label="Activities" />
           <Tab icon={<MenuBookIcon />} iconPosition="start" label="Curriculum" />
           <Tab icon={<MessageIcon />} iconPosition="start" label="Messages" />
           <Tab icon={<AssessmentIcon />} iconPosition="start" label="Reports" />
+          <Tab icon={<PeopleIcon />} iconPosition="start" label="Visitors" />
+          <Tab icon={<EmergencyIcon />} iconPosition="start" label="Emergency" />
+          <Tab icon={<TransportIcon />} iconPosition="start" label="Transport" />
           <Tab icon={<FeedbackIcon />} iconPosition="start" label="Feedback" />
         </Tabs>
       </Paper>
@@ -1183,11 +1990,15 @@ const TeacherDashboard = () => {
       {/* Main Content */}
       <Box sx={{ p: 4 }}>
         {currentTab === 0 && renderAttendanceTab()}
-        {currentTab === 1 && renderActivitiesTab()}
-        {currentTab === 2 && renderCurriculumTab()}
-        {currentTab === 3 && renderMessagesTab()}
-        {currentTab === 4 && renderReportsTab()}
-        {currentTab === 5 && renderFeedbackTab()}
+        {currentTab === 1 && renderMealPlanTab()}
+        {currentTab === 2 && renderActivitiesTab()}
+        {currentTab === 3 && renderCurriculumTab()}
+        {currentTab === 4 && renderMessagesTab()}
+        {currentTab === 5 && renderReportsTab()}
+        {currentTab === 6 && renderVisitorTab()}
+        {currentTab === 7 && renderEmergencyTab()}
+        {currentTab === 8 && renderTransportTab()}
+        {currentTab === 9 && renderFeedbackTab()}
       </Box>
     </Box>
   );
