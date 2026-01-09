@@ -41,6 +41,7 @@ const NannyServicesTab = () => {
     nannyId: '',
     childName: '',
     childAge: '',
+    specialNeeds: '',
     allergies: '',
     medicalInfo: '',
     serviceDate: '',
@@ -89,13 +90,28 @@ const NannyServicesTab = () => {
 
   const handleBookingSubmit = async () => {
     try {
-      await api.post('/api/nanny/bookings', bookingForm);
+      // Validation
+      if (!bookingForm.childName || !bookingForm.serviceDate || !bookingForm.startTime || !bookingForm.endTime) {
+        alert('Please fill in all required fields: Child Name, Service Date, Start Time, and End Time');
+        return;
+      }
+      
+      if (!bookingForm.hours || bookingForm.hours <= 0) {
+        alert('Please enter valid hours');
+        return;
+      }
+
+      console.log('📤 Submitting booking:', bookingForm);
+      const response = await api.post('/api/nanny/bookings', bookingForm);
+      console.log('✅ Booking created:', response.data);
+      
       setBookingDialog(false);
       fetchBookings();
       setBookingForm({
         nannyId: '',
         childName: '',
         childAge: '',
+        specialNeeds: '',
         allergies: '',
         medicalInfo: '',
         serviceDate: '',
@@ -110,8 +126,9 @@ const NannyServicesTab = () => {
       });
       alert('Booking request submitted successfully!');
     } catch (error) {
-      console.error('Error creating booking:', error);
-      alert('Failed to create booking');
+      console.error('❌ Error creating booking:', error);
+      console.error('Error response:', error.response?.data);
+      alert(error.response?.data?.message || 'Failed to create booking. Please try again.');
     }
   };
 
@@ -378,9 +395,19 @@ const NannyServicesTab = () => {
             <Grid item xs={12}>
               <TextField
                 fullWidth
+                label="Special Needs"
+                value={bookingForm.specialNeeds}
+                onChange={(e) => setBookingForm({ ...bookingForm, specialNeeds: e.target.value })}
+                placeholder="Any special care requirements"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
                 label="Allergies"
                 value={bookingForm.allergies}
                 onChange={(e) => setBookingForm({ ...bookingForm, allergies: e.target.value })}
+                placeholder="Food allergies, medication allergies, etc."
               />
             </Grid>
             <Grid item xs={12}>

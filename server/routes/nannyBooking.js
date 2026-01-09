@@ -37,6 +37,9 @@ router.get('/nannies', auth, async (req, res) => {
 // Create booking request (Parent)
 router.post('/bookings', auth, async (req, res) => {
   try {
+    console.log('📥 Booking request received:', req.body);
+    console.log('👤 User:', { userId: req.user.userId, role: req.user.role, name: `${req.user.firstName} ${req.user.lastName}` });
+
     if (req.user.role !== 'parent') {
       return res.status(403).json({ message: 'Only parents can create bookings' });
     }
@@ -60,12 +63,37 @@ router.post('/bookings', auth, async (req, res) => {
       parentPhone
     } = req.body;
 
-    const nanny = await User.findById(nannyId);
-    if (!nanny || nanny.staff?.staffType !== 'nanny') {
-      return res.status(404).json({ message: 'Nanny not found' });
+    // Validation
+    if (!nannyId) {
+      console.error('❌ Missing nannyId');
+      return res.status(400).json({ message: 'Nanny ID is required' });
+    }
+    if (!childName) {
+      console.error('❌ Missing childName');
+      return res.status(400).json({ message: 'Child name is required' });
+    }
+    if (!serviceDate) {
+      console.error('❌ Missing serviceDate');
+      return res.status(400).json({ message: 'Service date is required' });
+    }
+    if (!startTime || !endTime) {
+      console.error('❌ Missing time fields');
+      return res.status(400).json({ message: 'Start time and end time are required' });
+    }
+    if (!hours || hours <= 0) {
+      console.error('❌ Invalid hours');
+      return res.status(400).json({ message: 'Hours must be greater than 0' });
     }
 
-    const booking = new NannyBooking({
+    console.log('🔍 Looking for nanny:', nannyId);
+    const nanny = await User.findById(nannyId);
+    if (!nanny || nanny.staff?.staffType !== 'nanny') {
+      console.error('❌ Nanny not found or invalid type:', nanny);
+      return res.status(404).json({ message: 'Nanny not found' });
+    }
+    console.log('✅ Nanny found:', `${nanny.firstName} ${nanny.lastName}`);
+
+    const bookingData = {
       parent: req.user.userId,
       parentName: `${req.user.firstName} ${req.user.lastName}`,
       parentPhone: parentPhone || req.user.phone,
@@ -74,27 +102,32 @@ router.post('/bookings', auth, async (req, res) => {
       nannyName: `${nanny.firstName} ${nanny.lastName}`,
       child: {
         name: childName,
-        age: childAge,
-        specialNeeds,
-        allergies,
-        medicalInfo
+        age: childAge ? parseInt(childAge) : undefined,
+        specialNeeds: specialNeeds || '',
+        allergies: allergies || '',
+        medicalInfo: medicalInfo || ''
       },
-      serviceDate,
+      serviceDate: new Date(serviceDate),
       startTime,
       endTime,
-      hours,
-      hourlyRate: hourlyRate || 15,
-      parentInstructions,
-      safetyGuidelines,
-      emergencyContact,
+      hours: parseInt(hours),
+      hourlyRate: hourlyRate ? parseFloat(hourlyRate) : 15,
+      parentInstructions: parentInstructions || '',
+      safetyGuidelines: safetyGuidelines || '',
+      emergencyContact: emergencyContact || { name: '', phone: '', relationship: '' },
       status: 'pending'
-    });
+    };
 
+    console.log('📝 Creating booking with data:', bookingData);
+    const booking = new NannyBooking(bookingData);
     await booking.save();
+    console.log('✅ Booking saved successfully:', booking._id);
+    
     res.status(201).json({ message: 'Booking request created successfully', booking });
   } catch (error) {
-    console.error('Error creating booking:', error);
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('❌ Error creating booking:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ message: 'Server error', error: error.message, stack: error.stack });
   }
 });
 

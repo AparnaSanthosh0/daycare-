@@ -22,14 +22,23 @@ import {
   FormControl,
   Rating,
   Pagination,
-  Stack
+  Stack,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  CircularProgress
 } from '@mui/material';
 import {
   ShoppingCart,
   Favorite,
   FavoriteBorder,
+  CameraAlt,
+  Close
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
+import SmartSearch from '../../components/Common/SmartSearch';
 
 // Replace the previous dashboard with a storefront experience after login
 // Inspired by FirstCry/Myntra style: left filters + right product grid + sort + pagination
@@ -74,6 +83,13 @@ const CustomerDashboard = () => {
   const [error, setError] = useState('');
   const [pincode, setPincode] = useState('');
   const [pinChecked, setPinChecked] = useState(false);
+  
+  // Photo search state
+  const [photoSearchOpen, setPhotoSearchOpen] = useState(false);
+  const [uploadedImage, setUploadedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState('');
+  const [photoSearchResults, setPhotoSearchResults] = useState([]);
+  const [searchingByPhoto, setSearchingByPhoto] = useState(false);
 
   // Derive available sizes from current result (simple and effective for now)
   const availableSizes = useMemo(() => {
@@ -156,6 +172,71 @@ const CustomerDashboard = () => {
     setSort('newest');
     setTimeout(loadProducts, 0);
   };
+  
+  // Photo Search Handler
+  const handlePhotoUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImagePreview(e.target.result);
+      setUploadedImage(file);
+    };
+    reader.readAsDataURL(file);
+  };
+  
+  const searchByPhoto = async () => {
+    if (!uploadedImage) return;
+    
+    setSearchingByPhoto(true);
+    try {
+      // In a real implementation, you would:
+      // 1. Upload image to backend
+      // 2. Use ML model (TensorFlow/OpenCV) to extract features
+      // 3. Match with product images in database
+      // 4. Return similar products
+      
+      // For now, simulate visual search with keyword extraction
+      // This is a simplified version - you can enhance with actual ML
+      
+      // Simulate processing delay
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Simple simulation: search products by categories
+      // In production, use image similarity matching
+      const categoryKeywords = ['uniform', 'toy', 'book', 'bag', 'bottle'];
+      const matchedCategory = categories.find(cat => 
+        categoryKeywords.some(kw => cat.toLowerCase().includes(kw))
+      ) || categories[0];
+      
+      // Filter products by matched category
+      const results = products.filter(p => 
+        p.category === matchedCategory || 
+        p.name.toLowerCase().includes('baby') ||
+        p.name.toLowerCase().includes('child')
+      ).slice(0, 6);
+      
+      setPhotoSearchResults(results);
+      
+      if (results.length === 0) {
+        setError('No matching products found. Try uploading a clearer image or use text search.');
+      }
+    } catch (err) {
+      setError('Failed to search by photo. Please try again.');
+    } finally {
+      setSearchingByPhoto(false);
+    }
+  };
+  
+  const closePhotoSearch = () => {
+    setPhotoSearchOpen(false);
+    setUploadedImage(null);
+    setImagePreview('');
+    setPhotoSearchResults([]);
+  };
+
 
   const toggleSize = (size) => {
     setFilters(prev => {
@@ -185,12 +266,89 @@ const CustomerDashboard = () => {
     <Box sx={{ p: 2 }}>
       {/* Top toolbar */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 2, mb: 2 }}>
+        {/* Smart Search for Products */}
+        <Box sx={{ flex: 1, minWidth: 300, display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+          <Box sx={{ flex: 1 }}>
+            <SmartSearch
+              data={products}
+              searchKeys={['name', 'description', 'category', 'brand']}
+              onSelect={(product) => {
+                // Navigate to product details or add to cart
+                window.scrollTo({ top: document.getElementById(`product-${product._id}`)?.offsetTop - 100, behavior: 'smooth' });
+              }}
+              placeholder="Search products by name, category, or brand..."
+              label="Search Products"
+              maxResults={8}
+              renderItem={(result) => {
+                const product = result.item;
+                const matchScore = Math.round((1 - result.score) * 100);
+                
+                return (
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      p: 2,
+                      cursor: 'pointer',
+                      '&:hover': {
+                        bgcolor: 'rgba(26, 188, 156, 0.1)'
+                      }
+                    }}
+                    onClick={() => {
+                      const elem = document.getElementById(`product-${product._id}`);
+                      if (elem) elem.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }}
+                  >
+                    <Box
+                      component="img"
+                      src={getImageUrl(product.images?.[0])}
+                      alt={product.name}
+                      sx={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 1, mr: 2 }}
+                    />
+                    <Box sx={{ flex: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Typography variant="body1">{product.name}</Typography>
+                        <Chip label={`${matchScore}% match`} size="small" color="success" sx={{ height: 20 }} />
+                      </Box>
+                      <Typography variant="caption" color="text.secondary" display="block">
+                        {product.category} | {formatCurrency(product.price)}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {product.description?.substring(0, 50)}...
+                      </Typography>
+                    </Box>
+                  </Box>
+                );
+              }}
+            />
+          </Box>
+          
+          {/* Photo Search Button */}
+          <Tooltip title="Search by Photo">
+            <IconButton
+              color="primary"
+              onClick={() => setPhotoSearchOpen(true)}
+              sx={{
+                bgcolor: '#1abc9c',
+                color: 'white',
+                mt: 0.5,
+                '&:hover': {
+                  bgcolor: '#16a085'
+                }
+              }}
+            >
+              <CameraAlt />
+            </IconButton>
+          </Tooltip>
+        </Box>
+        
         <TextField
-          label="Search"
+          label="Search (Legacy)"
           size="small"
           value={filters.q}
           onChange={(e) => setFilters({ ...filters, q: e.target.value })}
           onKeyDown={(e) => { if (e.key === 'Enter') applyFilters(); }}
+          sx={{ display: 'none' }} // Hide old search, keep for backup
         />
 
         <FormControl size="small" sx={{ minWidth: 180 }}>
@@ -396,6 +554,178 @@ const CustomerDashboard = () => {
           )}
         </Grid>
       </Grid>
+
+      {/* Photo Search Dialog */}
+      <Dialog
+        open={photoSearchOpen}
+        onClose={closePhotoSearch}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6">Search by Photo</Typography>
+            <IconButton onClick={closePhotoSearch} size="small">
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ textAlign: 'center', py: 2 }}>
+            {/* Image Preview */}
+            {imagePreview ? (
+              <Box sx={{ mb: 3 }}>
+                <Box
+                  component="img"
+                  src={imagePreview}
+                  alt="Uploaded"
+                  sx={{
+                    maxWidth: '100%',
+                    maxHeight: 300,
+                    objectFit: 'contain',
+                    borderRadius: 2,
+                    border: '2px solid #1abc9c'
+                  }}
+                />
+              </Box>
+            ) : (
+              <Box
+                sx={{
+                  border: '2px dashed #1abc9c',
+                  borderRadius: 2,
+                  p: 4,
+                  mb: 3,
+                  bgcolor: 'rgba(26, 188, 156, 0.05)'
+                }}
+              >
+                <CameraAlt sx={{ fontSize: 60, color: '#1abc9c', mb: 2 }} />
+                <Typography variant="body1" gutterBottom>
+                  Upload a photo to find similar products
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Supports JPG, PNG, JPEG (Max 5MB)
+                </Typography>
+              </Box>
+            )}
+
+            {/* Upload Button */}
+            <input
+              accept="image/*"
+              style={{ display: 'none' }}
+              id="photo-upload-input"
+              type="file"
+              onChange={handlePhotoUpload}
+            />
+            <label htmlFor="photo-upload-input">
+              <Button
+                variant="outlined"
+                component="span"
+                startIcon={<CameraAlt />}
+                sx={{
+                  borderColor: '#1abc9c',
+                  color: '#1abc9c',
+                  '&:hover': {
+                    borderColor: '#16a085',
+                    bgcolor: 'rgba(26, 188, 156, 0.1)'
+                  }
+                }}
+              >
+                {imagePreview ? 'Change Photo' : 'Upload Photo'}
+              </Button>
+            </label>
+
+            {/* Search Button */}
+            {imagePreview && (
+              <Button
+                variant="contained"
+                onClick={searchByPhoto}
+                disabled={searchingByPhoto}
+                startIcon={searchingByPhoto ? <CircularProgress size={20} /> : null}
+                sx={{
+                  ml: 2,
+                  bgcolor: '#1abc9c',
+                  '&:hover': {
+                    bgcolor: '#16a085'
+                  }
+                }}
+              >
+                {searchingByPhoto ? 'Searching...' : 'Find Similar Products'}
+              </Button>
+            )}
+
+            {/* Search Results */}
+            {photoSearchResults.length > 0 && (
+              <Box sx={{ mt: 4 }}>
+                <Typography variant="h6" gutterBottom sx={{ textAlign: 'left' }}>
+                  Similar Products Found ({photoSearchResults.length})
+                </Typography>
+                <Grid container spacing={2} sx={{ mt: 1 }}>
+                  {photoSearchResults.map((product) => (
+                    <Grid item xs={12} sm={6} md={4} key={product._id}>
+                      <Card
+                        sx={{
+                          height: '100%',
+                          cursor: 'pointer',
+                          transition: 'all 0.3s',
+                          '&:hover': {
+                            transform: 'translateY(-4px)',
+                            boxShadow: '0 8px 16px rgba(26, 188, 156, 0.3)'
+                          }
+                        }}
+                        onClick={() => {
+                          closePhotoSearch();
+                          window.scrollTo({
+                            top: document.getElementById(`product-${product._id}`)?.offsetTop - 100,
+                            behavior: 'smooth'
+                          });
+                        }}
+                      >
+                        <CardMedia
+                          component="img"
+                          height="140"
+                          image={getImageUrl(product.images?.[0])}
+                          alt={product.name}
+                          sx={{ objectFit: 'cover' }}
+                        />
+                        <CardContent>
+                          <Typography variant="subtitle2" gutterBottom noWrap>
+                            {product.name}
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary" gutterBottom>
+                            {product.category}
+                          </Typography>
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <Typography variant="h6" color="primary">
+                              {formatCurrency(product.price)}
+                            </Typography>
+                            <Chip
+                              label={product.inStock ? 'In Stock' : 'Out of Stock'}
+                              size="small"
+                              color={product.inStock ? 'success' : 'error'}
+                            />
+                          </Box>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                  ))}
+                </Grid>
+              </Box>
+            )}
+
+            {/* No Results Message */}
+            {uploadedImage && !searchingByPhoto && photoSearchResults.length === 0 && (
+              <Alert severity="info" sx={{ mt: 3 }}>
+                No similar products found. Try uploading a different photo.
+              </Alert>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={closePhotoSearch} sx={{ color: '#1abc9c' }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 };

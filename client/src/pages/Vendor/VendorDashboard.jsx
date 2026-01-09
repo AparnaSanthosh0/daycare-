@@ -26,6 +26,7 @@ import api, { API_BASE_URL } from '../../config/api';
 import ProductsTab from './ProductsTab';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import SmartSearch from '../../components/Common/SmartSearch';
 
 // Simple TabPanel helper
 function TabPanel({ children, value, index }) {
@@ -322,6 +323,19 @@ const VendorDashboard = () => {
             {/* Supplier & Vendor Management (POs and Deliveries) */}
             <TabPanel value={tab} index={0}>
               <Typography variant="h6" sx={{ mb: 1 }}>Purchase Orders</Typography>
+              
+              {/* Smart Search for Purchase Orders */}
+              <Box sx={{ mb: 2 }}>
+                <SmartSearch
+                  data={purchaseOrders}
+                  searchKeys={['id', 'product', 'status', 'eta']}
+                  onSelect={(po) => toast.info(`Selected PO: ${po.id} - ${po.product}`)}
+                  placeholder="Search purchase orders by ID, product, or status..."
+                  label="Search Orders"
+                  maxResults={5}
+                />
+              </Box>
+              
               <Table size="small">
                 <TableHead>
                   <TableRow>

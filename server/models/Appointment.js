@@ -62,6 +62,26 @@ const appointmentSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  messages: [{
+    sender: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    senderRole: {
+      type: String,
+      enum: ['parent', 'doctor'],
+      required: true
+    },
+    message: {
+      type: String,
+      required: true
+    },
+    sentAt: {
+      type: Date,
+      default: Date.now
+    }
+  }],
   requestedBy: {
     type: String,
     enum: ['parent', 'staff', 'admin'],

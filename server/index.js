@@ -50,7 +50,7 @@ app.use(cors({
   ],
   credentials: true,
   optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 
@@ -131,6 +131,12 @@ app.use('/api/purchase-prediction', requireDb, require('./routes/purchasePredict
 
 // Demand Prediction (BPNN ML)
 app.use('/api/demand-prediction', requireDb, require('./routes/demandPrediction'));
+
+// Visitor Management
+app.use('/api/visitors', requireDb, require('./routes/visitors'));
+
+// After School Programs
+app.use('/api/afterschool', requireDb, require('./routes/afterSchoolPrograms'));
 
 // Serve uploaded files (certificates, child photos, profile images, etc.)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));

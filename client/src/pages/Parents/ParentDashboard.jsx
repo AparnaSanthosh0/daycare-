@@ -61,6 +61,7 @@ import { useNavigate } from 'react-router-dom';
 import MealRecommendation from '../../components/MealRecommendation';
 import NannyServicesTab from '../../components/NannyServicesTab';
 import TransportTracking from '../../components/TransportTracking';
+import SmartSearch from '../../components/Common/SmartSearch';
 
 // Simple helper to format date strings
 const formatDate = (d) => {
@@ -167,6 +168,14 @@ const ParentDashboard = ({ initialTab }) => {
     emergencyContactPhone: ''
   });
   const [addChildLoading, setAddChildLoading] = useState(false);
+
+  // After School Program states
+  const [afterSchoolPrograms, setAfterSchoolPrograms] = useState([]);
+  const [myEnrollments, setMyEnrollments] = useState([]);
+  const [afterSchoolDialog, setAfterSchoolDialog] = useState(false);
+  const [selectedProgram, setSelectedProgram] = useState(null);
+  const [enrollmentLoading, setEnrollmentLoading] = useState(false);
+  const [afterSchoolMessage, setAfterSchoolMessage] = useState({ type: '', text: '' });
   const [addChildSuccess, setAddChildSuccess] = useState('');
   const [addChildError, setAddChildError] = useState('');
 
@@ -1061,6 +1070,87 @@ const ParentDashboard = ({ initialTab }) => {
       setAppointmentError(error.response?.data?.message || 'Failed to book appointment');
     } finally {
       setAppointmentLoading(false);
+    }
+  };
+
+  // After School Programs Functions
+  const fetchAfterSchoolPrograms = async () => {
+    try {
+      const response = await api.get('/api/afterschool/programs');
+      setAfterSchoolPrograms(response.data || []);
+    } catch (error) {
+      console.error('Error fetching after school programs:', error);
+    }
+  };
+
+  const fetchMyEnrollments = async () => {
+    try {
+      const response = await api.get('/api/afterschool/my-enrollments');
+      setMyEnrollments(response.data || []);
+    } catch (error) {
+      console.error('Error fetching enrollments:', error);
+    }
+  };
+
+  const handleEnrollProgram = async (programId) => {
+    setEnrollmentLoading(true);
+    setAfterSchoolMessage({ type: '', text: '' });
+
+    try {
+      if (!activeChildId) {
+        setAfterSchoolMessage({ type: 'error', text: 'Please select a child first' });
+        setEnrollmentLoading(false);
+        return;
+      }
+
+      await api.post(`/api/afterschool/programs/${programId}/enroll`, {
+        childId: activeChildId
+      });
+
+      setAfterSchoolMessage({ 
+        type: 'success', 
+        text: 'Child enrolled successfully! Check "My Enrollments" section.' 
+      });
+      
+      setAfterSchoolDialog(false);
+      setSelectedProgram(null);
+      
+      fetchAfterSchoolPrograms();
+      fetchMyEnrollments();
+    } catch (error) {
+      console.error('Error enrolling:', error);
+      setAfterSchoolMessage({ 
+        type: 'error', 
+        text: error.response?.data?.message || 'Failed to enroll child' 
+      });
+    } finally {
+      setEnrollmentLoading(false);
+    }
+  };
+
+  const handleUnenrollProgram = async (programId) => {
+    if (!window.confirm('Are you sure you want to unenroll your child from this program?')) {
+      return;
+    }
+
+    try {
+      await api.post(`/api/afterschool/programs/${programId}/unenroll`, {
+        childId: activeChildId
+      });
+
+      setAfterSchoolMessage({ 
+        type: 'success', 
+        text: 'Child unenrolled successfully' 
+      });
+      
+      fetchAfterSchoolPrograms();
+      fetchMyEnrollments();
+    } catch (error) {
+      console.error('Error unenrolling:', error);
+      setAfterSchoolMessage({ 
+        type: 'error', 
+        text: error.response?.data?.message || 'Failed to unenroll child' 
+      });
     }
   };
 
@@ -2145,6 +2235,69 @@ const ParentDashboard = ({ initialTab }) => {
                             <Refresh />
                           </IconButton>
                         </Box>
+                        
+                        {/* Smart Search for Gallery Photos */}
+                        {gallery.length > 0 && (
+                          <Box sx={{ mb: 3 }}>
+                            <SmartSearch
+                              data={gallery}
+                              searchKeys={['caption', 'date']}
+                              onSelect={(photo) => {
+                                const fullUrl = toAbsoluteUrl(photo.url || '');
+                                setPhotoPreview({ open: true, url: fullUrl });
+                              }}
+                              placeholder="Search photos by caption or date..."
+                              label="Search Gallery"
+                              maxResults={6}
+                              renderItem={(result) => {
+                                const photo = result.item;
+                                const matchScore = Math.round((1 - result.score) * 100);
+                                
+                                return (
+                                  <ListItem
+                                    button
+                                    onClick={() => {
+                                      const fullUrl = toAbsoluteUrl(photo.url || '');
+                                      setPhotoPreview({ open: true, url: fullUrl });
+                                    }}
+                                    sx={{
+                                      '&:hover': {
+                                        bgcolor: 'rgba(26, 188, 156, 0.1)'
+                                      }
+                                    }}
+                                  >
+                                    <Avatar
+                                      variant="square"
+                                      src={toAbsoluteUrl(photo.url || '')}
+                                      sx={{ width: 60, height: 60, mr: 2 }}
+                                    />
+                                    <ListItemText
+                                      primary={
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                          <Typography variant="body1">
+                                            {photo.caption || 'No caption'}
+                                          </Typography>
+                                          <Chip 
+                                            label={`${matchScore}% match`} 
+                                            size="small" 
+                                            color="success"
+                                            sx={{ height: 20 }}
+                                          />
+                                        </Box>
+                                      }
+                                      secondary={
+                                        <Typography variant="caption">
+                                          {new Date(photo.date).toLocaleDateString()}
+                                        </Typography>
+                                      }
+                                    />
+                                  </ListItem>
+                                );
+                              }}
+                            />
+                          </Box>
+                        )}
+                        
                         <Grid container spacing={2}>
                           {gallery.map((p) => (
                             <Grid item xs={12} sm={6} md={4} lg={3} key={p._id}>
@@ -2468,13 +2621,419 @@ const ParentDashboard = ({ initialTab }) => {
             {/* Tab 2: Services */}
             {tab === 2 && (
               <Box>
-                {/* Nanny Services Section */}
-                <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <Favorite sx={{ color: '#e91e63' }} />
-                  Nanny Services
+                {/* Additional Services Header */}
+                <Typography variant="h4" gutterBottom sx={{ mb: 4, fontWeight: 600 }}>
+                  Additional Services
                 </Typography>
 
-                <NannyServicesTab />
+                {/* Service Cards Grid */}
+                <Grid container spacing={3} sx={{ mb: 5 }}>
+                  {/* Nanny at Home */}
+                  <Grid item xs={12} md={6} lg={4}>
+                    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                      <CardContent sx={{ flexGrow: 1, textAlign: 'center', p: 4 }}>
+                        <Box sx={{ mb: 2 }}>
+                          <Avatar sx={{ width: 80, height: 80, bgcolor: '#FFB800', margin: '0 auto', fontSize: '2.5rem' }}>
+                            👶
+                          </Avatar>
+                        </Box>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                          Nanny at Home
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                          Book a certified nanny for home childcare
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          fullWidth
+                          onClick={() => {
+                            const nannySection = document.getElementById('nanny-booking-section');
+                            if (nannySection) {
+                              nannySection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }}
+                          sx={{
+                            bgcolor: '#E91E63',
+                            color: 'white',
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            py: 1.5,
+                            '&:hover': { bgcolor: '#C2185B' }
+                          }}
+                        >
+                          Book Now
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Doctor Appointment */}
+                  <Grid item xs={12} md={6} lg={4}>
+                    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                      <CardContent sx={{ flexGrow: 1, textAlign: 'center', p: 4 }}>
+                        <Box sx={{ mb: 2 }}>
+                          <Avatar sx={{ width: 80, height: 80, bgcolor: '#03A9F4', margin: '0 auto', fontSize: '2.5rem' }}>
+                            🩺
+                          </Avatar>
+                        </Box>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                          Doctor Appointment
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                          Schedule health check-ups and consultations
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          fullWidth
+                          onClick={() => setAppointmentDialog(true)}
+                          sx={{
+                            bgcolor: '#E91E63',
+                            color: 'white',
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            py: 1.5,
+                            '&:hover': { bgcolor: '#C2185B' }
+                          }}
+                        >
+                          Book Now
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* After School Program */}
+                  <Grid item xs={12} md={6} lg={4}>
+                    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                      <CardContent sx={{ flexGrow: 1, textAlign: 'center', p: 4 }}>
+                        <Box sx={{ mb: 2 }}>
+                          <Avatar sx={{ width: 80, height: 80, bgcolor: '#673AB7', margin: '0 auto', fontSize: '2.5rem' }}>
+                            📚
+                          </Avatar>
+                        </Box>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                          After School Program
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                          Extended care and learning activities
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          fullWidth
+                          onClick={() => {
+                            fetchAfterSchoolPrograms();
+                            fetchMyEnrollments();
+                            const programSection = document.getElementById('afterschool-programs-section');
+                            if (programSection) {
+                              programSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }
+                          }}
+                          sx={{
+                            bgcolor: '#E91E63',
+                            color: 'white',
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            py: 1.5,
+                            '&:hover': { bgcolor: '#C2185B' }
+                          }}
+                        >
+                          Browse Programs
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Fee Structure */}
+                  <Grid item xs={12} md={6} lg={4}>
+                    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                      <CardContent sx={{ flexGrow: 1, textAlign: 'center', p: 4 }}>
+                        <Box sx={{ mb: 2 }}>
+                          <Avatar sx={{ width: 80, height: 80, bgcolor: '#4CAF50', margin: '0 auto', fontSize: '2.5rem' }}>
+                            💰
+                          </Avatar>
+                        </Box>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                          Fee Structure
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                          View detailed fee breakdown and payment plans
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          fullWidth
+                          onClick={() => setTab(5)}
+                          sx={{
+                            bgcolor: '#E91E63',
+                            color: 'white',
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            py: 1.5,
+                            '&:hover': { bgcolor: '#C2185B' }
+                          }}
+                        >
+                          View Details
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Curriculum Plan */}
+                  <Grid item xs={12} md={6} lg={4}>
+                    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                      <CardContent sx={{ flexGrow: 1, textAlign: 'center', p: 4 }}>
+                        <Box sx={{ mb: 2 }}>
+                          <Avatar sx={{ width: 80, height: 80, bgcolor: '#FF9800', margin: '0 auto', fontSize: '2.5rem' }}>
+                            📋
+                          </Avatar>
+                        </Box>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                          Curriculum Plan
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                          Access your child's learning curriculum and activities
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          fullWidth
+                          onClick={() => {
+                            setTab(1);
+                            setDaycareTab(4);
+                          }}
+                          sx={{
+                            bgcolor: '#E91E63',
+                            color: 'white',
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            py: 1.5,
+                            '&:hover': { bgcolor: '#C2185B' }
+                          }}
+                        >
+                          View Curriculum
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Transport Services */}
+                  <Grid item xs={12} md={6} lg={4}>
+                    <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column', border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                      <CardContent sx={{ flexGrow: 1, textAlign: 'center', p: 4 }}>
+                        <Box sx={{ mb: 2 }}>
+                          <Avatar sx={{ width: 80, height: 80, bgcolor: '#00BCD4', margin: '0 auto', fontSize: '2.5rem' }}>
+                            🚌
+                          </Avatar>
+                        </Box>
+                        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1 }}>
+                          Transport Services
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                          Track your child's transport and pickup schedule
+                        </Typography>
+                        <Button
+                          variant="contained"
+                          fullWidth
+                          onClick={() => setTab(3)}
+                          sx={{
+                            bgcolor: '#E91E63',
+                            color: 'white',
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            py: 1.5,
+                            '&:hover': { bgcolor: '#C2185B' }
+                          }}
+                        >
+                          View Transport
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                {/* Nanny Booking Section */}
+                <Box id="nanny-booking-section" sx={{ scrollMarginTop: '20px' }}>
+                  <NannyServicesTab />
+                </Box>
+
+                {/* After School Programs Section */}
+                <Box id="afterschool-programs-section" sx={{ scrollMarginTop: '20px', mt: 6 }}>
+                  <Typography variant="h4" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
+                    📚 After School Programs
+                  </Typography>
+
+                  {/* Success/Error Messages */}
+                  {afterSchoolMessage.text && (
+                    <Alert 
+                      severity={afterSchoolMessage.type}
+                      sx={{ mb: 3 }}
+                      onClose={() => setAfterSchoolMessage({ type: '', text: '' })}
+                    >
+                      {afterSchoolMessage.text}
+                    </Alert>
+                  )}
+
+                  {/* My Enrollments */}
+                  {myEnrollments.length > 0 && (
+                    <Paper elevation={0} sx={{ p: 3, mb: 4, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#673AB7' }}>
+                        ✓ My Enrolled Programs
+                      </Typography>
+                      <Grid container spacing={2}>
+                        {myEnrollments.map((program) => (
+                          <Grid item xs={12} md={6} key={program._id}>
+                            <Card sx={{ border: '2px solid #673AB7', bgcolor: '#f3e5f5' }}>
+                              <CardContent>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
+                                  <Typography variant="h6" sx={{ fontWeight: 600, color: '#673AB7' }}>
+                                    {program.programName}
+                                  </Typography>
+                                  <Chip label="ENROLLED" size="small" color="success" />
+                                </Box>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                  {program.programType} • {program.schedule.days.join(', ')}
+                                </Typography>
+                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                  ⏰ {program.schedule.startTime} - {program.schedule.endTime}
+                                </Typography>
+                                <Typography variant="body2" sx={{ mb: 1 }}>
+                                  📍 {program.location}
+                                </Typography>
+                                <Typography variant="body2" sx={{ mb: 2 }}>
+                                  👨‍🏫 Instructor: {program.assignedStaff.map(s => `${s.firstName} ${s.lastName}`).join(', ')}
+                                </Typography>
+                                <Button
+                                  variant="outlined"
+                                  size="small"
+                                  color="error"
+                                  fullWidth
+                                  onClick={() => handleUnenrollProgram(program._id)}
+                                >
+                                  Unenroll
+                                </Button>
+                              </CardContent>
+                            </Card>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Paper>
+                  )}
+
+                  {/* Available Programs */}
+                  <Paper elevation={0} sx={{ p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        Available Programs
+                      </Typography>
+                      <Button
+                        size="small"
+                        startIcon={<Refresh />}
+                        onClick={() => {
+                          fetchAfterSchoolPrograms();
+                          fetchMyEnrollments();
+                        }}
+                        sx={{ color: '#673AB7' }}
+                      >
+                        Refresh
+                      </Button>
+                    </Box>
+
+                    {afterSchoolPrograms.length === 0 ? (
+                      <Box sx={{ textAlign: 'center', py: 6 }}>
+                        <Typography variant="h6" color="text.secondary" gutterBottom>
+                          No Programs Available
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Check back later for new after school programs
+                        </Typography>
+                      </Box>
+                    ) : (
+                      <Grid container spacing={3}>
+                        {afterSchoolPrograms.map((program) => {
+                          const isEnrolled = myEnrollments.some(e => e._id === program._id);
+                          const isFull = program.currentEnrollment >= program.capacity;
+                          
+                          return (
+                            <Grid item xs={12} md={6} lg={4} key={program._id}>
+                              <Card sx={{ height: '100%', border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                                <CardContent>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
+                                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                      {program.programName}
+                                    </Typography>
+                                    <Chip 
+                                      label={program.programType} 
+                                      size="small" 
+                                      sx={{ bgcolor: '#673AB7', color: 'white' }}
+                                    />
+                                  </Box>
+                                  
+                                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    {program.description}
+                                  </Typography>
+                                  
+                                  <Divider sx={{ my: 2 }} />
+                                  
+                                  <Box sx={{ mb: 2 }}>
+                                    <Typography variant="caption" color="text.secondary">Schedule</Typography>
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                      {program.schedule.days.join(', ')}
+                                    </Typography>
+                                    <Typography variant="body2">
+                                      {program.schedule.startTime} - {program.schedule.endTime}
+                                    </Typography>
+                                  </Box>
+                                  
+                                  <Box sx={{ mb: 2 }}>
+                                    <Typography variant="caption" color="text.secondary">Age Group</Typography>
+                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                      {program.ageGroup.min} - {program.ageGroup.max} years
+                                    </Typography>
+                                  </Box>
+                                  
+                                  <Box sx={{ mb: 2 }}>
+                                    <Typography variant="caption" color="text.secondary">Enrollment</Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                      <LinearProgress 
+                                        variant="determinate" 
+                                        value={(program.currentEnrollment / program.capacity) * 100}
+                                        sx={{ flexGrow: 1, height: 8, borderRadius: 1 }}
+                                      />
+                                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                        {program.currentEnrollment}/{program.capacity}
+                                      </Typography>
+                                    </Box>
+                                  </Box>
+                                  
+                                  <Box sx={{ mb: 2 }}>
+                                    <Typography variant="caption" color="text.secondary">Fees</Typography>
+                                    <Typography variant="h6" sx={{ fontWeight: 600, color: '#4CAF50' }}>
+                                      {program.fees.amount === 0 ? 'FREE' : `$${program.fees.amount} ${program.fees.frequency}`}
+                                    </Typography>
+                                  </Box>
+                                  
+                                  <Button
+                                    variant="contained"
+                                    fullWidth
+                                    disabled={isEnrolled || isFull || !activeChildId}
+                                    onClick={() => {
+                                      setSelectedProgram(program);
+                                      setAfterSchoolDialog(true);
+                                    }}
+                                    sx={{
+                                      bgcolor: isEnrolled ? '#4CAF50' : '#673AB7',
+                                      '&:hover': { bgcolor: isEnrolled ? '#388E3C' : '#512DA8' },
+                                      '&:disabled': { bgcolor: '#e0e0e0' }
+                                    }}
+                                  >
+                                    {isEnrolled ? '✓ Enrolled' : isFull ? 'Full' : !activeChildId ? 'Select Child First' : 'Enroll Now'}
+                                  </Button>
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          );
+                        })}
+                      </Grid>
+                    )}
+                  </Paper>
+                </Box>
               </Box>
             )}
 
@@ -3324,6 +3883,102 @@ const ParentDashboard = ({ initialTab }) => {
             sx={{ bgcolor: '#14B8A6', '&:hover': { bgcolor: '#0F766E' } }}
           >
             {addChildLoading ? 'Submitting...' : 'Submit Request'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* After School Program Enrollment Dialog */}
+      <Dialog
+        open={afterSchoolDialog}
+        onClose={() => !enrollmentLoading && setAfterSchoolDialog(false)}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#673AB7', color: 'white' }}>
+          Enroll in After School Program
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {selectedProgram && (
+            <Box>
+              <Typography variant="h6" gutterBottom sx={{ fontWeight: 600 }}>
+                {selectedProgram.programName}
+              </Typography>
+              <Chip 
+                label={selectedProgram.programType} 
+                size="small" 
+                sx={{ bgcolor: '#673AB7', color: 'white', mb: 2 }}
+              />
+              
+              <Typography variant="body2" paragraph>
+                {selectedProgram.description}
+              </Typography>
+              
+              <Divider sx={{ my: 2 }} />
+              
+              <Grid container spacing={2}>
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">Enrolled Child</Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                    {children.find(c => c._id === activeChildId)?.firstName} {children.find(c => c._id === activeChildId)?.lastName}
+                  </Typography>
+                </Grid>
+                
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">Schedule</Typography>
+                  <Typography variant="body2">
+                    {selectedProgram.schedule.days.join(', ')}
+                  </Typography>
+                  <Typography variant="body2">
+                    {selectedProgram.schedule.startTime} - {selectedProgram.schedule.endTime}
+                  </Typography>
+                </Grid>
+                
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">Location</Typography>
+                  <Typography variant="body2">{selectedProgram.location}</Typography>
+                </Grid>
+                
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">Age Group</Typography>
+                  <Typography variant="body2">
+                    {selectedProgram.ageGroup.min} - {selectedProgram.ageGroup.max} years
+                  </Typography>
+                </Grid>
+                
+                <Grid item xs={6}>
+                  <Typography variant="subtitle2" color="text.secondary">Fees</Typography>
+                  <Typography variant="body1" sx={{ fontWeight: 600, color: '#4CAF50' }}>
+                    {selectedProgram.fees.amount === 0 ? 'FREE' : `$${selectedProgram.fees.amount} ${selectedProgram.fees.frequency}`}
+                  </Typography>
+                </Grid>
+                
+                {selectedProgram.requirements && (
+                  <Grid item xs={12}>
+                    <Alert severity="info">
+                      <Typography variant="subtitle2">Requirements</Typography>
+                      <Typography variant="body2">{selectedProgram.requirements}</Typography>
+                    </Alert>
+                  </Grid>
+                )}
+              </Grid>
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button
+            onClick={() => setAfterSchoolDialog(false)}
+            disabled={enrollmentLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={() => handleEnrollProgram(selectedProgram._id)}
+            variant="contained"
+            disabled={enrollmentLoading}
+            startIcon={enrollmentLoading ? <CircularProgress size={20} /> : <CheckCircle />}
+            sx={{ bgcolor: '#673AB7', '&:hover': { bgcolor: '#512DA8' } }}
+          >
+            {enrollmentLoading ? 'Enrolling...' : 'Confirm Enrollment'}
           </Button>
         </DialogActions>
       </Dialog>

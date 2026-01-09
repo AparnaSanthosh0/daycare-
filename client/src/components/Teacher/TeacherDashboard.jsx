@@ -20,10 +20,13 @@ import {
   ListItemIcon,
   ListItemText,
   ListItemButton,
+  ListItemAvatar,
+  Avatar,
   Dialog,
   DialogTitle,
   DialogContent,
-  DialogActions
+  DialogActions,
+  Alert
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -49,6 +52,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
+import SmartSearch from '../Common/SmartSearch';
 
 const TeacherDashboard = () => {
   const { user, logout } = useAuth();
@@ -64,6 +68,32 @@ const TeacherDashboard = () => {
   const [serviceCategory, setServiceCategory] = useState('Meal & Nutrition');
   const [rating, setRating] = useState(5);
   const [classificationResult, setClassificationResult] = useState(null);
+
+  // Visitor Management States
+  const [visitors, setVisitors] = useState([]);
+  const [visitorStats, setVisitorStats] = useState({ total: 0, checkedIn: 0, checkedOut: 0 });
+  const [visitorForm, setVisitorForm] = useState({
+    visitorName: '',
+    purpose: 'Parent Meeting',
+    purposeDetails: '',
+    contactNumber: '',
+    idProofType: '',
+    idProofNumber: '',
+    relatedChild: '',
+    temperature: '',
+    notes: ''
+  });
+  const [pickupForm, setPickupForm] = useState({
+    childId: '',
+    pickupPersonName: '',
+    idProofType: '',
+    idProofNumber: ''
+  });
+  const [pickupResult, setPickupResult] = useState(null);
+  const [visitorMessage, setVisitorMessage] = useState({ type: '', text: '' });
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+  const [selectedVisitor, setSelectedVisitor] = useState(null);
+  const [checkoutNotes, setCheckoutNotes] = useState('');
 
   const menuItems = [
     { label: 'Attendance', icon: <AccessTimeIcon />, path: '/teacher' },
@@ -133,6 +163,138 @@ const TeacherDashboard = () => {
 
   const handleTabChange = (event, newValue) => {
     setCurrentTab(newValue);
+    // Fetch visitors when visitor tab is selected
+    if (newValue === 6) {
+      fetchVisitors();
+    }
+  };
+
+  // Visitor Management Functions
+  const fetchVisitors = async () => {
+    try {
+      const response = await api.get('/api/visitors/today');
+      setVisitors(response.data.visitors || []);
+      setVisitorStats(response.data.stats || { total: 0, checkedIn: 0, checkedOut: 0 });
+    } catch (error) {
+      console.error('Error fetching visitors:', error);
+      setVisitorMessage({ type: 'error', text: 'Failed to load visitors' });
+    }
+  };
+
+  const handleVisitorInputChange = (e) => {
+    const { name, value } = e.target;
+    setVisitorForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleCheckIn = async () => {
+    try {
+      if (!visitorForm.visitorName || !visitorForm.purpose) {
+        setVisitorMessage({ type: 'error', text: 'Please enter visitor name and purpose' });
+        return;
+      }
+
+      await api.post('/api/visitors/check-in', visitorForm);
+      setVisitorMessage({ type: 'success', text: 'Visitor checked in successfully!' });
+      
+      // Reset form
+      setVisitorForm({
+        visitorName: '',
+        purpose: 'Parent Meeting',
+        purposeDetails: '',
+        contactNumber: '',
+        idProofType: '',
+        idProofNumber: '',
+        relatedChild: '',
+        temperature: '',
+        notes: ''
+      });
+
+      // Refresh visitor list
+      fetchVisitors();
+    } catch (error) {
+      console.error('Error checking in visitor:', error);
+      setVisitorMessage({ type: 'error', text: error.response?.data?.message || 'Failed to check in visitor' });
+    }
+  };
+
+  const handleOpenCheckoutDialog = (visitor) => {
+    setSelectedVisitor(visitor);
+    setCheckoutNotes('');
+    setCheckoutDialogOpen(true);
+  };
+
+  const handleCheckOut = async () => {
+    try {
+      if (!selectedVisitor) return;
+
+      await api.put(`/api/visitors/${selectedVisitor._id}/check-out`, {
+        notes: checkoutNotes
+      });
+
+      setVisitorMessage({ type: 'success', text: 'Visitor checked out successfully!' });
+      setCheckoutDialogOpen(false);
+      setSelectedVisitor(null);
+      setCheckoutNotes('');
+
+      // Refresh visitor list
+      fetchVisitors();
+    } catch (error) {
+      console.error('Error checking out visitor:', error);
+      setVisitorMessage({ type: 'error', text: error.response?.data?.message || 'Failed to check out visitor' });
+    }
+  };
+
+  const handlePickupInputChange = (e) => {
+    const { name, value } = e.target;
+    setPickupForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleVerifyPickup = async () => {
+    try {
+      if (!pickupForm.childId || !pickupForm.pickupPersonName) {
+        setVisitorMessage({ type: 'error', text: 'Please select child and enter pickup person name' });
+        return;
+      }
+
+      const response = await api.post('/api/visitors/verify-pickup', pickupForm);
+      setPickupResult(response.data);
+      
+      if (response.data.authorized) {
+        setVisitorMessage({ type: 'success', text: 'Pickup verified - Authorized person ✓' });
+      } else {
+        setVisitorMessage({ type: 'warning', text: 'WARNING: NOT in authorized pickup list!' });
+      }
+
+      // Reset form
+      setPickupForm({
+        childId: '',
+        pickupPersonName: '',
+        idProofType: '',
+        idProofNumber: ''
+      });
+
+      // Refresh visitor list
+      fetchVisitors();
+    } catch (error) {
+      console.error('Error verifying pickup:', error);
+      setVisitorMessage({ type: 'error', text: error.response?.data?.message || 'Failed to verify pickup' });
+      setPickupResult(null);
+    }
+  };
+
+  const formatTime = (date) => {
+    if (!date) return '-';
+    return new Date(date).toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+  };
+
+  const calculateDuration = (checkIn, checkOut) => {
+    if (!checkIn || !checkOut) return '-';
+    const duration = Math.round((new Date(checkOut) - new Date(checkIn)) / 1000 / 60);
+    return `${duration} min`;
   };
 
   const toggleDrawer = (open) => (event) => {
@@ -280,9 +442,90 @@ const TeacherDashboard = () => {
       {/* Today's Attendance */}
       <Paper elevation={0} sx={{ border: '1px solid #e0e0e0', borderRadius: 2, overflow: 'hidden' }}>
         <Box sx={{ p: 3, borderBottom: '1px solid #e0e0e0' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Today's Attendance - {new Date().toLocaleDateString()}
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+              Today's Attendance - {new Date().toLocaleDateString()}
+            </Typography>
+          </Box>
+          
+          {/* Smart Search Component */}
+          <Box sx={{ mb: 2 }}>
+            <SmartSearch
+              data={students}
+              searchKeys={['firstName', 'lastName', 'parents.firstName', 'parents.lastName', 'program']}
+              onSelect={(student) => {
+                setSelectedStudent(student);
+                setAttendanceDialogOpen(true);
+              }}
+              placeholder="Search by child name, parent name, or program..."
+              label="Quick Search Student"
+              maxResults={8}
+              renderItem={(result) => {
+                const student = result.item;
+                const matchScore = Math.round((1 - result.score) * 100);
+                const age = calculateAge(student.dateOfBirth);
+                const attendance = attendanceData[student._id];
+                const isPresent = attendance?.status === 'present';
+
+                return (
+                  <ListItem
+                    button
+                    onClick={() => {
+                      setSelectedStudent(student);
+                      setAttendanceDialogOpen(true);
+                    }}
+                    sx={{
+                      '&:hover': {
+                        bgcolor: 'rgba(26, 188, 156, 0.1)'
+                      }
+                    }}
+                  >
+                    <ListItemAvatar>
+                      <Avatar sx={{ bgcolor: '#1abc9c' }}>
+                        <ChildCareIcon />
+                      </Avatar>
+                    </ListItemAvatar>
+                    <ListItemText
+                      primary={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Typography variant="body1">
+                            {student.firstName} {student.lastName}
+                          </Typography>
+                          <Chip 
+                            label={`${matchScore}% match`} 
+                            size="small" 
+                            color="success"
+                            sx={{ height: 20 }}
+                          />
+                          <Chip 
+                            label={isPresent ? 'Present' : 'Absent'} 
+                            size="small" 
+                            sx={{ 
+                              height: 20,
+                              backgroundColor: isPresent ? '#E8F5E9' : '#FFEBEE', 
+                              color: isPresent ? '#2E7D32' : '#C62828'
+                            }} 
+                          />
+                        </Box>
+                      }
+                      secondary={
+                        <Box>
+                          <Typography variant="caption" display="block">
+                            Age: {age} years | Program: {student.program || 'Not assigned'}
+                          </Typography>
+                          {student.parents && student.parents[0] && (
+                            <Typography variant="caption" display="block">
+                              Parent: {student.parents[0].firstName} {student.parents[0].lastName}
+                            </Typography>
+                          )}
+                        </Box>
+                      }
+                    />
+                  </ListItem>
+                );
+              }}
+            />
+          </Box>
         </Box>
         {loading ? (
           <Box sx={{ p: 4, textAlign: 'center' }}>
@@ -1414,6 +1657,57 @@ const TeacherDashboard = () => {
       <Typography variant="h5" sx={{ fontWeight: 600, mb: 3 }}>
         Visitor Management & Authorized Pickups
       </Typography>
+
+      {/* Message Alert */}
+      {visitorMessage.text && (
+        <Alert 
+          severity={visitorMessage.type} 
+          sx={{ mb: 3 }}
+          onClose={() => setVisitorMessage({ type: '', text: '' })}
+        >
+          {visitorMessage.text}
+        </Alert>
+      )}
+
+      {/* Statistics Cards */}
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        <Grid item xs={12} md={4}>
+          <Card elevation={0} sx={{ border: '1px solid #e0e0e0', bgcolor: '#f8f9fa' }}>
+            <CardContent>
+              <Typography variant="h4" sx={{ fontWeight: 600, color: '#1abc9c' }}>
+                {visitorStats.total}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Total Visitors Today
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card elevation={0} sx={{ border: '1px solid #e0e0e0', bgcolor: '#fff3cd' }}>
+            <CardContent>
+              <Typography variant="h4" sx={{ fontWeight: 600, color: '#ff9800' }}>
+                {visitorStats.checkedIn}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Currently Inside
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+        <Grid item xs={12} md={4}>
+          <Card elevation={0} sx={{ border: '1px solid #e0e0e0', bgcolor: '#d4edda' }}>
+            <CardContent>
+              <Typography variant="h4" sx={{ fontWeight: 600, color: '#28a745' }}>
+                {visitorStats.checkedOut}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Checked Out
+              </Typography>
+            </CardContent>
+          </Card>
+        </Grid>
+      </Grid>
       
       {/* Visitor Check-in */}
       <Paper elevation={0} sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
@@ -1421,47 +1715,412 @@ const TeacherDashboard = () => {
           👤 Visitor Check-in
         </Typography>
         <Grid container spacing={2}>
-          <Grid item xs={12} md={3}>
-            <TextField fullWidth label="Visitor Name" size="small" />
+          <Grid item xs={12} md={4}>
+            <TextField 
+              fullWidth 
+              label="Visitor Name *" 
+              name="visitorName"
+              value={visitorForm.visitorName}
+              onChange={handleVisitorInputChange}
+              size="small" 
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField 
+              select 
+              fullWidth 
+              label="Purpose *" 
+              name="purpose"
+              value={visitorForm.purpose}
+              onChange={handleVisitorInputChange}
+              size="small"
+            >
+              <MenuItem value="Parent Meeting">Parent Meeting</MenuItem>
+              <MenuItem value="Delivery">Delivery</MenuItem>
+              <MenuItem value="Maintenance">Maintenance</MenuItem>
+              <MenuItem value="Inspection">Inspection</MenuItem>
+              <MenuItem value="Guest Speaker">Guest Speaker</MenuItem>
+              <MenuItem value="Authorized Pickup">Authorized Pickup</MenuItem>
+              <MenuItem value="Interview">Interview</MenuItem>
+              <MenuItem value="Tour">Tour</MenuItem>
+              <MenuItem value="Other">Other</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField 
+              fullWidth 
+              label="Contact Number" 
+              name="contactNumber"
+              value={visitorForm.contactNumber}
+              onChange={handleVisitorInputChange}
+              size="small" 
+            />
           </Grid>
           <Grid item xs={12} md={3}>
-            <TextField fullWidth label="Purpose" size="small" />
+            <TextField 
+              select 
+              fullWidth 
+              label="ID Proof Type" 
+              name="idProofType"
+              value={visitorForm.idProofType}
+              onChange={handleVisitorInputChange}
+              size="small"
+            >
+              <MenuItem value="">None</MenuItem>
+              <MenuItem value="Aadhar">Aadhar Card</MenuItem>
+              <MenuItem value="Passport">Passport</MenuItem>
+              <MenuItem value="Driving License">Driving License</MenuItem>
+              <MenuItem value="Voter ID">Voter ID</MenuItem>
+              <MenuItem value="Other">Other</MenuItem>
+            </TextField>
           </Grid>
           <Grid item xs={12} md={3}>
-            <TextField fullWidth label="Time In" type="time" size="small" InputLabelProps={{ shrink: true }} />
+            <TextField 
+              fullWidth 
+              label="ID Number" 
+              name="idProofNumber"
+              value={visitorForm.idProofNumber}
+              onChange={handleVisitorInputChange}
+              size="small" 
+            />
           </Grid>
           <Grid item xs={12} md={3}>
-            <Button fullWidth variant="contained" sx={{ backgroundColor: '#1abc9c', textTransform: 'none', '&:hover': { backgroundColor: '#16a085' } }}>
-              Check In
+            <TextField 
+              select 
+              fullWidth 
+              label="Related to Child" 
+              name="relatedChild"
+              value={visitorForm.relatedChild}
+              onChange={handleVisitorInputChange}
+              size="small"
+            >
+              <MenuItem value="">None</MenuItem>
+              {students.map((s) => (
+                <MenuItem key={s._id} value={s._id}>
+                  {s.firstName} {s.lastName}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <TextField 
+              fullWidth 
+              label="Temperature (°F)" 
+              name="temperature"
+              type="number"
+              value={visitorForm.temperature}
+              onChange={handleVisitorInputChange}
+              size="small"
+              inputProps={{ step: 0.1 }}
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <TextField 
+              fullWidth 
+              label="Purpose Details / Notes" 
+              name="purposeDetails"
+              value={visitorForm.purposeDetails}
+              onChange={handleVisitorInputChange}
+              multiline
+              rows={2}
+              size="small" 
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <Button 
+              fullWidth 
+              variant="contained" 
+              onClick={handleCheckIn}
+              sx={{ 
+                backgroundColor: '#1abc9c', 
+                textTransform: 'none',
+                fontWeight: 600,
+                '&:hover': { backgroundColor: '#16a085' } 
+              }}
+            >
+              Check In Visitor
             </Button>
           </Grid>
         </Grid>
       </Paper>
 
       {/* Authorized Pickup Verification */}
-      <Paper elevation={0} sx={{ p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+      <Paper elevation={0} sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
           🔐 Verify Authorized Pickup
         </Typography>
         <Grid container spacing={2}>
           <Grid item xs={12} md={4}>
-            <TextField select fullWidth label="Child" size="small" defaultValue="">
+            <TextField 
+              select 
+              fullWidth 
+              label="Child *" 
+              name="childId"
+              value={pickupForm.childId}
+              onChange={handlePickupInputChange}
+              size="small"
+            >
               <MenuItem value="">Select Child</MenuItem>
               {students.map((s) => (
-                <MenuItem key={s._id} value={s._id}>{s.firstName} {s.lastName}</MenuItem>
+                <MenuItem key={s._id} value={s._id}>
+                  {s.firstName} {s.lastName}
+                </MenuItem>
               ))}
             </TextField>
           </Grid>
           <Grid item xs={12} md={4}>
-            <TextField fullWidth label="Pickup Person Name" size="small" />
+            <TextField 
+              fullWidth 
+              label="Pickup Person Name *" 
+              name="pickupPersonName"
+              value={pickupForm.pickupPersonName}
+              onChange={handlePickupInputChange}
+              size="small" 
+            />
           </Grid>
           <Grid item xs={12} md={4}>
-            <Button fullWidth variant="contained" sx={{ backgroundColor: '#34C759', textTransform: 'none', '&:hover': { backgroundColor: '#2DA84C' } }}>
+            <TextField 
+              select 
+              fullWidth 
+              label="ID Proof Type" 
+              name="idProofType"
+              value={pickupForm.idProofType}
+              onChange={handlePickupInputChange}
+              size="small"
+            >
+              <MenuItem value="">None</MenuItem>
+              <MenuItem value="Aadhar">Aadhar Card</MenuItem>
+              <MenuItem value="Passport">Passport</MenuItem>
+              <MenuItem value="Driving License">Driving License</MenuItem>
+              <MenuItem value="Voter ID">Voter ID</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={8}>
+            <TextField 
+              fullWidth 
+              label="ID Proof Number" 
+              name="idProofNumber"
+              value={pickupForm.idProofNumber}
+              onChange={handlePickupInputChange}
+              size="small" 
+            />
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Button 
+              fullWidth 
+              variant="contained" 
+              onClick={handleVerifyPickup}
+              sx={{ 
+                backgroundColor: '#34C759', 
+                textTransform: 'none',
+                fontWeight: 600,
+                '&:hover': { backgroundColor: '#2DA84C' } 
+              }}
+            >
               Verify Pickup
             </Button>
           </Grid>
         </Grid>
+
+        {/* Pickup Verification Result */}
+        {pickupResult && (
+          <Box sx={{ mt: 3, p: 2, border: '2px solid', borderColor: pickupResult.authorized ? '#34C759' : '#FF3B30', borderRadius: 2, bgcolor: pickupResult.authorized ? '#f0fdf4' : '#fef2f2' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: pickupResult.authorized ? '#16a34a' : '#dc2626' }}>
+              {pickupResult.authorized ? '✓ Authorized Person' : '⚠️ UNAUTHORIZED PERSON'}
+            </Typography>
+            <Typography variant="body2" sx={{ mb: 1 }}>
+              <strong>Child:</strong> {pickupResult.childInfo?.name} 
+              {pickupResult.childInfo?.program && ` (${typeof pickupResult.childInfo.program === 'object' ? pickupResult.childInfo.program.name || pickupResult.childInfo.program.programName || 'N/A' : pickupResult.childInfo.program})`}
+            </Typography>
+            <Typography variant="body2">
+              <strong>Authorized Pickup List:</strong>
+            </Typography>
+            <Box component="ul" sx={{ mt: 1, pl: 3 }}>
+              {pickupResult.childInfo?.authorizedPickups.map((person, idx) => (
+                <Typography component="li" variant="body2" key={idx}>
+                  {person}
+                </Typography>
+              ))}
+            </Box>
+          </Box>
+        )}
       </Paper>
+
+      {/* Visitor Log */}
+      <Paper elevation={0} sx={{ p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#1abc9c' }}>
+            📋 Today's Visitor Log
+          </Typography>
+          <Button
+            size="small"
+            onClick={fetchVisitors}
+            sx={{ color: '#1abc9c', textTransform: 'none' }}
+          >
+            🔄 Refresh
+          </Button>
+        </Box>
+
+        {visitors.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+            No visitors today
+          </Typography>
+        ) : (
+          <Box sx={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8f9fa', borderBottom: '2px solid #e0e0e0' }}>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Name</th>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Purpose</th>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Contact</th>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Check-in</th>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Check-out</th>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Duration</th>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Status</th>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: 600 }}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visitors.map((visitor) => (
+                  <tr key={visitor._id} style={{ borderBottom: '1px solid #e0e0e0' }}>
+                    <td style={{ padding: '12px' }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {visitor.visitorName}
+                      </Typography>
+                      {visitor.relatedChild && (
+                        <Typography variant="caption" color="text.secondary">
+                          Child: {visitor.relatedChild.firstName} {visitor.relatedChild.lastName}
+                        </Typography>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <Chip 
+                        label={visitor.purpose} 
+                        size="small" 
+                        sx={{ 
+                          bgcolor: visitor.authorizedPickup ? '#dcfce7' : '#e0e0e0',
+                          color: visitor.authorizedPickup ? '#16a34a' : '#666'
+                        }} 
+                      />
+                      {visitor.purposeDetails && (
+                        <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
+                          {visitor.purposeDetails}
+                        </Typography>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <Typography variant="body2">
+                        {visitor.contactNumber || '-'}
+                      </Typography>
+                      {visitor.idProofType && (
+                        <Typography variant="caption" color="text.secondary">
+                          {visitor.idProofType}
+                        </Typography>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <Typography variant="body2">{formatTime(visitor.checkInTime)}</Typography>
+                      {visitor.temperature && (
+                        <Typography variant="caption" color="text.secondary">
+                          Temp: {visitor.temperature}°F
+                        </Typography>
+                      )}
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <Typography variant="body2">{formatTime(visitor.checkOutTime)}</Typography>
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <Typography variant="body2">
+                        {calculateDuration(visitor.checkInTime, visitor.checkOutTime)}
+                      </Typography>
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <Chip 
+                        label={visitor.status === 'checked-in' ? 'Inside' : 'Left'} 
+                        size="small"
+                        color={visitor.status === 'checked-in' ? 'warning' : 'success'}
+                      />
+                      {visitor.authorizedPickup && visitor.pickupVerified === false && (
+                        <Chip 
+                          label="UNVERIFIED" 
+                          size="small" 
+                          color="error"
+                          sx={{ ml: 0.5 }}
+                        />
+                      )}
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      {visitor.status === 'checked-in' && (
+                        <Button
+                          size="small"
+                          variant="outlined"
+                          onClick={() => handleOpenCheckoutDialog(visitor)}
+                          sx={{ 
+                            color: '#1abc9c', 
+                            borderColor: '#1abc9c',
+                            textTransform: 'none',
+                            '&:hover': { 
+                              borderColor: '#16a085',
+                              bgcolor: 'rgba(26, 188, 156, 0.1)'
+                            }
+                          }}
+                        >
+                          Check Out
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Box>
+        )}
+      </Paper>
+
+      {/* Check Out Dialog */}
+      <Dialog open={checkoutDialogOpen} onClose={() => setCheckoutDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Check Out Visitor</DialogTitle>
+        <DialogContent>
+          {selectedVisitor && (
+            <Box>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                <strong>Visitor:</strong> {selectedVisitor.visitorName}
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                <strong>Purpose:</strong> {selectedVisitor.purpose}
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 2 }}>
+                <strong>Check-in Time:</strong> {formatTime(selectedVisitor.checkInTime)}
+              </Typography>
+              <TextField
+                fullWidth
+                label="Exit Notes (Optional)"
+                multiline
+                rows={3}
+                value={checkoutNotes}
+                onChange={(e) => setCheckoutNotes(e.target.value)}
+                placeholder="Any observations or notes..."
+                sx={{ mt: 2 }}
+              />
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setCheckoutDialogOpen(false)} sx={{ color: '#666' }}>
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleCheckOut} 
+            variant="contained"
+            sx={{ 
+              bgcolor: '#1abc9c',
+              '&:hover': { bgcolor: '#16a085' }
+            }}
+          >
+            Confirm Check Out
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 

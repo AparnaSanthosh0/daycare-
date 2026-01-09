@@ -41,6 +41,7 @@ import {
 import api from '../../config/api';
 import PurchasePrediction from '../../components/PurchasePrediction';
 import DemandPrediction from '../../components/DemandPrediction';
+import SmartSearch from '../../components/Common/SmartSearch';
 
 const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -888,6 +889,18 @@ const AdminDashboard = () => {
               <Typography variant="h6" gutterBottom sx={{ mt: 3 }}>
                 User Directory
               </Typography>
+              
+              {/* Smart Search for Users */}
+              <Box sx={{ mb: 3 }}>
+                <SmartSearch
+                  data={allUsers}
+                  searchKeys={['firstName', 'lastName', 'email', 'phone', 'role']}
+                  onSelect={(user) => setUserDetailsDialog({ open: true, user })}
+                  placeholder="Search users by name, email, phone, or role..."
+                  label="Search Users"
+                  maxResults={10}
+                />
+              </Box>
               
               <TableContainer component={Paper}>
                 <Table>

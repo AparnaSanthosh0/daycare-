@@ -85,7 +85,11 @@ router.get('/doctor', auth, async (req, res) => {
 
     const appointments = await Appointment.find(filter)
       .populate('child parent')
-      .sort({ appointmentDate: 1, appointmentTime: 1 });
+      .sort({ 
+        isEmergency: -1,  // Emergency first
+        appointmentDate: 1, 
+        appointmentTime: 1 
+      });
 
     res.json(appointments);
   } catch (error) {
@@ -135,6 +139,19 @@ router.patch('/:id/status', auth, async (req, res) => {
     // Only doctor and admin can update status
     if (req.user.role !== 'doctor' && req.user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Check if appointment date has passed and trying to confirm
+    if (status === 'confirmed') {
+      const appointmentDate = new Date(appointment.appointmentDate);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      if (appointmentDate < today) {
+        return res.status(400).json({ 
+          message: 'Cannot confirm past appointment. Please reschedule instead.' 
+        });
+      }
     }
 
     appointment.status = status;
@@ -232,6 +249,81 @@ router.get('/stats/doctor', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching stats:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Send message between parent and doctor
+router.post('/:id/message', auth, async (req, res) => {
+  try {
+    const { message } = req.body;
+
+    if (!message || message.trim() === '') {
+      return res.status(400).json({ message: 'Message cannot be empty' });
+    }
+
+    const appointment = await Appointment.findById(req.params.id);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Appointment not found' });
+    }
+
+    // Check if user is either the parent or doctor of this appointment
+    const isParent = appointment.parent.toString() === req.user.userId;
+    const isDoctor = appointment.doctor && appointment.doctor.toString() === req.user.userId;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isParent && !isDoctor && !isAdmin) {
+      return res.status(403).json({ message: 'Access denied. You are not part of this appointment.' });
+    }
+
+    // Determine sender role
+    let senderRole = 'parent';
+    if (req.user.role === 'doctor') {
+      senderRole = 'doctor';
+    }
+
+    // Add message to appointment
+    appointment.messages.push({
+      sender: req.user.userId,
+      senderRole: senderRole,
+      message: message.trim()
+    });
+
+    await appointment.save();
+    await appointment.populate('messages.sender', 'name email');
+
+    res.json({ 
+      message: 'Message sent successfully', 
+      messages: appointment.messages 
+    });
+  } catch (error) {
+    console.error('Error sending message:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get messages for an appointment
+router.get('/:id/messages', auth, async (req, res) => {
+  try {
+    const appointment = await Appointment.findById(req.params.id)
+      .populate('messages.sender', 'name email');
+    
+    if (!appointment) {
+      return res.status(404).json({ message: 'Appointment not found' });
+    }
+
+    // Check if user is either the parent or doctor of this appointment
+    const isParent = appointment.parent.toString() === req.user.userId;
+    const isDoctor = appointment.doctor && appointment.doctor.toString() === req.user.userId;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isParent && !isDoctor && !isAdmin) {
+      return res.status(403).json({ message: 'Access denied. You are not part of this appointment.' });
+    }
+
+    res.json({ messages: appointment.messages });
+  } catch (error) {
+    console.error('Error fetching messages:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
