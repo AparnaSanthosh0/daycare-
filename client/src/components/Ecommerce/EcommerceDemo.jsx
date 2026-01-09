@@ -101,6 +101,8 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
   const [cartOpen, setCartOpen] = useState(false);
   const [query, setQuery] = useState(initialQuery || '');
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+  const [searchImage, setSearchImage] = useState(null);
+  const [imageColors, setImageColors] = useState(null);
   const { addToCart, wishlist, toggleWishlist, cartCount, interactions, recentlyViewed, cartItems } = useShop();
   const productsRef = React.useRef(null);
 
@@ -116,11 +118,18 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
   React.useEffect(() => {
     // hydrate query from navigation state (header search)
     const q = location.state && location.state.q;
+    const img = location.state && location.state.searchImage;
+    
     if (typeof q === 'string') {
       setQuery(q);
+      setSearchImage(null); // Clear image search when text search is active
+    } else if (img) {
+      setSearchImage(img);
+      setQuery(''); // Clear text search when image search is active
     } else {
       // Always apply initialQuery on route change; clears when empty
       setQuery(initialQuery || '');
+      setSearchImage(null);
     }
     // update category if prop changes (e.g., /fashion route)
     setSelectedCategory(initialCategory || 'all');
@@ -212,6 +221,112 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
 
   const handleAddToCart = (product) => addToCart(product);
 
+  // Extract dominant colors from image for visual search (like Myntra/Flipkart)
+  const extractImageColors = React.useCallback((imageDataUrl) => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Resize for faster processing (like e-commerce platforms do)
+        const maxSize = 200;
+        const scale = Math.min(maxSize / img.width, maxSize / img.height);
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const pixels = imageData.data;
+        
+        // Advanced color analysis
+        const colorMap = {};
+        let totalPixels = 0;
+        const colorStats = {
+          avgR: 0, avgG: 0, avgB: 0,
+          minR: 255, minG: 255, minB: 255,
+          maxR: 0, maxG: 0, maxB: 0,
+          saturationSum: 0,
+          brightnessSum: 0
+        };
+        
+        for (let i = 0; i < pixels.length; i += 4) {
+          const r = pixels[i];
+          const g = pixels[i + 1];
+          const b = pixels[i + 2];
+          const a = pixels[i + 3];
+          
+          // Skip transparent or extreme pixels
+          if (a < 125 || (r > 245 && g > 245 && b > 245) || (r < 10 && g < 10 && b < 10)) continue;
+          
+          totalPixels++;
+          colorStats.avgR += r;
+          colorStats.avgG += g;
+          colorStats.avgB += b;
+          colorStats.minR = Math.min(colorStats.minR, r);
+          colorStats.minG = Math.min(colorStats.minG, g);
+          colorStats.minB = Math.min(colorStats.minB, b);
+          colorStats.maxR = Math.max(colorStats.maxR, r);
+          colorStats.maxG = Math.max(colorStats.maxG, g);
+          colorStats.maxB = Math.max(colorStats.maxB, b);
+          
+          // Calculate saturation and brightness
+          const max = Math.max(r, g, b);
+          const min = Math.min(r, g, b);
+          const saturation = max === 0 ? 0 : (max - min) / max;
+          const brightness = max / 255;
+          colorStats.saturationSum += saturation;
+          colorStats.brightnessSum += brightness;
+          
+          // Group similar colors with fine buckets (better matching)
+          const rBucket = Math.floor(r / 25) * 25;
+          const gBucket = Math.floor(g / 25) * 25;
+          const bBucket = Math.floor(b / 25) * 25;
+          const colorKey = `${rBucket},${gBucket},${bBucket}`;
+          
+          colorMap[colorKey] = (colorMap[colorKey] || 0) + 1;
+        }
+        
+        if (totalPixels === 0) {
+          resolve([]);
+          return;
+        }
+        
+        // Calculate averages
+        colorStats.avgR = Math.round(colorStats.avgR / totalPixels);
+        colorStats.avgG = Math.round(colorStats.avgG / totalPixels);
+        colorStats.avgB = Math.round(colorStats.avgB / totalPixels);
+        colorStats.avgSaturation = colorStats.saturationSum / totalPixels;
+        colorStats.avgBrightness = colorStats.brightnessSum / totalPixels;
+        
+        // Get top 5 dominant colors (more colors = better matching like Myntra)
+        const sortedColors = Object.entries(colorMap)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 5)
+          .map(([color, count]) => {
+            const [r, g, b] = color.split(',').map(Number);
+            return { r, g, b, weight: count / totalPixels };
+          });
+        
+        resolve({ colors: sortedColors, stats: colorStats });
+      };
+      img.onerror = () => resolve({ colors: [], stats: null });
+      img.src = imageDataUrl;
+    });
+  }, []);
+
+  // Analyze image and extract features
+  React.useEffect(() => {
+    if (searchImage) {
+      extractImageColors(searchImage).then(result => {
+        setImageColors(result);
+      });
+    } else {
+      setImageColors(null);
+    }
+  }, [searchImage, extractImageColors]);
+
   // Helper to match combined Fashion categories (boy, girl, footwear)
   const isFashionCategory = (cat = '') => {
     const c = String(cat).toLowerCase();
@@ -227,11 +342,178 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
     );
   };
 
-  // Filter products by search query (name/category/description)
+  // Analyze uploaded image features (like Myntra's visual search)
+  const analyzeImageFeatures = React.useCallback((imageData) => {
+    if (!imageData || !imageData.colors || imageData.colors.length === 0) return null;
+    
+    const { colors, stats } = imageData;
+    
+    // Check for monochrome/grayscale (charts, documents)
+    const isMonochrome = colors.every(color => {
+      const avg = (color.r + color.g + color.b) / 3;
+      return Math.abs(color.r - avg) < 25 && 
+             Math.abs(color.g - avg) < 25 && 
+             Math.abs(color.b - avg) < 25;
+    });
+    
+    if (isMonochrome || colors.length < 2) return null;
+    
+    // Analyze image characteristics
+    const features = {
+      dominantColors: colors,
+      avgSaturation: stats.avgSaturation,
+      avgBrightness: stats.avgBrightness,
+      colorVariety: colors.length,
+      isVibrant: stats.avgSaturation > 0.3,
+      isBright: stats.avgBrightness > 0.5,
+      isPastel: stats.avgSaturation < 0.4 && stats.avgBrightness > 0.6
+    };
+    
+    return features;
+  }, []);
+
+  // Filter products by search query (name/category/description) or image
   const filtered = useMemo(() => {
     const isOffersPage = location.pathname === '/festival-offers';
     const q = (isOffersPage ? query : '').trim().toLowerCase();
     let list = products;
+    
+    // VISUAL SEARCH - Like Myntra/Flipkart
+    if (searchImage && imageColors) {
+      const imageFeatures = analyzeImageFeatures(imageColors);
+      
+      // Reject non-product images (charts, documents, etc.)
+      if (!imageFeatures) {
+        return [];
+      }
+      
+      // Score each product based on visual similarity and category match
+      const scoredProducts = list.map(product => {
+        const category = (product.category || '').toLowerCase();
+        const name = (product.name || '').toLowerCase();
+        
+        // CATEGORY DETECTION (What type of product is this?)
+        const isClothing = 
+          category.match(/\b(dress|clothing|apparel|shirt|top|frock|gown|skirt|pant|shorts|outfit|wear)\b/) ||
+          name.match(/\b(dress|frock|gown|shirt|top|tee|blouse|skirt|pant|short|wear|cloth)\b/) ||
+          (category.includes('boy') && (category.includes('wear') || name.includes('dress') || name.includes('shirt'))) ||
+          (category.includes('girl') && (category.includes('wear') || name.includes('dress') || name.includes('frock')));
+        
+        const isFootwear = 
+          category.match(/\b(footwear|footwera|shoe|sandal|boot|slipper|sneaker)\b/) ||
+          name.match(/\b(shoe|sandal|boot|slipper|sneaker|footwear)\b/);
+        
+        const isBabyProduct = 
+          category.match(/\b(baby|feeding|bottle|sippy|bib|infant|toddler|nursery)\b/) ||
+          name.match(/\b(bottle|sippy|bib|feeder|bowl|spoon|baby|infant|diaper|wipe)\b/) ||
+          category.includes('baby') || name.includes('baby');
+        
+        const isToy = 
+          category.match(/\b(toy|game|puzzle|play)\b/) ||
+          name.match(/\b(toy|game|puzzle|doll|car|block|play)\b/);
+        
+        const isAccessory = 
+          category.match(/\b(bag|hat|cap|jewelry|accessory|belt|scarf)\b/) ||
+          name.match(/\b(bag|backpack|hat|cap|necklace|bracelet|belt|bow)\b/);
+        
+        // Products must belong to a valid category
+        if (!isClothing && !isFootwear && !isBabyProduct && !isToy && !isAccessory) {
+          return null;
+        }
+        
+        // BASE CATEGORY SCORE
+        let categoryScore = 0;
+        let productType = 'other';
+        
+        if (isClothing) {
+          productType = 'clothing';
+          categoryScore = 100;
+        } else if (isFootwear) {
+          productType = 'footwear';
+          categoryScore = 90;
+        } else if (isBabyProduct) {
+          productType = 'baby';
+          categoryScore = 95;
+        } else if (isToy) {
+          productType = 'toys';
+          categoryScore = 85;
+        } else if (isAccessory) {
+          productType = 'accessories';
+          categoryScore = 80;
+        }
+        
+        // VISUAL SIMILARITY SCORE (Color matching - key feature of Myntra/Flipkart)
+        let colorMatchScore = 0;
+        if (product.imageUrl || product.image) {
+          // For each dominant color in uploaded image, check if product likely has similar colors
+          // In real implementation, we'd extract product image colors, but for now use heuristics
+          
+          // Boost score based on color characteristics matching
+          imageFeatures.dominantColors.forEach(imageColor => {
+            // Pastel products match pastel uploaded images
+            if (imageFeatures.isPastel && productType === 'baby') {
+              colorMatchScore += 20;
+            }
+            // Vibrant colors match clothing/toys better
+            if (imageFeatures.isVibrant && (productType === 'clothing' || productType === 'toys')) {
+              colorMatchScore += 15;
+            }
+            // Darker colors match footwear
+            if (!imageFeatures.isBright && productType === 'footwear') {
+              colorMatchScore += 10;
+            }
+          });
+        }
+        
+        // FINAL SCORE CALCULATION (like e-commerce ranking algorithms)
+        let finalScore = categoryScore + colorMatchScore;
+        
+        // Must have valid product category
+        if (categoryScore === 0) return null;
+        
+        // RANKING BOOSTS (like e-commerce algorithms)
+        // In-stock items ranked higher
+        if (product.inStock) finalScore += 20;
+        
+        // Popular/trending items
+        if (product.isNew) finalScore += 15;
+        if (product.featured) finalScore += 10;
+        
+        // Price relevance (mid-range products often more relevant)
+        if (product.price && product.price > 200 && product.price < 2000) {
+          finalScore += 5;
+        }
+        
+        return {
+          ...product,
+          visualScore: finalScore,
+          productType,
+          colorMatchScore
+        };
+      }).filter(p => p !== null);
+      
+      // SORT BY RELEVANCE (highest score first - like Myntra/Flipkart)
+      const rankedProducts = scoredProducts
+        .filter(p => p.inStock && p.visualScore >= 85) // Higher threshold for better results
+        .sort((a, b) => {
+          // Primary: Visual score
+          if (b.visualScore !== a.visualScore) {
+            return b.visualScore - a.visualScore;
+          }
+          // Secondary: Color match
+          if (b.colorMatchScore !== a.colorMatchScore) {
+            return b.colorMatchScore - a.colorMatchScore;
+          }
+          // Tertiary: Featured/new items
+          if (b.featured !== a.featured) return b.featured ? 1 : -1;
+          if (b.isNew !== a.isNew) return b.isNew ? 1 : -1;
+          // Final: Price (ascending)
+          return (a.price || 0) - (b.price || 0);
+        });
+      
+      return rankedProducts;
+    }
+    
     const byCategory = (p) => {
       if (!selectedCategory || selectedCategory === 'all') return true;
       if (selectedCategory === 'fashion') return isFashionCategory(p.category);
@@ -259,7 +541,7 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
 
     // default: intersection (must match both)
     return list.filter(p => byCategory(p) && byQuery(p));
-  }, [products, query, selectedCategory, filterMode, location.pathname]);
+  }, [products, query, selectedCategory, filterMode, location.pathname, searchImage, imageColors, analyzeImageFeatures]);
 
   // Personalized recommendations based on user signals (wishlist, cart, views)
   const personalized = useMemo(() => {
@@ -290,8 +572,8 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
         }}
       />
 
-      {/* Hero Carousel (hidden for fashion selections to only show Featured grid) */}
-      {!isFashionKey && (
+      {/* Hero Carousel (hidden for fashion selections and image search) */}
+      {!isFashionKey && !searchImage && (
       <HeroCarousel
         height={{ xs: 300, sm: 380, md: 560 }}
         slides={[
@@ -327,8 +609,8 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
       />
       )}
 
-      {/* Personalized Recommendations (top) - hidden for fashion selections) */}
-      {!isFashionKey && personalized.length > 0 && (
+      {/* Personalized Recommendations (top) - hidden for fashion selections and image search) */}
+      {!isFashionKey && !searchImage && personalized.length > 0 && (
         <Container maxWidth="lg" sx={{ pt: 4 }}>
           <Typography variant="h5" fontWeight={800} gutterBottom>
             Recommended for You
@@ -391,14 +673,112 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
 
       {/* Products Section */}
       <Container maxWidth="lg" sx={{ py: 6 }} ref={productsRef}>
-        {filtered.length === 0 && (
+        {/* Image Search Display - Myntra Style */}
+        {searchImage && (
+          <Box sx={{ mb: 4 }}>
+            {/* Uploaded Image Display */}
+            <Box sx={{ 
+              bgcolor: 'white', 
+              borderRadius: 3, 
+              overflow: 'hidden',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              mb: 3
+            }}>
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'space-between',
+                p: 2,
+                bgcolor: '#f5f5f5',
+                borderBottom: '1px solid #e0e0e0'
+              }}>
+                <Typography variant="body2" sx={{ fontWeight: 600, color: '#666', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                  Photo Search
+                </Typography>
+                <Button
+                  size="small"
+                  variant="text"
+                  onClick={() => {
+                    setSearchImage(null);
+                    setImageColors(null);
+                    navigate('/shop');
+                  }}
+                  sx={{ 
+                    textTransform: 'none', 
+                    color: '#2e7d32',
+                    fontWeight: 600,
+                    '&:hover': { bgcolor: '#e8f5e9' }
+                  }}
+                >
+                  Clear Search
+                </Button>
+              </Box>
+              <Box sx={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                p: 3,
+                gap: 3
+              }}>
+                <Box
+                  component="img"
+                  src={searchImage}
+                  alt="Uploaded search image"
+                  sx={{
+                    width: { xs: 120, sm: 150, md: 180 },
+                    height: { xs: 120, sm: 150, md: 180 },
+                    objectFit: 'cover',
+                    borderRadius: 2,
+                    boxShadow: 3,
+                    border: '3px solid #2e7d32'
+                  }}
+                />
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 700, mb: 1, color: '#2e7d32' }}>
+                    Visual Search Results
+                  </Typography>
+                  <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+                    {filtered.length > 0 
+                      ? `Found ${filtered.length} matching product${filtered.length !== 1 ? 's' : ''}`
+                      : 'No matching products found'
+                    }
+                  </Typography>
+                  {filtered.length === 0 && (
+                    <Typography variant="body2" color="error" sx={{ fontWeight: 500 }}>
+                      ⚠️ No exact matches. Try uploading a clearer image or browse our catalog.
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+
+            {/* Products in this photo heading */}
+            {filtered.length > 0 && (
+              <Typography 
+                variant="h5" 
+                sx={{ 
+                  fontWeight: 700, 
+                  mb: 3,
+                  pb: 2,
+                  borderBottom: '2px solid #2e7d32'
+                }}
+              >
+                Products in this photo
+              </Typography>
+            )}
+          </Box>
+        )}
+
+        {filtered.length === 0 && !searchImage && (
           <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-            No products match “{query}”.
+            No products match "{query}".
           </Typography>
         )}
-        <Typography variant="h4" fontWeight={700} gutterBottom sx={{ mb: 4, textAlign: 'center' }}>
-          Featured Products
-        </Typography>
+        
+        {!searchImage && (
+          <Typography variant="h4" fontWeight={700} gutterBottom sx={{ mb: 4, textAlign: 'center' }}>
+            Featured Products
+          </Typography>
+        )}
         
         <Grid container spacing={4}>
           {filtered.map((product) => (

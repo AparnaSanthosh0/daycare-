@@ -51,7 +51,7 @@ const NannyServicesTab = () => {
     parentInstructions: '',
     safetyGuidelines: '',
     emergencyContact: { name: '', phone: '', relationship: '' },
-    parentAddress: user?.address || '',
+    parentAddress: user?.address ? `${user.address.street || ''}, ${user.address.city || ''}, ${user.address.state || ''} ${user.address.zipCode || ''}`.trim() : '',
     parentPhone: user?.phone || ''
   });
   const [reviewForm, setReviewForm] = useState({ rating: 5, review: '' });
@@ -121,7 +121,7 @@ const NannyServicesTab = () => {
         parentInstructions: '',
         safetyGuidelines: '',
         emergencyContact: { name: '', phone: '', relationship: '' },
-        parentAddress: user?.address || '',
+        parentAddress: user?.address ? `${user.address.street || ''}, ${user.address.city || ''}, ${user.address.state || ''} ${user.address.zipCode || ''}`.trim() : '',
         parentPhone: user?.phone || ''
       });
       alert('Booking request submitted successfully!');

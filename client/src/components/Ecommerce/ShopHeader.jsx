@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Container, Typography, TextField, InputAdornment, IconButton, Badge, Button, Divider, Menu, MenuItem } from '@mui/material';
+import { Box, Container, Typography, TextField, InputAdornment, IconButton, Badge, Button, Divider, Menu, MenuItem, Dialog, DialogTitle, DialogContent } from '@mui/material';
 import {
   Person,
   LocalShipping,
@@ -8,7 +8,11 @@ import {
   AccountCircle,
   Search,
   FavoriteBorder,
-  ShoppingCart
+  ShoppingCart,
+  CameraAlt,
+  Close,
+  PhotoCamera,
+  PhotoLibrary
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -21,6 +25,14 @@ export default function ShopHeader() {
   const [search, setSearch] = React.useState('');
   const [anchorEl, setAnchorEl] = React.useState(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [photoSearchOpen, setPhotoSearchOpen] = React.useState(false);
+  const [uploadedImage, setUploadedImage] = React.useState(null);
+  const [imagePreview, setImagePreview] = React.useState(null);
+  const [cameraActive, setCameraActive] = React.useState(false);
+  const [stream, setStream] = React.useState(null);
+  const fileInputRef = React.useRef(null);
+  const videoRef = React.useRef(null);
+  const canvasRef = React.useRef(null);
 
   const handleMenu = (event) => {
     if (event?.currentTarget) {
@@ -39,6 +51,76 @@ export default function ShopHeader() {
   const handleLogout = () => {
     logout();
     handleClose();
+  };
+
+  const handlePhotoSearchOpen = () => {
+    setPhotoSearchOpen(true);
+  };
+
+  const handlePhotoSearchClose = () => {
+    setPhotoSearchOpen(false);
+    setUploadedImage(null);
+    setImagePreview(null);
+    stopCamera();
+  };
+
+  const startCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: 'environment' } 
+      });
+      setStream(mediaStream);
+      setCameraActive(true);
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      alert('Unable to access camera. Please check permissions or use "Select a photo" instead.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+    setCameraActive(false);
+  };
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current) {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0);
+      const imageData = canvas.toDataURL('image/jpeg');
+      setImagePreview(imageData);
+      setUploadedImage(new File([imageData], 'camera-capture.jpg', { type: 'image/jpeg' }));
+      stopCamera();
+    }
+  };
+
+  const handleImageUpload = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setUploadedImage(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePhotoSearch = () => {
+    if (uploadedImage) {
+      // Navigate to shop with image data
+      navigate('/shop', { state: { searchImage: imagePreview } });
+      handlePhotoSearchClose();
+    }
   };
 
   return (
@@ -118,6 +200,18 @@ export default function ShopHeader() {
             startAdornment: (
               <InputAdornment position="start">
                 <Search sx={{ color: '#666' }} />
+              </InputAdornment>
+            ),
+            endAdornment: (
+              <InputAdornment position="end">
+                <IconButton
+                  size="small"
+                  onClick={handlePhotoSearchOpen}
+                  sx={{ color: '#2e7d32' }}
+                  title="Search by photo"
+                >
+                  <CameraAlt />
+                </IconButton>
               </InputAdornment>
             )
           }}
@@ -202,6 +296,172 @@ export default function ShopHeader() {
           Logout
         </MenuItem>
       </Menu>
+
+      {/* Photo Search Dialog */}
+      <Dialog 
+        open={photoSearchOpen} 
+        onClose={handlePhotoSearchClose}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', bgcolor: '#f5f5f5' }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: 1 }}>Photo Search</Typography>
+          <IconButton onClick={handlePhotoSearchClose} size="small">
+            <Close />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          <Box sx={{ py: 4 }}>
+            {cameraActive ? (
+              <Box sx={{ px: 3, textAlign: 'center' }}>
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  style={{
+                    width: '100%',
+                    maxHeight: 400,
+                    borderRadius: 8,
+                    backgroundColor: '#000'
+                  }}
+                />
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
+                <Box sx={{ display: 'flex', gap: 2, mt: 3 }}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={stopCamera}
+                    sx={{ textTransform: 'none', py: 1.5 }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="success"
+                    onClick={capturePhoto}
+                    startIcon={<PhotoCamera />}
+                    sx={{ textTransform: 'none', py: 1.5, fontWeight: 600 }}
+                  >
+                    Capture Photo
+                  </Button>
+                </Box>
+              </Box>
+            ) : imagePreview ? (
+              <Box sx={{ px: 3 }}>
+                <Box
+                  component="img"
+                  src={imagePreview}
+                  alt="Uploaded"
+                  sx={{
+                    width: '100%',
+                    maxHeight: 400,
+                    objectFit: 'contain',
+                    borderRadius: 2,
+                    boxShadow: 3,
+                    mb: 3
+                  }}
+                />
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    color="error"
+                    startIcon={<Close />}
+                    onClick={() => {
+                      setUploadedImage(null);
+                      setImagePreview(null);
+                    }}
+                    sx={{ textTransform: 'none', py: 1.5 }}
+                  >
+                    Remove
+                  </Button>
+                  <Button
+                    fullWidth
+                    variant="contained"
+                    color="success"
+                    onClick={handlePhotoSearch}
+                    startIcon={<Search />}
+                    sx={{ textTransform: 'none', py: 1.5, fontWeight: 600 }}
+                  >
+                    Search Products
+                  </Button>
+                </Box>
+              </Box>
+            ) : (
+              <Box sx={{ px: 3 }}>
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleImageUpload}
+                  accept="image/*"
+                  style={{ display: 'none' }}
+                />
+                <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+                  <Box
+                    onClick={startCamera}
+                    sx={{
+                      flex: 1,
+                      border: '2px solid #e0e0e0',
+                      borderRadius: 2,
+                      p: 3,
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      bgcolor: 'white',
+                      transition: 'all 0.2s',
+                      '&:hover': {
+                        bgcolor: '#f5f5f5',
+                        borderColor: '#2e7d32',
+                        transform: 'translateY(-2px)',
+                        boxShadow: 2
+                      }
+                    }}
+                  >
+                    <PhotoCamera sx={{ fontSize: 48, color: '#666', mb: 1 }} />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      Click a photo
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Use camera to take picture
+                    </Typography>
+                  </Box>
+                  
+                  <Box
+                    onClick={() => fileInputRef.current?.click()}
+                    sx={{
+                      flex: 1,
+                      border: '2px solid #e0e0e0',
+                      borderRadius: 2,
+                      p: 3,
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      bgcolor: 'white',
+                      transition: 'all 0.2s',
+                      '&:hover': {
+                        bgcolor: '#f5f5f5',
+                        borderColor: '#2e7d32',
+                        transform: 'translateY(-2px)',
+                        boxShadow: 2
+                      }
+                    }}
+                  >
+                    <PhotoLibrary sx={{ fontSize: 48, color: '#666', mb: 1 }} />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 0.5 }}>
+                      Select a photo
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Choose from gallery
+                    </Typography>
+                  </Box>
+                </Box>
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', px: 2 }}>
+                  Upload a clear image of the product you're looking for. We'll show you similar items from our catalog.
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 }
