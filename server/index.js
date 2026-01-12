@@ -35,6 +35,7 @@ app.use(helmet({
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
+  'http://localhost:3002',
   'https://daycare-plmf.vercel.app',
   'https://daycare-plmf-git-main-aparnas-projects-4913ab30.vercel.app',
   'https://daycare-plmf-c8xo0dsxz-aparnas-projects-4913ab30.vercel.app'
@@ -44,6 +45,7 @@ app.use(cors({
   origin: [
     'http://localhost:3000',
     'http://localhost:3001',
+    'http://localhost:3002',
     'https://daycare-plmf.vercel.app',
     'https://daycare-plmf-git-main-aparnas-projects-4913ab30.vercel.app',
     'https://daycare-plmf-c8xo0dsxz-aparnas-projects-4913ab30.vercel.app'
@@ -137,6 +139,9 @@ app.use('/api/visitors', requireDb, require('./routes/visitors'));
 
 // After School Programs
 app.use('/api/afterschool', requireDb, require('./routes/afterSchoolPrograms'));
+
+// Location & Maps (Pickup Tracking, Directions)
+app.use('/api/location', requireDb, require('./routes/location'));
 
 // Serve uploaded files (certificates, child photos, profile images, etc.)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));

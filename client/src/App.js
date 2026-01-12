@@ -57,6 +57,8 @@ import Families from './pages/Families/Families';
 import SupportCenter from './pages/Support/SupportCenter';
 import RecommendationTestPage from './pages/RecommendationTestPage';
 import FeedbackClassification from './components/FeedbackClassification';
+import LocationDemo from './components/Demo/LocationDemo';
+import StaffLocationDashboard from './components/Staff/StaffLocationDashboard';
 const InventoryPage = React.lazy(() => import('./pages/Admin/Inventory'));
 const AboutLazy = React.lazy(() => import('./pages/About/About'));
 const ApproachLazy = React.lazy(() => import('./pages/About/Approach'));
@@ -148,6 +150,18 @@ function App() {
           <Route 
             path="/feedback-classification" 
             element={<FeedbackClassification />} 
+          />
+
+          {/* Location & Maps - Public Route */}
+          <Route 
+            path="/location" 
+            element={<LocationDemo />} 
+          />
+
+          {/* Staff Pickup Monitoring - Protected Route */}
+          <Route 
+            path="/staff/pickups" 
+            element={user?.role === 'staff' || user?.role === 'admin' ? <Layout><StaffLocationDashboard /></Layout> : <Navigate to="/" replace />} 
           />
 
           {/* About, Approach and Curriculum Pages (no dashboard layout) */}

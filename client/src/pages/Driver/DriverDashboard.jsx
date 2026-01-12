@@ -45,6 +45,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
+import DaycareLocationMap from '../../components/Maps/DaycareLocationMap';
 
 const DriverDashboard = () => {
   const { user, logout } = useAuth();
@@ -394,6 +395,7 @@ const DriverDashboard = () => {
           <Tab icon={<People />} iconPosition="start" label="Assigned Children" />
           <Tab icon={<Warning />} iconPosition="start" label="Incidents" />
           <Tab icon={<Assessment />} iconPosition="start" label="Vehicle Info" />
+          <Tab icon={<LocationOn />} iconPosition="start" label="Map & Navigation" />
         </Tabs>
       </Box>
 
@@ -1351,6 +1353,40 @@ const DriverDashboard = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Map & Navigation Tab */}
+      {activeTab === 5 && (
+        <Paper elevation={2} sx={{ p: 3 }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+              📍 Map & Navigation
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              View daycare location, get directions, and plan your pickup/drop-off routes
+            </Typography>
+          </Box>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <DaycareLocationMap showDirections={true} showSearch={true} />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Alert severity="info">
+                <Typography variant="body2">
+                  <strong>Driver Navigation Tips:</strong>
+                  <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                    <li>Use "Get Directions" for optimal routes to daycare</li>
+                    <li>Switch between driving and walking modes</li>
+                    <li>Search for specific pickup locations</li>
+                    <li>View real-time traffic conditions</li>
+                  </ul>
+                </Typography>
+              </Alert>
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
     </Box>
   );
 };

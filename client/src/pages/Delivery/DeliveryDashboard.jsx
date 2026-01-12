@@ -32,6 +32,7 @@ import {
 } from '@mui/icons-material';
 import { Avatar, IconButton, Tooltip } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
+import DaycareLocationMap from '../../components/Maps/DaycareLocationMap';
 
 const fmtCurrency = (v) => `$${v.toFixed(2)}`;
 
@@ -192,6 +193,7 @@ const DeliveryDashboard = () => {
           <Tab label="Active Delivery" icon={<Schedule />} iconPosition="start" sx={{ textTransform: 'none' }} />
           <Tab label="Completed" icon={<DoneAll />} iconPosition="start" sx={{ textTransform: 'none' }} />
           <Tab label="Earnings" icon={<MonetizationOn />} iconPosition="start" sx={{ textTransform: 'none' }} />
+          <Tab label="Map & Routes" icon={<Place />} iconPosition="start" sx={{ textTransform: 'none' }} />
         </Tabs>
         <Chip label={`${ordersCount} Orders`} color="warning" variant="outlined" />
       </Box>
@@ -329,6 +331,82 @@ const DeliveryDashboard = () => {
                 <Typography variant="h5" color="warning.main">{stats.avgRating}</Typography>
               </Paper>
             </Grid>
+          </Grid>
+        </Paper>
+      )}
+
+      {/* Map & Routes */}
+      {tab === 4 && (
+        <Paper sx={{ p: 3, borderRadius: 2, boxShadow: '0 10px 24px rgba(0,0,0,0.05)' }}>
+          <Box sx={{ mb: 3 }}>
+            <Typography variant="h5" gutterBottom sx={{ fontWeight: 600 }}>
+              📍 Map & Delivery Routes
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              View store locations, get directions, and plan your delivery routes
+            </Typography>
+          </Box>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <DaycareLocationMap showDirections={true} showSearch={true} />
+            </Grid>
+
+            <Grid item xs={12}>
+              <Alert severity="info">
+                <Typography variant="body2">
+                  <strong>Delivery Navigation Tips:</strong>
+                  <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                    <li>Use "Get Directions" for optimal routes to pickup/drop locations</li>
+                    <li>Switch between driving and walking modes based on your delivery method</li>
+                    <li>Search for specific customer addresses</li>
+                    <li>Plan multi-stop routes efficiently</li>
+                    <li>View real-time traffic to avoid delays</li>
+                  </ul>
+                </Typography>
+              </Alert>
+            </Grid>
+
+            {activeDelivery && activeDelivery.status === 'enroute' && (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 2, bgcolor: '#e3f2fd', borderRadius: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    🚴 Active Delivery Route
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="body2" color="text.secondary">
+                        <strong>Pickup:</strong> {activeDelivery.pickup}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        📍 {activeDelivery.pickupAddr}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12} md={6}>
+                      <Typography variant="body2" color="text.secondary">
+                        <strong>Drop:</strong> {activeDelivery.drop}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        📍 {activeDelivery.dropAddr}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Chip 
+                        label={`Distance: ${activeDelivery.distanceKm} km`} 
+                        icon={<Place />} 
+                        color="primary" 
+                        sx={{ mr: 1 }}
+                      />
+                      <Chip 
+                        label={`ETA: ${activeDelivery.eta}`} 
+                        icon={<AccessTime />} 
+                        color="success"
+                      />
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Grid>
+            )}
           </Grid>
         </Paper>
       )}
