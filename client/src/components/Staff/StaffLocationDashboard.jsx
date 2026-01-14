@@ -1,5 +1,5 @@
 import React from 'react';
-import { Container, Grid, Typography, Paper } from '@mui/material';
+import { Container, Grid, Typography } from '@mui/material';
 import NearbyParentsMap from '../Maps/NearbyParentsMap';
 
 const StaffLocationDashboard = () => {

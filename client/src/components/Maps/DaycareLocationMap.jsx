@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { GoogleMap, LoadScript, Marker, InfoWindow, DirectionsRenderer } from '@react-google-maps/api';
-import { Box, Button, TextField, Paper, Typography, IconButton } from '@mui/material';
+import { Box, Button, TextField, Paper, Typography } from '@mui/material';
 import { MyLocation, Directions, LocationOn } from '@mui/icons-material';
 
 const containerStyle = {
@@ -22,6 +22,16 @@ const DaycareLocationMap = ({ showDirections = true, showSearch = false }) => {
   const [showInfo, setShowInfo] = useState(false);
   const [searchAddress, setSearchAddress] = useState('');
   const [travelMode, setTravelMode] = useState('DRIVING');
+
+  // Verify API key is loaded
+  React.useEffect(() => {
+    const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
+    if (!apiKey || apiKey === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
+      console.error('⚠️ Google Maps API Key is not configured! Please add it to client/.env file');
+    } else {
+      console.log('✅ Google Maps API Key is configured');
+    }
+  }, []);
 
   const onLoad = useCallback((map) => {
     setMap(map);
