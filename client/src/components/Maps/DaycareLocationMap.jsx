@@ -1,47 +1,44 @@
-import React, { useState, useCallback } from 'react';
-import { GoogleMap, LoadScript, Marker, InfoWindow, DirectionsRenderer } from '@react-google-maps/api';
-import { Box, Button, TextField, Paper, Typography } from '@mui/material';
-import { MyLocation, Directions, LocationOn } from '@mui/icons-material';
+import React, { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { Paper, TextField, Button, Box, Typography, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import MyLocationIcon from '@mui/icons-material/MyLocation';
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
+import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
 
-const containerStyle = {
-  width: '100%',
-  height: '500px'
-};
+// Fix Leaflet default marker icon
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
 
-// Default TinyTots Daycare Location (Update with actual location)
 const daycareLocation = {
   lat: 40.7128,
-  lng: -74.0060,
-  address: "123 Kids Street, TinyTots Daycare, New York, NY 10001"
+  lng: -74.0060
 };
 
-const DaycareLocationMap = ({ showDirections = true, showSearch = false }) => {
-  const [map, setMap] = useState(null);
+// Component to recenter map
+function ChangeView({ center, zoom }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, zoom);
+  }, [center, zoom, map]);
+  return null;
+}
+
+const DaycareLocationMap = () => {
   const [userLocation, setUserLocation] = useState(null);
-  const [directions, setDirections] = useState(null);
-  const [showInfo, setShowInfo] = useState(false);
+  const [mapCenter, setMapCenter] = useState([daycareLocation.lat, daycareLocation.lng]);
+  const [mapZoom, setMapZoom] = useState(13);
+  const [distance, setDistance] = useState('');
+  const [duration, setDuration] = useState('');
+  const [travelMode, setTravelMode] = useState('driving');
   const [searchAddress, setSearchAddress] = useState('');
-  const [travelMode, setTravelMode] = useState('DRIVING');
+  const [routeCoordinates, setRouteCoordinates] = useState(null);
 
-  // Verify API key is loaded
-  React.useEffect(() => {
-    const apiKey = process.env.REACT_APP_GOOGLE_MAPS_API_KEY;
-    if (!apiKey || apiKey === 'YOUR_GOOGLE_MAPS_API_KEY_HERE') {
-      console.error('⚠️ Google Maps API Key is not configured! Please add it to client/.env file');
-    } else {
-      console.log('✅ Google Maps API Key is configured');
-    }
-  }, []);
-
-  const onLoad = useCallback((map) => {
-    setMap(map);
-  }, []);
-
-  const onUnmount = useCallback(() => {
-    setMap(null);
-  }, []);
-
-  // Get user's current location
   const getUserLocation = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -51,211 +48,178 @@ const DaycareLocationMap = ({ showDirections = true, showSearch = false }) => {
             lng: position.coords.longitude
           };
           setUserLocation(pos);
-          if (map) {
-            map.panTo(pos);
-          }
+          setMapCenter([pos.lat, pos.lng]);
+          setMapZoom(15);
         },
-        (error) => {
-          console.error('Error getting location:', error);
-          alert('Unable to get your location. Please enable location services.');
+        () => {
+          console.error('Error: The Geolocation service failed.');
         }
       );
     }
   };
 
-  // Get directions from user location to daycare
-  const getDirections = () => {
-    if (!userLocation) {
-      getUserLocation();
+  // Calculate distance using Haversine formula
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  const calculateRoute = async () => {
+    if (!userLocation && !searchAddress) {
+      alert('Please enter your address or enable location');
       return;
     }
 
-    const directionsService = new window.google.maps.DirectionsService();
+    try {
+      let origin = userLocation;
 
-    directionsService.route(
-      {
-        origin: userLocation,
-        destination: daycareLocation,
-        travelMode: window.google.maps.TravelMode[travelMode]
-      },
-      (result, status) => {
-        if (status === 'OK') {
-          setDirections(result);
+      if (searchAddress) {
+        // Use Nominatim for geocoding (OpenStreetMap)
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchAddress)}`,
+          { headers: { 'User-Agent': 'TinyTots-Daycare-App' } }
+        );
+        const results = await response.json();
+        if (results.length > 0) {
+          origin = {
+            lat: parseFloat(results[0].lat),
+            lng: parseFloat(results[0].lon)
+          };
+          setUserLocation(origin);
         } else {
-          console.error('Directions request failed:', status);
-          alert('Could not get directions. Please try again.');
+          alert('Address not found');
+          return;
         }
       }
-    );
-  };
 
-  // Search for address and get directions
-  const searchAndNavigate = () => {
-    if (!searchAddress) return;
-
-    const geocoder = new window.google.maps.Geocoder();
-    geocoder.geocode({ address: searchAddress }, (results, status) => {
-      if (status === 'OK' && results[0]) {
-        const location = {
-          lat: results[0].geometry.location.lat(),
-          lng: results[0].geometry.location.lng()
-        };
-        setUserLocation(location);
-        
-        // Get directions from searched location
-        const directionsService = new window.google.maps.DirectionsService();
-        directionsService.route(
-          {
-            origin: location,
-            destination: daycareLocation,
-            travelMode: window.google.maps.TravelMode[travelMode]
-          },
-          (result, status) => {
-            if (status === 'OK') {
-              setDirections(result);
-            }
-          }
-        );
-      } else {
-        alert('Address not found. Please try again.');
-      }
-    });
+      // Calculate straight-line distance
+      const dist = calculateDistance(
+        origin.lat,
+        origin.lng,
+        daycareLocation.lat,
+        daycareLocation.lng
+      );
+      
+      // Simple straight line route
+      const coords = [
+        [origin.lat, origin.lng],
+        [daycareLocation.lat, daycareLocation.lng]
+      ];
+      
+      setRouteCoordinates(coords);
+      setDistance(dist.toFixed(2) + ' km');
+      
+      // Estimate duration based on mode (driving: 40km/h avg, walking: 5km/h)
+      const speed = travelMode === 'driving' ? 40 : 5;
+      setDuration(Math.ceil((dist / speed) * 60) + ' mins');
+      
+      // Adjust map view to show both points
+      setMapCenter([origin.lat, origin.lng]);
+      setMapZoom(12);
+    } catch (error) {
+      console.error('Routing failed:', error);
+      alert('Could not calculate route. Please try again.');
+    }
   };
 
   return (
-    <Box>
-      <Paper elevation={3} sx={{ p: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-          <Typography variant="h6" sx={{ flexGrow: 1 }}>
-            <LocationOn color="primary" /> TinyTots Daycare Location
-          </Typography>
-          
-          {showDirections && (
-            <>
-              <Button
-                variant="outlined"
-                startIcon={<MyLocation />}
-                onClick={getUserLocation}
-                size="small"
-              >
-                My Location
-              </Button>
-              
-              <Button
-                variant="contained"
-                startIcon={<Directions />}
-                onClick={getDirections}
-                disabled={!userLocation}
-                size="small"
-              >
-                Get Directions
-              </Button>
-              
-              <Button
-                variant="text"
-                onClick={() => setTravelMode(travelMode === 'DRIVING' ? 'WALKING' : 'DRIVING')}
-                size="small"
-              >
-                {travelMode === 'DRIVING' ? '🚗 Driving' : '🚶 Walking'}
-              </Button>
-            </>
-          )}
-        </Box>
+    <Paper elevation={3} sx={{ p: 3, height: '600px' }}>
+      <Typography variant="h5" gutterBottom>
+        TinyTots Daycare Location
+      </Typography>
 
-        {showSearch && (
-          <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="Enter your address..."
-              value={searchAddress}
-              onChange={(e) => setSearchAddress(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && searchAndNavigate()}
-            />
-            <Button variant="contained" onClick={searchAndNavigate}>
-              Navigate
-            </Button>
-          </Box>
-        )}
-
-        {directions && (
-          <Box sx={{ mt: 2, p: 2, bgcolor: 'info.light', borderRadius: 1 }}>
-            <Typography variant="body2">
-              <strong>Distance:</strong> {directions.routes[0].legs[0].distance.text}
-              {' | '}
-              <strong>Duration:</strong> {directions.routes[0].legs[0].duration.text}
-            </Typography>
-          </Box>
-        )}
-      </Paper>
-
-      <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}>
-        <GoogleMap
-          mapContainerStyle={containerStyle}
-          center={daycareLocation}
-          zoom={15}
-          onLoad={onLoad}
-          onUnmount={onUnmount}
+      <Box sx={{ mb: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+        <TextField
+          label="Enter your address"
+          value={searchAddress}
+          onChange={(e) => setSearchAddress(e.target.value)}
+          size="small"
+          sx={{ flexGrow: 1, minWidth: '200px' }}
+        />
+        
+        <Button
+          variant="outlined"
+          startIcon={<MyLocationIcon />}
+          onClick={getUserLocation}
+          size="small"
         >
-          {/* Daycare Marker */}
-          <Marker
-            position={daycareLocation}
-            onClick={() => setShowInfo(true)}
-            icon={{
-              url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png'
-            }}
-          />
+          My Location
+        </Button>
 
-          {/* User Location Marker */}
-          {userLocation && (
-            <Marker
-              position={userLocation}
-              icon={{
-                url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png'
-              }}
-            />
-          )}
+        <ToggleButtonGroup
+          value={travelMode}
+          exclusive
+          onChange={(e, newMode) => newMode && setTravelMode(newMode)}
+          size="small"
+        >
+          <ToggleButton value="driving">
+            <DirectionsCarIcon fontSize="small" />
+          </ToggleButton>
+          <ToggleButton value="walking">
+            <DirectionsWalkIcon fontSize="small" />
+          </ToggleButton>
+        </ToggleButtonGroup>
 
-          {/* Info Window */}
-          {showInfo && (
-            <InfoWindow
-              position={daycareLocation}
-              onCloseClick={() => setShowInfo(false)}
-            >
-              <Box sx={{ p: 1 }}>
-                <Typography variant="h6" gutterBottom>
-                  TinyTots Daycare
-                </Typography>
-                <Typography variant="body2">
-                  {daycareLocation.address}
-                </Typography>
-                <Button
-                  size="small"
-                  variant="text"
-                  onClick={getDirections}
-                  sx={{ mt: 1 }}
-                >
-                  Get Directions
-                </Button>
-              </Box>
-            </InfoWindow>
-          )}
+        <Button
+          variant="contained"
+          onClick={calculateRoute}
+          size="small"
+          disabled={!userLocation && !searchAddress}
+        >
+          Get Directions
+        </Button>
+      </Box>
 
-          {/* Directions Renderer */}
-          {directions && (
-            <DirectionsRenderer
-              directions={directions}
-              options={{
-                polylineOptions: {
-                  strokeColor: '#2196F3',
-                  strokeWeight: 5
-                }
-              }}
-            />
-          )}
-        </GoogleMap>
-      </LoadScript>
-    </Box>
+      {(distance && duration) && (
+        <Box sx={{ mb: 2, p: 1, bgcolor: 'primary.light', borderRadius: 1 }}>
+          <Typography variant="body2" color="white">
+            Distance: {distance} | Duration: {duration}
+          </Typography>
+        </Box>
+      )}
+
+      <MapContainer
+        center={mapCenter}
+        zoom={mapZoom}
+        style={{ width: '100%', height: '400px' }}
+      >
+        <ChangeView center={mapCenter} zoom={mapZoom} />
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        
+        {/* Daycare Marker */}
+        <Marker position={[daycareLocation.lat, daycareLocation.lng]}>
+          <Popup>
+            <div>
+              <h3>TinyTots Daycare</h3>
+              <p>123 Main Street, New York, NY 10001</p>
+              <p>Phone: (555) 123-4567</p>
+            </div>
+          </Popup>
+        </Marker>
+
+        {/* User Location Marker */}
+        {userLocation && (
+          <Marker position={[userLocation.lat, userLocation.lng]}>
+            <Popup>Your Location</Popup>
+          </Marker>
+        )}
+
+        {/* Route Line */}
+        {routeCoordinates && (
+          <Polyline positions={routeCoordinates} color="blue" weight={4} />
+        )}
+      </MapContainer>
+    </Paper>
   );
 };
 

@@ -1824,7 +1824,8 @@ const ParentDashboard = ({ initialTab }) => {
                       <Tab label="Activities" />
                       <Tab label="Meals" />
                       <Tab label="Staff" />
-                      <Tab label="Location & Pickup" />
+                      <Tab label="📍 Location" />
+                      <Tab label="🚗 Pickup Tracking" />
                     </Tabs>
 
                     {/* Daycare Sub-tabs Content */}
@@ -2620,52 +2621,46 @@ const ParentDashboard = ({ initialTab }) => {
                     {daycareTab === 7 && (
                       <Box sx={{ p: 2 }}>
                         <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
-                          📍 Location & Pickup Tracking
+                          📍 Daycare Location & Directions
                         </Typography>
                         
-                        <Grid container spacing={3}>
-                          <Grid item xs={12} lg={6}>
-                            <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-                              <Typography variant="h6" gutterBottom>
-                                🏫 Daycare Location & Directions
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                View our location, get directions, or search from any address
-                              </Typography>
-                              <DaycareLocationMap showDirections={true} showSearch={true} />
-                            </Paper>
-                          </Grid>
+                        <Paper elevation={3} sx={{ p: 3 }}>
+                          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+                            View our daycare location, get directions from your location, or search from any address
+                          </Typography>
+                          <DaycareLocationMap showDirections={true} showSearch={true} />
+                        </Paper>
+                      </Box>
+                    )}
 
-                          <Grid item xs={12} lg={6}>
-                            <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
-                              <Typography variant="h6" gutterBottom>
-                                🚗 Pickup Tracker
-                              </Typography>
-                              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                                Share your location when picking up {profile?.firstName || 'your child'}. 
-                                Staff will be notified when you're nearby!
-                              </Typography>
-                              <PickupTracker 
-                                parentName={user?.firstName + ' ' + user?.lastName}
-                                childName={profile?.firstName || 'Child'}
-                              />
-                            </Paper>
-                          </Grid>
-
-                          <Grid item xs={12}>
-                            <Alert severity="info">
-                              <Typography variant="body2">
-                                <strong>How it works:</strong>
-                                <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
-                                  <li>Click "Start Tracking Pickup" when you're on your way</li>
-                                  <li>Your location will update automatically</li>
-                                  <li>Staff receives an alert when you're within 500m of the daycare</li>
-                                  <li>Your child will be ready when you arrive!</li>
-                                </ul>
-                              </Typography>
-                            </Alert>
-                          </Grid>
-                        </Grid>
+                    {daycareTab === 8 && (
+                      <Box sx={{ p: 2 }}>
+                        <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
+                          🚗 Live Pickup Tracking
+                        </Typography>
+                        
+                        <Paper elevation={3} sx={{ p: 3 }}>
+                          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+                            Share your live location when coming to pick up {profile?.firstName || 'your child'}. 
+                            Our staff will be notified when you're nearby!
+                          </Typography>
+                          <PickupTracker 
+                            parentName={user?.firstName + ' ' + user?.lastName}
+                            childName={profile?.firstName || 'Child'}
+                          />
+                          
+                          <Alert severity="info" sx={{ mt: 3 }}>
+                            <Typography variant="body2">
+                              <strong>How it works:</strong>
+                              <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                                <li>Click "Start Tracking My Pickup" when you're on your way</li>
+                                <li>Your location will update automatically</li>
+                                <li>Staff receives an alert when you're within 500m of the daycare</li>
+                                <li>Your child will be ready when you arrive!</li>
+                              </ul>
+                            </Typography>
+                          </Alert>
+                        </Paper>
                       </Box>
                     )}
                   </Paper>

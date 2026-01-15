@@ -1,229 +1,241 @@
 import React, { useState, useEffect } from 'react';
-import { GoogleMap, LoadScript, Marker, Circle } from '@react-google-maps/api';
-import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Chip,
-  LinearProgress,
-  Alert
-} from '@mui/material';
-import { DirectionsCar, Timer, LocationOn } from '@mui/icons-material';
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import { Paper, Button, Box, Typography, Alert } from '@mui/material';
+import LocationOnIcon from '@mui/icons-material/LocationOn';
+import StopIcon from '@mui/icons-material/Stop';
+import axios from 'axios';
 
-const containerStyle = {
-  width: '100%',
-  height: '400px'
-};
+// Component to recenter map
+function ChangeView({ center }) {
+  const map = useMap();
+  useEffect(() => {
+    if (center) {
+      map.setView(center, 14);
+    }
+  }, [center, map]);
+  return null;
+}
+
+// Fix Leaflet default marker icon
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
 const daycareLocation = {
   lat: 40.7128,
   lng: -74.0060
 };
 
-// Calculate distance between two coordinates (Haversine formula)
-const calculateDistance = (lat1, lon1, lat2, lon2) => {
-  const R = 6371; // Earth's radius in km
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-};
-
-const PickupTracker = ({ parentName = "Parent", childName = "Child" }) => {
-  const [parentLocation, setParentLocation] = useState(null);
+const PickupTracker = ({ parentId }) => {
+  const [tracking, setTracking] = useState(false);
+  const [currentLocation, setCurrentLocation] = useState(null);
   const [distance, setDistance] = useState(null);
   const [eta, setEta] = useState(null);
-  const [tracking, setTracking] = useState(false);
-  const [geofenceAlert, setGeofenceAlert] = useState(false);
+  const [watchId, setWatchId] = useState(null);
+  const [error, setError] = useState('');
 
-  // Track parent location
-  useEffect(() => {
-    let watchId;
+  // Calculate distance using Haversine formula
+  const calculateDistance = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a = 
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
 
-    if (tracking && navigator.geolocation) {
-      watchId = navigator.geolocation.watchPosition(
-        (position) => {
+  const startTracking = async () => {
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported');
+      return;
+    }
+
+    try {
+      // Start tracking
+      await axios.post(`${API_URL}/api/location/start-tracking`, {
+        parentId: parentId || 'parent-123',
+        childId: 'child-456'
+      });
+
+      const id = navigator.geolocation.watchPosition(
+        async (position) => {
           const pos = {
             lat: position.coords.latitude,
             lng: position.coords.longitude
           };
-          setParentLocation(pos);
+          
+          setCurrentLocation(pos);
 
-          // Calculate distance to daycare
+          // Calculate distance and ETA
           const dist = calculateDistance(
             pos.lat,
             pos.lng,
             daycareLocation.lat,
             daycareLocation.lng
           );
-          setDistance(dist);
+          setDistance(dist.toFixed(2));
+          setEta(Math.ceil(dist * 2)); // Rough ETA: 2 mins per km
 
-          // Estimate ETA (assuming 40 km/h average speed)
-          const estimatedETA = (dist / 40) * 60; // minutes
-          setEta(Math.round(estimatedETA));
-
-          // Geofence alert (within 500m)
-          if (dist < 0.5) {
-            setGeofenceAlert(true);
-          } else {
-            setGeofenceAlert(false);
-          }
+          // Update server
+          await axios.put(`${API_URL}/api/location/update-location`, {
+            parentId: parentId || 'parent-123',
+            latitude: pos.lat,
+            longitude: pos.lng
+          });
         },
-        (error) => {
-          console.error('Error tracking location:', error);
+        (err) => {
+          setError('Unable to get your location: ' + err.message);
         },
-        {
-          enableHighAccuracy: true,
-          maximumAge: 10000,
-          timeout: 5000
-        }
+        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
       );
+
+      setWatchId(id);
+      setTracking(true);
+      setError('');
+    } catch (err) {
+      setError('Failed to start tracking: ' + err.message);
+    }
+  };
+
+  const stopTracking = async () => {
+    if (watchId) {
+      navigator.geolocation.clearWatch(watchId);
     }
 
+    try {
+      await axios.post(`${API_URL}/api/location/stop-tracking`, {
+        parentId: parentId || 'parent-123'
+      });
+    } catch (err) {
+      console.error('Failed to stop tracking:', err);
+    }
+
+    setTracking(false);
+    setWatchId(null);
+    setCurrentLocation(null);
+    setDistance(null);
+    setEta(null);
+  };
+
+  useEffect(() => {
     return () => {
       if (watchId) {
         navigator.geolocation.clearWatch(watchId);
       }
     };
-  }, [tracking]);
-
-  const startTracking = () => {
-    setTracking(true);
-  };
-
-  const stopTracking = () => {
-    setTracking(false);
-    setParentLocation(null);
-    setDistance(null);
-    setEta(null);
-  };
+  }, [watchId]);
 
   return (
-    <Box>
-      <Card elevation={3}>
-        <CardContent>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6">
-              <DirectionsCar sx={{ mr: 1, verticalAlign: 'middle' }} />
-              Pickup Tracker
-            </Typography>
-            <Chip
-              label={tracking ? 'Tracking' : 'Not Tracking'}
-              color={tracking ? 'success' : 'default'}
-              size="small"
-            />
-          </Box>
+    <Paper elevation={3} sx={{ p: 3, height: '600px' }}>
+      <Typography variant="h5" gutterBottom>
+        Pickup Tracking
+      </Typography>
 
-          {geofenceAlert && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              🎉 {parentName} is nearby! Estimated arrival: {eta} minutes
+      <Box sx={{ mb: 2 }}>
+        {!tracking ? (
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<LocationOnIcon />}
+            onClick={startTracking}
+            fullWidth
+          >
+            Start Tracking My Pickup
+          </Button>
+        ) : (
+          <Button
+            variant="contained"
+            color="error"
+            startIcon={<StopIcon />}
+            onClick={stopTracking}
+            fullWidth
+          >
+            Stop Tracking
+          </Button>
+        )}
+      </Box>
+
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
+
+      {tracking && distance && (
+        <Box sx={{ mb: 2, p: 2, bgcolor: 'success.light', borderRadius: 1 }}>
+          <Typography variant="h6" color="white">
+            Distance: {distance} km
+          </Typography>
+          <Typography variant="body1" color="white">
+            ETA: ~{eta} minutes
+          </Typography>
+          {parseFloat(distance) < 0.5 && (
+            <Alert severity="success" sx={{ mt: 1 }}>
+              You're near the daycare!
             </Alert>
           )}
+        </Box>
+      )}
 
-          {tracking && distance !== null && (
-            <Box sx={{ mb: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="text.secondary">
-                  <LocationOn fontSize="small" /> Distance: {distance.toFixed(2)} km
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  <Timer fontSize="small" /> ETA: {eta} mins
-                </Typography>
-              </Box>
-              <LinearProgress
-                variant="determinate"
-                value={Math.max(0, Math.min(100, 100 - (distance * 10)))}
-                sx={{ height: 8, borderRadius: 1 }}
-              />
-            </Box>
-          )}
+      <MapContainer
+        center={currentLocation ? [currentLocation.lat, currentLocation.lng] : [daycareLocation.lat, daycareLocation.lng]}
+        zoom={14}
+        style={{ width: '100%', height: '400px' }}
+      >
+        {currentLocation && <ChangeView center={[currentLocation.lat, currentLocation.lng]} />}
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        
+        {/* Daycare Marker */}
+        <Marker position={[daycareLocation.lat, daycareLocation.lng]}>
+          <Popup>
+            <div>
+              <h3>TinyTots Daycare</h3>
+              <p>Your destination</p>
+            </div>
+          </Popup>
+        </Marker>
 
-          <LoadScript googleMapsApiKey={process.env.REACT_APP_GOOGLE_MAPS_API_KEY}>
-            <GoogleMap
-              mapContainerStyle={containerStyle}
-              center={parentLocation || daycareLocation}
-              zoom={13}
-            >
-              {/* Daycare Marker */}
-              <Marker
-                position={daycareLocation}
-                icon={{
-                  url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
-                  scaledSize: new window.google.maps.Size(40, 40)
-                }}
-                title="TinyTots Daycare"
-              />
+        {/* Geofence Circle */}
+        <Circle
+          center={[daycareLocation.lat, daycareLocation.lng]}
+          radius={500}
+          pathOptions={{ color: 'green', fillColor: 'green', fillOpacity: 0.1 }}
+        />
 
-              {/* Geofence Circle (500m radius) */}
-              <Circle
-                center={daycareLocation}
-                radius={500}
-                options={{
-                  fillColor: '#2196F3',
-                  fillOpacity: 0.1,
-                  strokeColor: '#2196F3',
-                  strokeOpacity: 0.4,
-                  strokeWeight: 2
-                }}
-              />
+        {/* Current Location Marker */}
+        {currentLocation && (
+          <Marker position={[currentLocation.lat, currentLocation.lng]}>
+            <Popup>Your Current Location</Popup>
+          </Marker>
+        )}
 
-              {/* Parent Location Marker */}
-              {parentLocation && (
-                <Marker
-                  position={parentLocation}
-                  icon={{
-                    url: 'http://maps.google.com/mapfiles/ms/icons/blue-dot.png',
-                    scaledSize: new window.google.maps.Size(35, 35)
-                  }}
-                  title={parentName}
-                />
-              )}
-            </GoogleMap>
-          </LoadScript>
-
-          <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
-            {!tracking ? (
-              <button
-                onClick={startTracking}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: '#2196F3',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
-              >
-                Start Tracking Pickup
-              </button>
-            ) : (
-              <button
-                onClick={stopTracking}
-                style={{
-                  flex: 1,
-                  padding: '10px',
-                  backgroundColor: '#f44336',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                  fontSize: '14px'
-                }}
-              >
-                Stop Tracking
-              </button>
-            )}
-          </Box>
-        </CardContent>
-      </Card>
-    </Box>
+        {/* Route Line from current location to daycare */}
+        {currentLocation && (
+          <Polyline
+            positions={[
+              [currentLocation.lat, currentLocation.lng],
+              [daycareLocation.lat, daycareLocation.lng]
+            ]}
+            color="blue"
+            weight={3}
+            dashArray="10, 10"
+          />
+        )}
+      </MapContainer>
+    </Paper>
   );
 };
 
