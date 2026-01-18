@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, Circle } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Paper, Typography, Box, Chip } from '@mui/material';
-import axios from 'axios';
+import api from '../../config/api';
 
 // Fix Leaflet default marker icon
 delete L.Icon.Default.prototype._getIconUrl;
@@ -13,11 +13,9 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-
 const daycareLocation = {
-  lat: 40.7128,
-  lng: -74.0060
+  lat: 9.9679032,
+  lng: 76.2444378
 };
 
 const NearbyParentsMap = () => {
@@ -26,7 +24,7 @@ const NearbyParentsMap = () => {
   useEffect(() => {
     const fetchActivePickups = async () => {
       try {
-        const response = await axios.get(`${API_URL}/api/location/active-pickups`);
+        const response = await api.get('/api/location/active-pickups');
         setActivePickups(response.data.pickups || []);
       } catch (error) {
         console.error('Failed to fetch active pickups:', error);

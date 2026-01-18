@@ -42,6 +42,8 @@ import api from '../../config/api';
 import PurchasePrediction from '../../components/PurchasePrediction';
 import DemandPrediction from '../../components/DemandPrediction';
 import SmartSearch from '../../components/Common/SmartSearch';
+import TransportManagement from '../../components/Admin/TransportManagement';
+import VaccinationManagement from '../../components/Admin/VaccinationManagement';
 
 const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -579,6 +581,8 @@ const AdminDashboard = () => {
           <Tab label="Meal Plan Approval" />
           <Tab label="All Users" />
           <Tab label="AI Predictions" />
+          <Tab label="Transport Requests" />
+          <Tab label="Vaccination Records" />
         </Tabs>
 
         <Box sx={{ mt: 3 }}>
@@ -992,6 +996,20 @@ const AdminDashboard = () => {
               </Typography>
               <PurchasePrediction />
               <DemandPrediction />
+            </Box>
+          )}
+
+          {/* Transport Management Tab */}
+          {tabValue === 8 && (
+            <Box>
+              <TransportManagement />
+            </Box>
+          )}
+
+          {/* Vaccination Records Tab */}
+          {tabValue === 9 && (
+            <Box>
+              <VaccinationManagement />
             </Box>
           )}
         </Box>

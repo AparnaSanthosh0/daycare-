@@ -65,8 +65,8 @@ router.put('/update-location', auth, async (req, res) => {
 
     // Calculate distance to daycare (example coordinates)
     const daycareLocation = {
-      lat: 40.7128,
-      lng: -74.0060
+      lat: 9.9679032,
+      lng: 76.2444378
     };
 
     const distance = calculateDistance(
@@ -170,12 +170,12 @@ router.get('/daycare-info', async (req, res) => {
     // In production, fetch from database
     const daycareInfo = {
       name: 'TinyTots Daycare',
-      address: '123 Kids Street, New York, NY 10001',
+      address: 'Kerala, India',
       location: {
-        lat: 40.7128,
-        lng: -74.0060
+        lat: 9.9679032,
+        lng: 76.2444378
       },
-      phone: '+1 (555) 123-4567',
+      phone: '+91 (555) 123-4567',
       email: 'contact@tinytots.com',
       hours: {
         weekdays: '7:00 AM - 6:00 PM',

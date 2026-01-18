@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Paper, TextField, Button, Box, Typography, ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Paper, TextField, Button, Box, Typography, ToggleButton, ToggleButtonGroup, Alert } from '@mui/material';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
@@ -16,8 +16,8 @@ L.Icon.Default.mergeOptions({
 });
 
 const daycareLocation = {
-  lat: 40.7128,
-  lng: -74.0060
+  lat: 9.9679032,
+  lng: 76.2444378
 };
 
 // Component to recenter map
@@ -38,24 +38,46 @@ const DaycareLocationMap = () => {
   const [travelMode, setTravelMode] = useState('driving');
   const [searchAddress, setSearchAddress] = useState('');
   const [routeCoordinates, setRouteCoordinates] = useState(null);
+  const [error, setError] = useState('');
 
   const getUserLocation = () => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const pos = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude
-          };
-          setUserLocation(pos);
-          setMapCenter([pos.lat, pos.lng]);
-          setMapZoom(15);
-        },
-        () => {
-          console.error('Error: The Geolocation service failed.');
-        }
-      );
+    if (!navigator.geolocation) {
+      setError('Geolocation is not supported by your browser');
+      return;
     }
+
+    setError(''); // Clear previous errors
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const pos = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        };
+        setUserLocation(pos);
+        setMapCenter([pos.lat, pos.lng]);
+        setMapZoom(15);
+        setError('');
+      },
+      (err) => {
+        let errorMsg = '';
+        switch(err.code) {
+          case err.PERMISSION_DENIED:
+            errorMsg = 'Location access denied. Please enable location permissions in your browser settings.';
+            break;
+          case err.POSITION_UNAVAILABLE:
+            errorMsg = 'Location information unavailable. Please try again.';
+            break;
+          case err.TIMEOUT:
+            errorMsg = 'Location request timed out. Please try again.';
+            break;
+          default:
+            errorMsg = 'Unable to get your location. Please try again.';
+        }
+        setError(errorMsg);
+        console.error('Geolocation error:', err);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   // Calculate distance using Haversine formula
@@ -176,6 +198,12 @@ const DaycareLocationMap = () => {
           Get Directions
         </Button>
       </Box>
+
+      {error && (
+        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setError('')}>
+          {error}
+        </Alert>
+      )}
 
       {(distance && duration) && (
         <Box sx={{ mb: 2, p: 1, bgcolor: 'primary.light', borderRadius: 1 }}>

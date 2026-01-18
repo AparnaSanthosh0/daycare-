@@ -143,6 +143,12 @@ app.use('/api/afterschool', requireDb, require('./routes/afterSchoolPrograms'));
 // Location & Maps (Pickup Tracking, Directions)
 app.use('/api/location', requireDb, require('./routes/location'));
 
+// Transport Management (Enrollment, Assignments)
+app.use('/api/transport', requireDb, require('./routes/transport'));
+
+// Blockchain (Vaccination Records, Immutable Data)
+app.use('/api/blockchain', requireDb, require('./routes/blockchain'));
+
 // Serve uploaded files (certificates, child photos, profile images, etc.)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));
 
@@ -207,6 +213,11 @@ const serverPort = parseInt(PORT, 10) || 5000;
 mongoose.connect(MONGODB_URI)
   .then(() => {
     console.log('✅ Connected to MongoDB');
+    
+    // Initialize vaccine reminder system
+    const { initializeVaccineReminders } = require('./utils/vaccineReminder');
+    initializeVaccineReminders();
+    
     app.listen(serverPort, () => {
       console.log(`🚀 Server running on port ${serverPort}`);
       console.log(`📱 Frontend should connect to: http://localhost:${serverPort}`);

@@ -5,7 +5,7 @@ import 'leaflet/dist/leaflet.css';
 import { Paper, Button, Box, Typography, Alert } from '@mui/material';
 import LocationOnIcon from '@mui/icons-material/LocationOn';
 import StopIcon from '@mui/icons-material/Stop';
-import axios from 'axios';
+import api from '../../config/api';
 
 // Component to recenter map
 function ChangeView({ center }) {
@@ -26,15 +26,14 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-
 const daycareLocation = {
-  lat: 40.7128,
-  lng: -74.0060
+  lat: 9.9679032,
+  lng: 76.2444378
 };
 
-const PickupTracker = ({ parentId }) => {
+const PickupTracker = ({ parentId, childId }) => {
   const [tracking, setTracking] = useState(false);
+  const [trackingId, setTrackingId] = useState(null);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [distance, setDistance] = useState(null);
   const [eta, setEta] = useState(null);
@@ -56,52 +55,112 @@ const PickupTracker = ({ parentId }) => {
 
   const startTracking = async () => {
     if (!navigator.geolocation) {
-      setError('Geolocation is not supported');
+      setError('Geolocation is not supported by your browser');
       return;
     }
 
     try {
-      // Start tracking
-      await axios.post(`${API_URL}/api/location/start-tracking`, {
-        parentId: parentId || 'parent-123',
-        childId: 'child-456'
-      });
-
-      const id = navigator.geolocation.watchPosition(
+      setError(''); // Clear previous errors
+      
+      // Get current location first
+      navigator.geolocation.getCurrentPosition(
         async (position) => {
-          const pos = {
+          const initialPos = {
             lat: position.coords.latitude,
             lng: position.coords.longitude
           };
           
-          setCurrentLocation(pos);
+          setCurrentLocation(initialPos);
+          
+          try {
+            // Start tracking with initial location
+            const response = await api.post('/api/location/start-tracking', {
+              childId: childId || 'child-456',
+              parentLocation: initialPos
+            });
+            
+            setTrackingId(response.data.trackingId);
+            
+            // Now start continuous tracking
+            const id = navigator.geolocation.watchPosition(
+              async (position) => {
+                const pos = {
+                  lat: position.coords.latitude,
+                  lng: position.coords.longitude
+                };
+                
+                setCurrentLocation(pos);
 
-          // Calculate distance and ETA
-          const dist = calculateDistance(
-            pos.lat,
-            pos.lng,
-            daycareLocation.lat,
-            daycareLocation.lng
-          );
-          setDistance(dist.toFixed(2));
-          setEta(Math.ceil(dist * 2)); // Rough ETA: 2 mins per km
+                // Calculate distance and ETA
+                const dist = calculateDistance(
+                  pos.lat,
+                  pos.lng,
+                  daycareLocation.lat,
+                  daycareLocation.lng
+                );
+                setDistance(dist.toFixed(2));
+                setEta(Math.ceil(dist * 2)); // Rough ETA: 2 mins per km
 
-          // Update server
-          await axios.put(`${API_URL}/api/location/update-location`, {
-            parentId: parentId || 'parent-123',
-            latitude: pos.lat,
-            longitude: pos.lng
-          });
+                // Update server with trackingId
+                try {
+                  await api.put('/api/location/update-location', {
+                    trackingId: response.data.trackingId,
+                    location: pos
+                  });
+                } catch (err) {
+                  console.error('Failed to update server:', err);
+                }
+              },
+              (err) => {
+                let errorMsg = '';
+                switch(err.code) {
+                  case err.PERMISSION_DENIED:
+                    errorMsg = 'Location access denied. Please enable location permissions and try again.';
+                    break;
+                  case err.POSITION_UNAVAILABLE:
+                    errorMsg = 'Location unavailable. Please ensure GPS is enabled.';
+                    break;
+                  case err.TIMEOUT:
+                    errorMsg = 'Location request timed out. Please try again.';
+                    break;
+                  default:
+                    errorMsg = 'Unable to track your location: ' + err.message;
+                }
+                setError(errorMsg);
+                setTracking(false);
+                if (watchId) {
+                  navigator.geolocation.clearWatch(watchId);
+                  setWatchId(null);
+                }
+              },
+              { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+            );
+
+            setWatchId(id);
+            setTracking(true);
+          } catch (err) {
+            setError('Failed to start tracking: ' + (err.response?.data?.message || err.message));
+          }
         },
         (err) => {
-          setError('Unable to get your location: ' + err.message);
+          let errorMsg = '';
+          switch(err.code) {
+            case err.PERMISSION_DENIED:
+              errorMsg = 'Location access denied. Please enable location permissions.';
+              break;
+            case err.POSITION_UNAVAILABLE:
+              errorMsg = 'Location unavailable. Please ensure GPS is enabled.';
+              break;
+            case err.TIMEOUT:
+              errorMsg = 'Location request timed out. Please try again.';
+              break;
+            default:
+              errorMsg = 'Unable to get your location.';
+          }
+          setError(errorMsg);
         },
-        { enableHighAccuracy: true, maximumAge: 10000, timeout: 5000 }
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
       );
-
-      setWatchId(id);
-      setTracking(true);
-      setError('');
     } catch (err) {
       setError('Failed to start tracking: ' + err.message);
     }
@@ -113,15 +172,18 @@ const PickupTracker = ({ parentId }) => {
     }
 
     try {
-      await axios.post(`${API_URL}/api/location/stop-tracking`, {
-        parentId: parentId || 'parent-123'
-      });
+      if (trackingId) {
+        await api.post('/api/location/stop-tracking', {
+          trackingId: trackingId
+        });
+      }
     } catch (err) {
       console.error('Failed to stop tracking:', err);
     }
 
     setTracking(false);
     setWatchId(null);
+    setTrackingId(null);
     setCurrentLocation(null);
     setDistance(null);
     setEta(null);

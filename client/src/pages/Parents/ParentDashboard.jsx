@@ -32,7 +32,8 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Badge
+  Badge,
+  Snackbar
 } from '@mui/material';
 import {
   Person,
@@ -64,6 +65,8 @@ import TransportTracking from '../../components/TransportTracking';
 import SmartSearch from '../../components/Common/SmartSearch';
 import DaycareLocationMap from '../../components/Maps/DaycareLocationMap';
 import PickupTracker from '../../components/Maps/PickupTracker';
+import TransportRouteMap from '../../components/Maps/TransportRouteMap';
+import VaccinationCard from '../../components/Parents/VaccinationCard';
 
 // Simple helper to format date strings
 const formatDate = (d) => {
@@ -148,6 +151,19 @@ const ParentDashboard = ({ initialTab }) => {
   const [appointmentLoading, setAppointmentLoading] = useState(false);
   const [appointmentError, setAppointmentError] = useState('');
   const [appointmentSuccess, setAppointmentSuccess] = useState('');
+
+  // Transport enrollment states
+  const [transportForm, setTransportForm] = useState({
+    pickupAddress: '',
+    pickupTime: '08:00',
+    dropoffTime: '17:00',
+    contactNumber: user?.phone || '',
+    specialInstructions: ''
+  });
+  const [transportLoading, setTransportLoading] = useState(false);
+  const [transportRequests, setTransportRequests] = useState([]);
+  const [transportAssignment, setTransportAssignment] = useState(null);
+  const [transportMessage, setTransportMessage] = useState({ open: false, text: '', severity: 'success' });
 
   // Editable fields (parent-allowed)
   const [editFields, setEditFields] = useState({
@@ -1156,12 +1172,113 @@ const ParentDashboard = ({ initialTab }) => {
     }
   };
 
+  // Fetch transport requests
+  const fetchTransportRequests = useCallback(async () => {
+    try {
+      const response = await api.get('/api/transport/my-requests');
+      setTransportRequests(response.data.requests || []);
+    } catch (error) {
+      console.error('Error fetching transport requests:', error);
+    }
+  }, []);
+
+  // Fetch transport assignment
+  const fetchTransportAssignment = useCallback(async () => {
+    if (!profile?._id) {
+      return;
+    }
+    try {
+      const response = await api.get(`/api/transport/my-assignment/${profile._id}`);
+      setTransportAssignment(response.data.assignment);
+    } catch (error) {
+      // No assignment found is okay
+      console.log('No transport assignment found');
+    }
+  }, [profile?._id]);
+
   // Load appointments when tab changes
   useEffect(() => {
     if (tab === 8 && user?.role === 'parent') {
       fetchAppointments();
     }
   }, [tab, user?.role]);
+
+  // Load transport data when tab changes
+  useEffect(() => {
+    if (tab === 3 && user?.role === 'parent') {
+      fetchTransportRequests();
+      if (profile?._id) {
+        fetchTransportAssignment();
+      }
+    }
+  }, [tab, user?.role, profile?._id, fetchTransportRequests, fetchTransportAssignment]);
+
+  // Handle transport form submission
+  const handleTransportEnrollment = async () => {
+    if (!transportForm.pickupAddress || !transportForm.contactNumber) {
+      setTransportMessage({ open: true, text: 'Please fill in all required fields', severity: 'warning' });
+      return;
+    }
+
+    if (!profile?._id) {
+      setTransportMessage({ open: true, text: 'Please select a child first', severity: 'warning' });
+      return;
+    }
+
+    setTransportLoading(true);
+    try {
+      const response = await api.post('/api/transport/request', {
+        childId: profile._id,
+        childName: profile.firstName + ' ' + (profile.lastName || ''),
+        pickupAddress: transportForm.pickupAddress,
+        pickupTime: transportForm.pickupTime,
+        dropoffTime: transportForm.dropoffTime,
+        contactNumber: transportForm.contactNumber,
+        specialInstructions: transportForm.specialInstructions
+      });
+
+      setTransportMessage({ 
+        open: true, 
+        text: response.data.message || 'Transport request submitted successfully! Admin will review shortly.', 
+        severity: 'success' 
+      });
+      
+      // Reset form
+      setTransportForm({
+        pickupAddress: '',
+        pickupTime: '08:00',
+        dropoffTime: '17:00',
+        contactNumber: user?.phone || '',
+        specialInstructions: ''
+      });
+
+      // Refresh requests
+      fetchTransportRequests();
+    } catch (error) {
+      setTransportMessage({ 
+        open: true, 
+        text: error.response?.data?.message || 'Failed to submit transport request', 
+        severity: 'error' 
+      });
+    } finally {
+      setTransportLoading(false);
+    }
+  };
+
+  // Cancel transport request
+  const handleCancelTransportRequest = async (requestId) => {
+    if (!window.confirm('Are you sure you want to cancel this request?')) {
+      return;
+    }
+
+    try {
+      await api.delete(`/api/transport/request/${requestId}`);
+      alert('Transport request cancelled');
+      fetchTransportRequests();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to cancel request');
+    }
+  };
 
   // Schedule display component (kept for future use)
   // const ScheduleCard = () => {
@@ -1825,7 +1942,7 @@ const ParentDashboard = ({ initialTab }) => {
                       <Tab label="Meals" />
                       <Tab label="Staff" />
                       <Tab label="📍 Location" />
-                      <Tab label="🚗 Pickup Tracking" />
+                      <Tab label="💉 Vaccinations" />
                     </Tabs>
 
                     {/* Daycare Sub-tabs Content */}
@@ -2633,34 +2750,14 @@ const ParentDashboard = ({ initialTab }) => {
                       </Box>
                     )}
 
+                    {/* Vaccinations Tab */}
                     {daycareTab === 8 && (
                       <Box sx={{ p: 2 }}>
                         <Typography variant="h5" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
-                          🚗 Live Pickup Tracking
+                          💉 Vaccination Records
                         </Typography>
                         
-                        <Paper elevation={3} sx={{ p: 3 }}>
-                          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-                            Share your live location when coming to pick up {profile?.firstName || 'your child'}. 
-                            Our staff will be notified when you're nearby!
-                          </Typography>
-                          <PickupTracker 
-                            parentName={user?.firstName + ' ' + user?.lastName}
-                            childName={profile?.firstName || 'Child'}
-                          />
-                          
-                          <Alert severity="info" sx={{ mt: 3 }}>
-                            <Typography variant="body2">
-                              <strong>How it works:</strong>
-                              <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
-                                <li>Click "Start Tracking My Pickup" when you're on your way</li>
-                                <li>Your location will update automatically</li>
-                                <li>Staff receives an alert when you're within 500m of the daycare</li>
-                                <li>Your child will be ready when you arrive!</li>
-                              </ul>
-                            </Typography>
-                          </Alert>
-                        </Paper>
+                        <VaccinationCard childId={activeChildId} />
                       </Box>
                     )}
                   </Paper>
@@ -3090,7 +3187,238 @@ const ParentDashboard = ({ initialTab }) => {
             {/* Tab 3: Transport */}
             {tab === 3 && (
               <Box>
-                <TransportTracking />
+                <Typography variant="h4" gutterBottom sx={{ mb: 3, fontWeight: 600 }}>
+                  🚗 Transport Services
+                </Typography>
+
+                <Grid container spacing={3}>
+                  {/* Enroll in Transport Section */}
+                  <Grid item xs={12}>
+                    <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+                      <Typography variant="h6" gutterBottom>
+                        📝 Enroll Child in Transport
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Register your child for daily pickup and drop-off services
+                      </Typography>
+                      
+                      {/* Child Selector */}
+                      <TextField
+                        select
+                        label="Select Child *"
+                        value={activeChildId}
+                        onChange={(e) => setActiveChildId(e.target.value)}
+                        fullWidth
+                        size="small"
+                        sx={{ mb: 2 }}
+                        required
+                      >
+                        {children.map((child) => (
+                          <MenuItem key={child._id} value={child._id}>
+                            {child.firstName} {child.lastName}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                      
+                      <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <TextField
+                          label="Pickup Address *"
+                          placeholder="Enter your home address"
+                          value={transportForm.pickupAddress}
+                          onChange={(e) => setTransportForm({ ...transportForm, pickupAddress: e.target.value })}
+                          size="small"
+                          sx={{ flexGrow: 1, minWidth: '250px' }}
+                          required
+                        />
+                        <TextField
+                          label="Contact Number *"
+                          placeholder="Phone number"
+                          value={transportForm.contactNumber}
+                          onChange={(e) => setTransportForm({ ...transportForm, contactNumber: e.target.value })}
+                          size="small"
+                          sx={{ width: '180px' }}
+                          required
+                        />
+                        <TextField
+                          label="Pickup Time"
+                          type="time"
+                          value={transportForm.pickupTime}
+                          onChange={(e) => setTransportForm({ ...transportForm, pickupTime: e.target.value })}
+                          size="small"
+                          sx={{ width: '150px' }}
+                          InputLabelProps={{ shrink: true }}
+                        />
+                        <TextField
+                          label="Drop-off Time"
+                          type="time"
+                          value={transportForm.dropoffTime}
+                          onChange={(e) => setTransportForm({ ...transportForm, dropoffTime: e.target.value })}
+                          size="small"
+                          sx={{ width: '150px' }}
+                          InputLabelProps={{ shrink: true }}
+                        />
+                      </Box>
+                      
+                      <TextField
+                        label="Special Instructions (Optional)"
+                        placeholder="Any special instructions for the driver..."
+                        value={transportForm.specialInstructions}
+                        onChange={(e) => setTransportForm({ ...transportForm, specialInstructions: e.target.value })}
+                        multiline
+                        rows={2}
+                        size="small"
+                        fullWidth
+                        sx={{ mt: 2 }}
+                      />
+                      
+                      <Button 
+                        variant="contained" 
+                        color="primary"
+                        startIcon={<Add />}
+                        onClick={handleTransportEnrollment}
+                        disabled={transportLoading || !profile?._id}
+                        sx={{ mt: 2 }}
+                      >
+                        {transportLoading ? 'Submitting...' : 'Enroll in Transport'}
+                      </Button>
+
+                      <Alert severity="info" sx={{ mt: 2 }}>
+                        <Typography variant="body2">
+                          <strong>Transport Fee:</strong> $50/month per child | Includes daily pickup & drop-off
+                        </Typography>
+                      </Alert>
+                    </Paper>
+                  </Grid>
+
+                  {/* Transport Requests Status */}
+                  {transportRequests.length > 0 && (
+                    <Grid item xs={12}>
+                      <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+                        <Typography variant="h6" gutterBottom>
+                          📋 Your Transport Requests
+                        </Typography>
+                        {transportRequests.map((request) => (
+                          <Box key={request._id} sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                            <Grid container spacing={2} alignItems="center">
+                              <Grid item xs={12} md={8}>
+                                <Typography variant="subtitle1" fontWeight="bold">
+                                  {request.childName}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Pickup: {request.pickupAddress}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  Time: {request.pickupTime} - {request.dropoffTime}
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Requested: {new Date(request.requestDate).toLocaleDateString()}
+                                </Typography>
+                              </Grid>
+                              <Grid item xs={12} md={4} sx={{ textAlign: 'right' }}>
+                                <Chip 
+                                  label={request.status.toUpperCase()}
+                                  color={
+                                    request.status === 'approved' ? 'success' : 
+                                    request.status === 'rejected' ? 'error' : 
+                                    request.status === 'on-hold' ? 'warning' : 'default'
+                                  }
+                                  sx={{ mb: 1 }}
+                                />
+                                {request.status === 'pending' && (
+                                  <Button 
+                                    size="small" 
+                                    color="error"
+                                    onClick={() => handleCancelTransportRequest(request._id)}
+                                  >
+                                    Cancel Request
+                                  </Button>
+                                )}
+                                {request.status === 'rejected' && request.rejectionReason && (
+                                  <Typography variant="caption" color="error" display="block">
+                                    Reason: {request.rejectionReason}
+                                  </Typography>
+                                )}
+                                {request.status === 'approved' && (
+                                  <Typography variant="caption" color="success.main" display="block">
+                                    Route: {request.assignedRoute}
+                                  </Typography>
+                                )}
+                              </Grid>
+                            </Grid>
+                          </Box>
+                        ))}
+                      </Paper>
+                    </Grid>
+                  )}
+
+                  {/* Transport Assignment Details */}
+                  {transportAssignment && (
+                    <Grid item xs={12}>
+                      <Paper elevation={3} sx={{ p: 3, mb: 3, bgcolor: 'success.50' }}>
+                        <Typography variant="h6" gutterBottom color="success.main">
+                          ✅ Active Transport Assignment
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2"><strong>Child:</strong> {transportAssignment.childName}</Typography>
+                            <Typography variant="body2"><strong>Route:</strong> {transportAssignment.routeName}</Typography>
+                            <Typography variant="body2"><strong>Driver:</strong> {transportAssignment.driverName}</Typography>
+                            <Typography variant="body2"><strong>Driver Phone:</strong> {transportAssignment.driverPhone}</Typography>
+                          </Grid>
+                          <Grid item xs={12} md={6}>
+                            <Typography variant="body2"><strong>Vehicle:</strong> {transportAssignment.vehicleNumber}</Typography>
+                            <Typography variant="body2"><strong>Pickup Time:</strong> {transportAssignment.pickupTime}</Typography>
+                            <Typography variant="body2"><strong>Drop-off Time:</strong> {transportAssignment.dropoffTime}</Typography>
+                            <Typography variant="body2"><strong>Monthly Fee:</strong> ${transportAssignment.monthlyFee}</Typography>
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    </Grid>
+                  )}
+
+                  {/* Transport Route Map */}
+                  {transportAssignment && (
+                    <Grid item xs={12}>
+                      <TransportRouteMap assignment={transportAssignment} />
+                    </Grid>
+                  )}
+
+                  {/* Live Pickup Tracking */}
+                  <Grid item xs={12} lg={6}>
+                    <Paper elevation={3} sx={{ p: 3 }}>
+                      <Typography variant="h6" gutterBottom>
+                        📍 Live Pickup Tracking
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Share your live location when coming to pick up {profile?.firstName || 'your child'}. 
+                        Our staff will be notified when you're nearby!
+                      </Typography>
+                      <PickupTracker 
+                        parentId={user?.id}
+                        childId={profile?._id}
+                        parentName={user?.firstName + ' ' + user?.lastName}
+                        childName={profile?.firstName || 'Child'}
+                      />
+                      
+                      <Alert severity="info" sx={{ mt: 2 }}>
+                        <Typography variant="body2" component="div">
+                          <strong>How it works:</strong>
+                          <ul style={{ marginTop: '8px', paddingLeft: '20px' }}>
+                            <li>Click "Start Tracking My Pickup" when you're on your way</li>
+                            <li>Your location updates automatically</li>
+                            <li>Staff gets notified when you're within 500m</li>
+                            <li>Your child will be ready when you arrive!</li>
+                          </ul>
+                        </Typography>
+                      </Alert>
+                    </Paper>
+                  </Grid>
+
+                  {/* Transport Schedule & Status */}
+                  <Grid item xs={12} lg={6}>
+                    <TransportTracking />
+                  </Grid>
+                </Grid>
               </Box>
             )}
 
@@ -4032,6 +4360,23 @@ const ParentDashboard = ({ initialTab }) => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Transport Message Snackbar */}
+      <Snackbar 
+        open={transportMessage.open} 
+        autoHideDuration={6000} 
+        onClose={() => setTransportMessage({ ...transportMessage, open: false })}
+        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+      >
+        <Alert 
+          onClose={() => setTransportMessage({ ...transportMessage, open: false })} 
+          severity={transportMessage.severity}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {transportMessage.text}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };
