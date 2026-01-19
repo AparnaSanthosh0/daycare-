@@ -7,6 +7,10 @@ const Vendor = require('../models/Vendor');
 const Customer = require('../models/Customer');
 const User = require('../models/User');
 const Review = require('../models/Review');
+const DeliveryAssignment = require('../models/DeliveryAssignment');
+const { calculateOrderCommission } = require('../utils/commissionCalculator');
+const PlatformSettings = require('../models/PlatformSettings');
+const { sendOrderConfirmationEmail, sendOrderStatusEmail } = require('../utils/emailService');
 
 // Create order (customer)
 router.post('/', auth, async (req, res) => {
@@ -183,6 +187,22 @@ router.post('/', auth, async (req, res) => {
       }
     }
 
+    // Send order confirmation email to customer
+    try {
+      const customer = await Customer.findById(customerId);
+      if (customer) {
+        // Populate order with full product and vendor details for email
+        const populatedOrder = await Order.findById(order._id)
+          .populate('items.product')
+          .populate('items.vendor', 'businessName');
+        
+        await sendOrderConfirmationEmail(populatedOrder, customer);
+      }
+    } catch (emailErr) {
+      console.error('Email notification error:', emailErr);
+      // Don't fail order if email fails
+    }
+
     res.status(201).json({
       message: finalPaymentStatus === 'paid'
         ? 'Order placed and payment processed successfully!'
@@ -194,6 +214,78 @@ router.post('/', auth, async (req, res) => {
   } catch (error) {
     console.error('Create order error:', error);
     res.status(500).json({ message: 'Server error creating order' });
+  }
+});
+
+// Get customer's own orders (for parents/customers)
+router.get('/my-orders', auth, async (req, res) => {
+  try {
+    // Get customer ID - could be from customerId or userId (for parents)
+    let customerId = req.user.customerId || req.user.userId;
+    
+    // If parent/user, check if they have a customer record
+    if (req.user.userId && !req.user.customerId) {
+      const existingCustomer = await Customer.findOne({ email: req.user.email });
+      if (existingCustomer) {
+        customerId = existingCustomer._id;
+      }
+    }
+
+    if (!customerId) {
+      return res.status(404).json({ message: 'No orders found' });
+    }
+
+    const orders = await Order.find({ customer: customerId })
+      .populate('items.product', 'name image price')
+      .populate('items.vendor', 'vendorName email')
+      .populate('deliveryAssignments')
+      .sort({ createdAt: -1 });
+
+    res.json({
+      count: orders.length,
+      orders
+    });
+  } catch (error) {
+    console.error('Get my orders error:', error);
+    res.status(500).json({ message: 'Failed to fetch orders' });
+  }
+});
+
+// Get single order details (for tracking)
+router.get('/track/:orderNumber', auth, async (req, res) => {
+  try {
+    const order = await Order.findOne({ orderNumber: req.params.orderNumber })
+      .populate('customer', 'firstName lastName email phone')
+      .populate('items.product', 'name image price')
+      .populate('items.vendor', 'vendorName email')
+      .populate({
+        path: 'deliveryAssignments',
+        populate: {
+          path: 'deliveryAgent',
+          select: 'firstName lastName phone'
+        }
+      });
+
+    if (!order) {
+      return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // Check if user has permission to view this order
+    const customerId = req.user.customerId || req.user.userId;
+    const isOwner = order.customer._id.toString() === customerId.toString();
+    const isAdmin = req.user.role === 'admin';
+    const isVendor = req.user.role === 'vendor' && order.items.some(item => 
+      item.vendor?._id?.toString() === (req.user.vendorId || req.user.userId).toString()
+    );
+
+    if (!isOwner && !isAdmin && !isVendor) {
+      return res.status(403).json({ message: 'Unauthorized to view this order' });
+    }
+
+    res.json(order);
+  } catch (error) {
+    console.error('Track order error:', error);
+    res.status(500).json({ message: 'Failed to fetch order details' });
   }
 });
 
@@ -300,7 +392,9 @@ router.get('/admin', auth, async (req, res) => {
     const orders = await Order.find(query)
       .populate('customer', 'firstName lastName email phone')
       .populate('items.product', 'name image')
-      .populate('items.vendor', 'name email')
+      .populate('items.vendor', 'businessName email')
+      .populate('vendorConfirmations.vendor', 'businessName email')
+      .populate('deliveryAssignments')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
@@ -343,19 +437,22 @@ router.put('/admin/:orderId/confirm', auth, async (req, res) => {
       },
       { new: true }
     ).populate('customer', 'firstName lastName email')
-     .populate('items.vendor', 'name email');
+     .populate('items.vendor', 'businessName email')
+     .populate('vendorConfirmations.vendor', 'businessName email');
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
     }
 
-    // Initialize vendor confirmations
-    const vendorConfirmations = order.items.map(item => ({
-      vendor: item.vendor,
-      status: 'pending'
-    }));
+    // Initialize vendor confirmations if not already done
+    if (!order.vendorConfirmations || order.vendorConfirmations.length === 0) {
+      const uniqueVendors = [...new Set(order.items.map(item => item.vendor._id.toString()))];
+      const vendorConfirmations = uniqueVendors.map(vendorId => ({
+        vendor: vendorId,
+        status: 'pending'
+      }));
 
-    await Order.findByIdAndUpdate(req.params.orderId, {
+      await Order.findByIdAndUpdate(req.params.orderId, {
       vendorConfirmations,
       status: 'confirmed'
     });
@@ -457,11 +554,118 @@ router.put('/vendor/:orderId/confirm', auth, async (req, res) => {
         }
       },
       { new: true }
-    ).populate('customer', 'firstName lastName email')
+    ).populate('customer', 'firstName lastName email phone')
      .populate('items.vendor', 'name email');
 
     if (!order) {
       return res.status(404).json({ message: 'Order not found' });
+    }
+
+    // STEP 1: Calculate commission if not already done
+    if (!order.commissionCalculated && status === 'confirmed') {
+      try {
+        const commissionResult = await calculateOrderCommission(order);
+        console.log(`✅ Commission calculated for order ${order.orderNumber}: ₹${commissionResult.platformRevenue.toFixed(2)}`);
+      } catch (commErr) {
+        console.error('Commission calculation error:', commErr);
+        // Continue even if commission fails
+      }
+    }
+
+    // STEP 2: Create delivery assignment for this vendor
+    if (status === 'confirmed') {
+      try {
+        const vendor = await Vendor.findById(vendorId);
+        if (!vendor) {
+          throw new Error('Vendor not found');
+        }
+
+        // Get vendor's items from order
+        const vendorItems = order.items.filter(item => 
+          item.vendor?._id?.toString() === vendorId.toString()
+        );
+
+        if (vendorItems.length > 0) {
+          // Calculate delivery fee for this vendor's portion
+          const itemsValue = vendorItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+          const vendorDeliveryFee = (itemsValue / order.total) * order.shipping;
+
+          // Get platform settings for commission split
+          const settings = await PlatformSettings.getSettings();
+          const deliverySplit = settings.commissions.delivery;
+          const agentShare = vendorDeliveryFee * (deliverySplit.agentShare / 100);
+          const platformShare = vendorDeliveryFee * (deliverySplit.platformShare / 100);
+
+          // Create delivery assignment
+          const assignment = await DeliveryAssignment.create({
+            order: order._id,
+            orderNumber: order.orderNumber,
+            vendor: vendor._id,
+            vendorName: vendor.vendorName,
+            customer: order.customer._id,
+            customerName: `${order.customer.firstName} ${order.customer.lastName}`,
+            pickupLocation: {
+              address: vendor.warehouseLocation?.address || vendor.address,
+              coordinates: vendor.warehouseLocation?.coordinates || { lat: 0, lng: 0 },
+              zone: vendor.warehouseLocation?.zone || 'Unknown',
+              contactPerson: vendor.warehouseLocation?.contactPerson || vendor.vendorName
+            },
+            deliveryLocation: {
+              address: order.shippingAddress.fullAddress,
+              coordinates: {
+                lat: order.shippingAddress.latitude || 0,
+                lng: order.shippingAddress.longitude || 0
+              },
+              zipCode: order.shippingAddress.zipCode,
+              contactPerson: order.shippingAddress.recipientName || `${order.customer.firstName} ${order.customer.lastName}`,
+              phone: order.shippingAddress.phone || order.customer.phone
+            },
+            items: vendorItems,
+            deliveryFee: vendorDeliveryFee,
+            agentShare: agentShare,
+            platformShare: platformShare,
+            status: 'pending',
+            assignmentType: 'pending' // Will be set when assigned
+          });
+
+          // Add to order's delivery assignments
+          order.deliveryAssignments.push(assignment._id);
+          await order.save();
+
+          console.log(`✅ Delivery assignment created: ${assignment._id}`);
+          console.log(`📦 Vendor: ${vendor.vendorName}, Delivery Fee: ₹${vendorDeliveryFee.toFixed(2)}`);
+
+          // STEP 3: Check if we should auto-assign or wait for manual
+          const settings = await PlatformSettings.getSettings();
+          
+          if (settings.autoAssignment.enabled) {
+            // 🤖 AUTO-ASSIGNMENT MODE: Trigger immediately
+            console.log(`🤖 Auto-assignment enabled - assigning agent for ${assignment._id}`);
+            try {
+              const { autoAssignDeliveryAgent } = require('../utils/autoAssignment');
+              const assignedAssignment = await autoAssignDeliveryAgent(assignment);
+              
+              if (assignedAssignment && assignedAssignment.deliveryAgent) {
+                console.log(`✅ Auto-assigned to agent: ${assignedAssignment.agentName}`);
+                // TODO: Send notification to agent
+              } else {
+                console.log(`⚠️ No available agents - assignment remains pending`);
+                // TODO: Send notification to admin
+              }
+            } catch (autoErr) {
+              console.error('Auto-assignment error:', autoErr);
+              // Assignment stays pending for manual assignment
+            }
+          } else {
+            // 📋 MANUAL MODE: Admin/Vendor will assign later
+            console.log(`📋 Manual assignment mode - assignment pending admin action`);
+            // TODO: Send notification to admin for manual assignment
+          }
+        }
+      } catch (deliveryErr) {
+        console.error('Delivery assignment error:', deliveryErr);
+        // Continue even if delivery assignment fails
+      }
     }
 
     // Check if all vendors have confirmed
@@ -470,6 +674,21 @@ router.put('/vendor/:orderId/confirm', auth, async (req, res) => {
       await Order.findByIdAndUpdate(req.params.orderId, {
         status: 'processing'
       });
+      console.log(`🎉 All vendors confirmed order ${order.orderNumber} - Status: processing`);
+      
+      // Send email notification to customer about processing
+      try {
+        const customer = await Customer.findById(order.customer);
+        if (customer) {
+          const updatedOrder = await Order.findById(req.params.orderId)
+            .populate('items.product')
+            .populate('items.vendor', 'businessName')
+            .populate('deliveryAssignments');
+          await sendOrderStatusEmail(updatedOrder, customer, 'processing');
+        }
+      } catch (emailErr) {
+        console.error('Email notification error:', emailErr);
+      }
     }
 
     // Notify admin about vendor confirmation
@@ -490,88 +709,12 @@ router.put('/vendor/:orderId/confirm', auth, async (req, res) => {
   }
 });
 
-// Admin: Mark order as shipped
-router.put('/admin/:orderId/ship', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-
-    const { trackingNumber } = req.body;
-    const order = await Order.findByIdAndUpdate(
-      req.params.orderId,
-      {
-        status: 'shipped',
-        trackingNumber,
-        customerNotified: true
-      },
-      { new: true }
-    ).populate('customer', 'firstName lastName email')
-     .populate('items.vendor', 'name email');
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    // Mark order as reviewable after delivery
-    if (order.status === 'shipped') {
-      await Order.findByIdAndUpdate(req.params.orderId, {
-        reviewable: true,
-        estimatedDelivery: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000) // 3 days from now
-      });
-    }
-
-    // Notify customer about shipping
-    try {
-      // TODO: Send email notification to customer
-      console.log(`Order ${order.orderNumber} shipped - notify customer ${order.customer.email}`);
-    } catch (e) {
-      console.warn('Customer shipping notification failed:', e.message);
-    }
-
-    res.json(order);
-  } catch (error) {
-    console.error('Mark order shipped error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Admin: Mark order as delivered
-router.put('/admin/:orderId/deliver', auth, async (req, res) => {
-  try {
-    if (req.user.role !== 'admin') {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-
-    const order = await Order.findByIdAndUpdate(
-      req.params.orderId,
-      {
-        status: 'delivered',
-        reviewable: true,
-        reviewedAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // Allow reviews for 7 days
-      },
-      { new: true }
-    ).populate('customer', 'firstName lastName email')
-     .populate('items.vendor', 'name email');
-
-    if (!order) {
-      return res.status(404).json({ message: 'Order not found' });
-    }
-
-    // Notify customer about delivery
-    try {
-      // TODO: Send email notification to customer
-      console.log(`Order ${order.orderNumber} delivered - notify customer ${order.customer.email}`);
-    } catch (e) {
-      console.warn('Customer delivery notification failed:', e.message);
-    }
-
-    res.json(order);
-  } catch (error) {
-    console.error('Mark order delivered error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
+// ========================================================================
+// NOTE: Admin should NOT directly mark orders as shipped/delivered.
+// Proper flow: Admin confirms → Vendor confirms → Delivery agent ships/delivers
+// The routes below are DISABLED to enforce proper workflow.
+// Delivery status updates are handled through /api/delivery-assignments routes
+// ========================================================================
 
 // Get order by order number (for tracking)
 router.get('/track/:orderNumber', async (req, res) => {

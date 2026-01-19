@@ -1,12 +1,13 @@
 import React, { useCallback } from 'react';
 import { Box, Container, Typography, Paper, Grid, TextField, Button, Card, CardContent, Accordion, AccordionSummary, AccordionDetails, CircularProgress, Chip } from '@mui/material';
 import { ExpandMore } from '@mui/icons-material';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import api from '../config/api';
 
 export default function TrackOrder() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const { orderNumber } = useParams();
   const [orderId, setOrderId] = React.useState('');
   const [orderData, setOrderData] = React.useState(null);
   const [loading, setLoading] = React.useState(false);
@@ -35,15 +36,15 @@ export default function TrackOrder() {
     }
   }, [orderId]);
 
-  // Get order ID from URL parameter
+  // Get order ID from URL parameter or query string
   React.useEffect(() => {
-    const orderParam = searchParams.get('order');
+    const orderParam = searchParams.get('order') || orderNumber;
     if (orderParam) {
       setOrderId(orderParam);
       // Auto-track if order ID is provided in URL
       handleTrackOrder(orderParam);
     }
-  }, [searchParams, handleTrackOrder]);
+  }, [searchParams, orderNumber, handleTrackOrder]);
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter') {

@@ -69,7 +69,50 @@ const orderSchema = new mongoose.Schema({
 
   // Reviews (for completed orders)
   reviewable: { type: Boolean, default: false },
-  reviewedAt: Date
+  reviewedAt: Date,
+
+  // NEW: Financial breakdown
+  financials: {
+    subtotal: Number,
+    deliveryFee: Number,
+    platformFee: Number, // Total commission
+    tax: Number,
+    customerTotal: Number,
+    vendorPayouts: [{
+      vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' },
+      vendorName: String,
+      itemsAmount: Number,
+      commissionRate: Number,
+      commissionAmount: Number,
+      netPayout: Number
+    }],
+    deliveryBreakdown: {
+      totalFee: Number,
+      numberOfDeliveries: Number,
+      feePerDelivery: Number,
+      platformShare: Number,
+      agentsShare: Number
+    }
+  },
+
+  // NEW: Delivery tracking
+  deliveryAssignments: [{ type: mongoose.Schema.Types.ObjectId, ref: 'DeliveryAssignment' }],
+  deliveryStatus: {
+    type: String,
+    enum: ['not_started', 'pending_assignment', 'assigned', 'in_progress', 'partial_delivered', 'all_delivered'],
+    default: 'not_started'
+  },
+  totalDeliveries: { type: Number, default: 0 },
+  completedDeliveries: { type: Number, default: 0 },
+
+  // NEW: Commission tracking
+  commissionCalculated: { type: Boolean, default: false },
+  commissionRecord: { type: mongoose.Schema.Types.ObjectId, ref: 'PlatformCommission' },
+
+  // NEW: Payout tracking
+  vendorPayoutScheduled: { type: Boolean, default: false },
+  vendorPayoutCompleted: { type: Boolean, default: false },
+  agentPayoutCompleted: { type: Boolean, default: false }
 }, { timestamps: true });
 
 // Generate order number before saving

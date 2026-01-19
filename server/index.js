@@ -7,6 +7,36 @@ require('dotenv').config();
 
 const app = express();
 
+// Global error handlers to prevent server crashes
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  console.error('Stack:', error.stack);
+  // Don't exit - keep server running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise);
+  console.error('Reason:', reason);
+  // Don't exit - keep server running
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM signal received: closing HTTP server');
+  mongoose.connection.close(false, () => {
+    console.log('MongoDB connection closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  console.log('🛑 Received SIGINT, shutting down gracefully...');
+  mongoose.connection.close(false, () => {
+    console.log('MongoDB connection closed');
+    process.exit(0);
+  });
+});
+
 // Trust proxy so req.protocol uses X-Forwarded-Proto when behind proxies (e.g., HTTPS at CDN)
 app.set('trust proxy', 1);
 
@@ -148,6 +178,12 @@ app.use('/api/transport', requireDb, require('./routes/transport'));
 
 // Blockchain (Vaccination Records, Immutable Data)
 app.use('/api/blockchain', requireDb, require('./routes/blockchain'));
+
+// Geocoding (Address to Coordinates)
+app.use('/api/geocoding', require('./routes/geocoding'));
+
+// Delivery Assignments (Hybrid Auto-Assignment System)
+app.use('/api/delivery-assignments', requireDb, require('./routes/deliveryAssignments'));
 
 // Serve uploaded files (certificates, child photos, profile images, etc.)
 app.use('/uploads', express.static(require('path').join(__dirname, 'uploads')));

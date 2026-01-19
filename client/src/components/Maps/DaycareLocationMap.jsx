@@ -6,6 +6,7 @@ import { Paper, TextField, Button, Box, Typography, ToggleButton, ToggleButtonGr
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
+import api from '../../config/api';
 
 // Fix Leaflet default marker icon
 delete L.Icon.Default.prototype._getIconUrl;
@@ -103,16 +104,15 @@ const DaycareLocationMap = () => {
       let origin = userLocation;
 
       if (searchAddress) {
-        // Use Nominatim for geocoding (OpenStreetMap)
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchAddress)}`,
-          { headers: { 'User-Agent': 'TinyTots-Daycare-App' } }
-        );
-        const results = await response.json();
-        if (results.length > 0) {
+        // Use backend proxy for geocoding to avoid CORS issues
+        const response = await api.get('/geocoding/geocode', {
+          params: { address: searchAddress }
+        });
+        const data = response.data;
+        if (data.lat && data.lon) {
           origin = {
-            lat: parseFloat(results[0].lat),
-            lng: parseFloat(results[0].lon)
+            lat: data.lat,
+            lng: data.lon
           };
           setUserLocation(origin);
         } else {

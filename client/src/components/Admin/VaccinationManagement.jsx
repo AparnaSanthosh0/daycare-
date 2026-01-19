@@ -38,6 +38,7 @@ const VaccinationManagement = () => {
   const [vaccinations, setVaccinations] = useState([]);
   const [overdueVaccines, setOverdueVaccines] = useState([]);
   const [upcomingVaccines, setUpcomingVaccines] = useState([]);
+  const [reminderHistory, setReminderHistory] = useState([]);
   const [children, setChildren] = useState([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [blockchainVerified, setBlockchainVerified] = useState(null);
@@ -78,6 +79,7 @@ const VaccinationManagement = () => {
     fetchChildren();
     fetchOverdueVaccines();
     fetchUpcomingVaccines();
+    fetchReminderHistory();
     verifyBlockchain();
   }, []);
 
@@ -115,6 +117,15 @@ const VaccinationManagement = () => {
       setUpcomingVaccines(response.data.upcomingVaccinations || []);
     } catch (error) {
       console.error('Error fetching upcoming vaccines:', error);
+    }
+  };
+
+  const fetchReminderHistory = async () => {
+    try {
+      const response = await api.get('/blockchain/vaccination/reminders/history');
+      setReminderHistory(response.data.reminders || []);
+    } catch (error) {
+      console.error('Error fetching reminder history:', error);
     }
   };
 
@@ -217,6 +228,7 @@ const VaccinationManagement = () => {
           icon={upcomingVaccines.length > 0 ? <ScheduleIcon color="primary" /> : null}
           iconPosition="end"
         />
+        <Tab label={`Reminders Sent (${reminderHistory.length})`} />
       </Tabs>
 
       {/* Tab 0: All Vaccinations */}
@@ -338,6 +350,71 @@ const VaccinationManagement = () => {
                 <TableRow>
                   <TableCell colSpan={4} align="center">
                     <Alert severity="info">No vaccinations scheduled in next 30 days</Alert>
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+
+      {/* Tab 3: Reminders Sent */}
+      {tabValue === 3 && (
+        <TableContainer component={Paper}>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell>Sent At</TableCell>
+                <TableCell>Child</TableCell>
+                <TableCell>Parent</TableCell>
+                <TableCell>Vaccine</TableCell>
+                <TableCell>Due Date</TableCell>
+                <TableCell>Reminder Type</TableCell>
+                <TableCell>Method</TableCell>
+                <TableCell>Status</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {reminderHistory.map((reminder) => (
+                <TableRow key={reminder.id}>
+                  <TableCell>{new Date(reminder.sentAt).toLocaleString()}</TableCell>
+                  <TableCell>{reminder.childName}</TableCell>
+                  <TableCell>
+                    {reminder.parentName}
+                    <br />
+                    <Typography variant="caption" color="text.secondary">
+                      {reminder.parentEmail}
+                    </Typography>
+                  </TableCell>
+                  <TableCell>{reminder.vaccine}</TableCell>
+                  <TableCell>{new Date(reminder.dueDate).toLocaleDateString()}</TableCell>
+                  <TableCell>
+                    <Chip 
+                      label={reminder.reminderType}
+                      size="small"
+                      color={
+                        reminder.reminderType === 'overdue' ? 'error' :
+                        reminder.reminderType === '1-day' ? 'warning' :
+                        'info'
+                      }
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Chip label={reminder.notificationMethod} size="small" variant="outlined" />
+                  </TableCell>
+                  <TableCell>
+                    <Chip 
+                      label={reminder.status}
+                      size="small"
+                      color={reminder.status === 'sent' ? 'success' : 'error'}
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+              {reminderHistory.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={8} align="center">
+                    <Alert severity="info">No reminders have been sent yet</Alert>
                   </TableCell>
                 </TableRow>
               )}

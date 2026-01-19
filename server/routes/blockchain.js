@@ -2,6 +2,7 @@ const router = require('express').Router();
 const BlockchainRecord = require('../models/BlockchainRecord');
 const Child = require('../models/Child');
 const User = require('../models/User');
+const VaccineReminder = require('../models/VaccineReminder');
 const auth = require('../middleware/auth');
 
 // Add vaccination to blockchain (Admin/Staff/Parent)
@@ -245,6 +246,45 @@ router.delete('/vaccination/:id', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error deleting record:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get vaccination reminder history (Admin only)
+router.get('/vaccination/reminders/history', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId || req.user._id);
+    
+    if (user.role !== 'admin' && user.role !== 'staff') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const reminders = await VaccineReminder.find()
+      .populate('childId', 'firstName lastName')
+      .populate('parentId', 'name email phone')
+      .sort({ sentAt: -1 })
+      .limit(100);
+
+    res.json({
+      success: true,
+      count: reminders.length,
+      reminders: reminders.map(r => ({
+        id: r._id,
+        childName: r.childId ? `${r.childId.firstName} ${r.childId.lastName}` : 'Unknown',
+        parentName: r.parentId?.name || 'Unknown',
+        parentEmail: r.parentId?.email,
+        parentPhone: r.parentId?.phone,
+        vaccine: r.vaccine,
+        dueDate: r.dueDate,
+        reminderType: r.reminderType,
+        notificationMethod: r.notificationMethod,
+        message: r.message,
+        sentAt: r.sentAt,
+        status: r.status
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching reminder history:', error);
     res.status(500).json({ error: error.message });
   }
 });

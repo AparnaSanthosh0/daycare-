@@ -197,6 +197,11 @@ const ParentDashboard = ({ initialTab }) => {
   const [addChildSuccess, setAddChildSuccess] = useState('');
   const [addChildError, setAddChildError] = useState('');
 
+  // Orders state
+  const [orders, setOrders] = useState([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState('');
+
   // AI Recommendations state (kept for future use)
   // const [socialRecommendations, setSocialRecommendations] = useState(null);
   // const [nutritionRecommendations, setNutritionRecommendations] = useState(null);
@@ -1279,6 +1284,29 @@ const ParentDashboard = ({ initialTab }) => {
       alert(error.response?.data?.message || 'Failed to cancel request');
     }
   };
+
+  // Fetch customer orders
+  const fetchOrders = useCallback(async () => {
+    try {
+      setOrdersLoading(true);
+      setOrdersError('');
+      const response = await api.get('/api/orders/my-orders');
+      setOrders(response.data?.orders || []);
+    } catch (error) {
+      console.error('Error fetching orders:', error);
+      setOrdersError(error.response?.data?.message || 'Failed to load orders');
+      setOrders([]);
+    } finally {
+      setOrdersLoading(false);
+    }
+  }, []);
+
+  // Load orders when tab changes to Orders tab
+  useEffect(() => {
+    if (tab === 4) {
+      fetchOrders();
+    }
+  }, [tab, fetchOrders]);
 
   // Schedule display component (kept for future use)
   // const ScheduleCard = () => {
@@ -3424,13 +3452,183 @@ const ParentDashboard = ({ initialTab }) => {
 
             {/* Tab 4: My Orders */}
             {tab === 4 && (
-              <Paper sx={{ p: 4, textAlign: 'center' }}>
-                <ShoppingBag sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h5" gutterBottom>My Orders</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  View your order history here
+              <Box>
+                <Typography variant="h5" gutterBottom sx={{ mb: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Receipt />
+                  My Orders
                 </Typography>
-              </Paper>
+
+                {ordersError && (
+                  <Alert severity="error" sx={{ mb: 2 }}>
+                    {ordersError}
+                  </Alert>
+                )}
+
+                {ordersLoading ? (
+                  <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                    <CircularProgress />
+                  </Box>
+                ) : orders.length === 0 ? (
+                  <Paper sx={{ p: 4, textAlign: 'center' }}>
+                    <ShoppingBag sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                    <Typography variant="h6" gutterBottom>No Orders Yet</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      You haven't placed any orders yet. Start shopping for your little one!
+                    </Typography>
+                    <Button variant="contained" onClick={() => navigate('/shop')}>
+                      Browse Products
+                    </Button>
+                  </Paper>
+                ) : (
+                  <Grid container spacing={3}>
+                    {orders.map((order) => (
+                      <Grid item xs={12} key={order._id}>
+                        <Card>
+                          <CardContent>
+                            <Grid container spacing={2}>
+                              {/* Order Header */}
+                              <Grid item xs={12} md={8}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                                  <Box>
+                                    <Typography variant="h6">
+                                      Order #{order.orderNumber}
+                                    </Typography>
+                                    <Typography variant="body2" color="text.secondary">
+                                      Placed on {new Date(order.createdAt).toLocaleDateString('en-US', {
+                                        year: 'numeric',
+                                        month: 'long',
+                                        day: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit'
+                                      })}
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                              </Grid>
+
+                              {/* Order Status */}
+                              <Grid item xs={12} md={4} sx={{ textAlign: { xs: 'left', md: 'right' } }}>
+                                <Chip 
+                                  label={order.status.toUpperCase()}
+                                  color={
+                                    order.status === 'delivered' ? 'success' :
+                                    order.status === 'shipped' || order.status === 'processing' ? 'primary' :
+                                    order.status === 'confirmed' ? 'info' :
+                                    order.status === 'cancelled' ? 'error' :
+                                    'default'
+                                  }
+                                  sx={{ mb: 1 }}
+                                />
+                                <Typography variant="h6" color="primary">
+                                  ₹{order.total?.toFixed(2) || '0.00'}
+                                </Typography>
+                              </Grid>
+
+                              {/* Order Items */}
+                              <Grid item xs={12}>
+                                <Divider sx={{ my: 2 }} />
+                                <Typography variant="subtitle2" gutterBottom>
+                                  Items ({order.items?.length || 0})
+                                </Typography>
+                                {order.items && order.items.map((item, idx) => (
+                                  <Box key={idx} sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
+                                    {item.product?.images?.[0] && (
+                                      <Box
+                                        component="img"
+                                        src={toAbsoluteUrl(item.product.images[0])}
+                                        alt={item.product?.name || 'Product'}
+                                        sx={{ width: 60, height: 60, objectFit: 'cover', borderRadius: 1 }}
+                                      />
+                                    )}
+                                    <Box sx={{ flex: 1 }}>
+                                      <Typography variant="body2" fontWeight="medium">
+                                        {item.product?.name || 'Product'}
+                                      </Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        Qty: {item.quantity} × ₹{item.price?.toFixed(2) || '0.00'}
+                                      </Typography>
+                                      {item.vendor?.businessName && (
+                                        <Typography variant="caption" color="text.secondary" display="block">
+                                          Sold by: {item.vendor.businessName}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                    <Typography variant="body2" fontWeight="medium">
+                                      ₹{((item.quantity || 0) * (item.price || 0)).toFixed(2)}
+                                    </Typography>
+                                  </Box>
+                                ))}
+                              </Grid>
+
+                              {/* Delivery Address */}
+                              {order.deliveryAddress && (
+                                <Grid item xs={12}>
+                                  <Divider sx={{ my: 2 }} />
+                                  <Typography variant="subtitle2" gutterBottom>
+                                    Delivery Address
+                                  </Typography>
+                                  <Typography variant="body2" color="text.secondary">
+                                    {order.deliveryAddress.name}<br />
+                                    {order.deliveryAddress.street}, {order.deliveryAddress.city}<br />
+                                    {order.deliveryAddress.state} {order.deliveryAddress.postalCode}
+                                    {order.deliveryAddress.phone && <><br />Phone: {order.deliveryAddress.phone}</>}
+                                  </Typography>
+                                </Grid>
+                              )}
+
+                              {/* Action Buttons */}
+                              <Grid item xs={12}>
+                                <Divider sx={{ my: 2 }} />
+                                <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                                  <Button
+                                    variant="outlined"
+                                    size="small"
+                                    onClick={() => navigate(`/track-order/${order.orderNumber}`)}
+                                  >
+                                    Track Order
+                                  </Button>
+                                  {order.status === 'pending' && (
+                                    <Button
+                                      variant="outlined"
+                                      color="error"
+                                      size="small"
+                                      onClick={async () => {
+                                        if (window.confirm('Are you sure you want to cancel this order?')) {
+                                          try {
+                                            await api.put(`/api/orders/${order._id}/cancel`);
+                                            fetchOrders(); // Refresh orders
+                                            alert('Order cancelled successfully');
+                                          } catch (error) {
+                                            alert(error.response?.data?.message || 'Failed to cancel order');
+                                          }
+                                        }
+                                      }}
+                                    >
+                                      Cancel Order
+                                    </Button>
+                                  )}
+                                  {order.status === 'delivered' && (
+                                    <Button
+                                      variant="outlined"
+                                      size="small"
+                                      onClick={() => {
+                                        // TODO: Implement invoice download
+                                        alert('Invoice download coming soon!');
+                                      }}
+                                    >
+                                      Download Invoice
+                                    </Button>
+                                  )}
+                                </Box>
+                              </Grid>
+                            </Grid>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    ))}
+                  </Grid>
+                )}
+              </Box>
             )}
 
             {/* Tab 5: Billing & Payments */}

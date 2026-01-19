@@ -287,6 +287,19 @@ const VendorDashboard = () => {
                 </Stack>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6} md={3}>
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      onClick={() => navigate('/vendor/orders')}
+                      sx={{
+                        bgcolor: '#14B8A6',
+                        '&:hover': { bgcolor: '#0d9488' }
+                      }}
+                    >
+                      📦 Order Management
+                    </Button>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
                     <Button 
                       fullWidth 
                       variant="contained" 

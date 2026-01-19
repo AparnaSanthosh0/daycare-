@@ -89,14 +89,76 @@ const userSchema = new mongoose.Schema({
     yearsOfExperience: { type: Number, min: 0 },
     qualification: { type: String, trim: true },
     certificateUrl: { type: String, default: null },
+    assignedClass: { type: String, trim: true },
     // Driver-specific fields
     licenseNumber: { type: String, trim: true },
     vehicleType: { type: String, trim: true },
-    // Delivery-specific fields
-    deliveryArea: { type: String, trim: true },
+    vehicleNumber: { type: String, trim: true },
+    vehicleLicense: { type: String, trim: true },
+    vehicleInsurance: { type: String, trim: true },
+    // Delivery-specific fields (enhanced)
+    deliveryArea: [String], // Array of zones they serve
+    preferredZones: [String],
+    availability: { 
+      type: String, 
+      enum: ['available', 'busy', 'offline', 'on_delivery'],
+      default: 'offline'
+    },
+    currentDeliveries: { type: Number, default: 0 },
+    maxConcurrentDeliveries: { type: Number, default: 3 },
+    // Location tracking
+    currentLocation: {
+      coordinates: {
+        lat: Number,
+        lng: Number
+      },
+      updatedAt: Date
+    },
+    baseLocation: {
+      coordinates: {
+        lat: Number,
+        lng: Number
+      },
+      address: String
+    },
+    // Working hours
+    workingHours: {
+      monday: { start: String, end: String, available: Boolean },
+      tuesday: { start: String, end: String, available: Boolean },
+      wednesday: { start: String, end: String, available: Boolean },
+      thursday: { start: String, end: String, available: Boolean },
+      friday: { start: String, end: String, available: Boolean },
+      saturday: { start: String, end: String, available: Boolean },
+      sunday: { start: String, end: String, available: Boolean }
+    },
+    // Wallet
+    wallet: { type: mongoose.Schema.Types.ObjectId, ref: 'AgentWallet' },
+    walletBalance: { type: Number, default: 0 },
+    // Performance metrics
+    totalDeliveries: { type: Number, default: 0 },
+    totalEarnings: { type: Number, default: 0 },
+    rating: { type: Number, default: 4.5, min: 0, max: 5 },
+    deliverySuccessRate: { type: Number, default: 100, min: 0, max: 100 },
+    onTimeDeliveryRate: { type: Number, default: 100, min: 0, max: 100 },
+    averageDeliveryTime: { type: Number, default: 30 }, // minutes
+    // Bank details for payout
+    bankAccount: {
+      accountNumber: String,
+      ifscCode: String,
+      accountHolderName: String,
+      bankName: String,
+      verified: { type: Boolean, default: false }
+    },
+    // Documents
+    documents: {
+      drivingLicense: String,
+      aadharCard: String,
+      panCard: String,
+      policeClearance: String
+    },
     // Nanny-specific fields
     serviceArea: { type: String, trim: true },
-    availability: { type: String, trim: true }
+    certification: { type: String, trim: true }
   },
   // Doctor-specific profile data (only used when role = 'doctor')
   doctor: {

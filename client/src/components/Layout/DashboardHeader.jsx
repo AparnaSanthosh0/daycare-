@@ -45,6 +45,7 @@ const getMenuItems = (userRole, user) => {
   if (userRole === 'admin') {
     return [
       { text: 'Admin Home', icon: <SupervisorAccount />, path: '/admin' },
+      { text: 'Order Management', icon: <ShoppingCart />, path: '/admin/orders' },
       { text: 'Users', icon: <ManageAccounts />, path: '/admin/users' },
       { text: 'Doctor Management', icon: <LocalHospital />, path: '/admin/doctors' },
       { text: 'Attendance', icon: <AccessTime />, path: '/attendance' },
@@ -63,6 +64,8 @@ const getMenuItems = (userRole, user) => {
   }
   if (userRole === 'vendor') {
     return [
+      { text: 'Vendor Home', icon: <SupervisorAccount />, path: '/vendor' },
+      { text: 'Order Management', icon: <ShoppingCart />, path: '/vendor/orders' },
       { text: 'Supplier & Vendor Management', icon: <LocalActivity />, path: '/vendor?tab=0' },
       { text: 'Performance & Contract', icon: <Assessment />, path: '/vendor?tab=1' },
       { text: 'Invoices & Payments', icon: <Payment />, path: '/vendor?tab=2' },

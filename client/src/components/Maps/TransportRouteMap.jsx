@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { Box, Paper, Typography, Alert } from '@mui/material';
 import { DirectionsBus, Home, School } from '@mui/icons-material';
+import api from '../../config/api';
 
 // Fix for default marker icons in react-leaflet
 delete L.Icon.Default.prototype._getIconUrl;
@@ -55,16 +56,16 @@ const TransportRouteMap = ({ assignment }) => {
 
       try {
         setLoading(true);
-        // Use Nominatim for geocoding
-        const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-            assignment.pickupAddress + ', Kerala, India'
-          )}`
-        );
-        const data = await response.json();
+        // Use backend proxy for geocoding to avoid CORS issues
+        const response = await api.get('/geocoding/geocode', {
+          params: {
+            address: assignment.pickupAddress + ', Kerala, India'
+          }
+        });
+        const data = response.data;
 
-        if (data && data.length > 0) {
-          setPickupCoords([parseFloat(data[0].lat), parseFloat(data[0].lon)]);
+        if (data.lat && data.lon) {
+          setPickupCoords([data.lat, data.lon]);
           setError('');
         } else {
           // If geocoding fails, use a default location near daycare

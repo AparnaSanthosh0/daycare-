@@ -2,19 +2,35 @@ const cron = require('node-cron');
 const BlockchainRecord = require('../models/BlockchainRecord');
 const User = require('../models/User');
 const Child = require('../models/Child');
+const VaccineReminder = require('../models/VaccineReminder');
 
 /**
  * Automated Vaccine Reminder System
  * Runs daily at 9:00 AM to check for upcoming and overdue vaccinations
  */
 
-// Email/SMS notification helper (use existing notification system)
-const sendNotification = async (parentId, message, type = 'email') => {
+// Email/SMS notification helper and logger
+const sendNotification = async (parentId, childId, vaccinationRecordId, vaccine, dueDate, message, type, reminderType) => {
   try {
     const parent = await User.findById(parentId);
     if (!parent) return;
 
     console.log(`[Vaccine Reminder] Sending ${type} to ${parent.name}: ${message}`);
+    
+    // Log the reminder to database
+    const reminder = new VaccineReminder({
+      childId,
+      vaccinationRecordId,
+      parentId,
+      vaccine,
+      dueDate,
+      reminderType,
+      notificationMethod: type,
+      message,
+      status: 'sent'
+    });
+    
+    await reminder.save();
     
     // TODO: Integrate with your existing email/SMS system
     // For now, just logging. You can add:
@@ -70,9 +86,9 @@ const checkVaccineReminders = async () => {
         
         // Send overdue alert every 7 days
         if (daysOverdue % 7 === 0) {
-          const message = `⚠️ OVERDUE: ${child.name}'s ${record.data.vaccine} vaccine was due ${daysOverdue} days ago. Please schedule appointment.`;
-          await sendNotification(child.parents[0]._id, message, 'sms');
-          console.log(`  - OVERDUE (${daysOverdue}d): ${child.name} - ${record.data.vaccine}`);
+          const message = `⚠️ OVERDUE: ${child.firstName} ${child.lastName}'s ${record.data.vaccine} vaccine was due ${daysOverdue} days ago. Please schedule appointment.`;
+          await sendNotification(child.parents[0]._id, child._id, record._id, record.data.vaccine, nextDose, message, 'sms', 'overdue');
+          console.log(`  - OVERDUE (${daysOverdue}d): ${child.firstName} ${child.lastName} - ${record.data.vaccine}`);
         }
         continue;
       }
@@ -80,26 +96,25 @@ const checkVaccineReminders = async () => {
       // 30-day reminder (email)
       if (daysUntil === 30) {
         reminders30Day++;
-        const message = `Reminder: ${child.name}'s ${record.data.vaccine} vaccine is due in 30 days (${nextDose.toLocaleDateString()})`;
-        await sendNotification(child.parents[0]._id, message, 'email');
-        console.log(`  - 30 days: ${child.name} - ${record.data.vaccine}`);
+        const message = `Reminder: ${child.firstName} ${child.lastName}'s ${record.data.vaccine} vaccine is due in 30 days (${nextDose.toLocaleDateString()})`;
+        await sendNotification(child.parents[0]._id, child._id, record._id, record.data.vaccine, nextDose, message, 'email', '30-day');
+        console.log(`  - 30 days: ${child.firstName} ${child.lastName} - ${record.data.vaccine}`);
       }
       
       // 7-day reminder (SMS)
       if (daysUntil === 7) {
         reminders7Day++;
-        const message = `⚠️ Reminder: ${child.name}'s ${record.data.vaccine} vaccine is due in 7 days!`;
-        await sendNotification(child.parents[0]._id, message, 'sms');
-        console.log(`  - 7 days: ${child.name} - ${record.data.vaccine}`);
+        const message = `⚠️ Reminder: ${child.firstName} ${child.lastName}'s ${record.data.vaccine} vaccine is due in 7 days!`;
+        await sendNotification(child.parents[0]._id, child._id, record._id, record.data.vaccine, nextDose, message, 'sms', '7-day');
+        console.log(`  - 7 days: ${child.firstName} ${child.lastName} - ${record.data.vaccine}`);
       }
       
       // 1-day reminder (SMS + Email)
       if (daysUntil === 1) {
         reminders1Day++;
-        const message = `🏥 TOMORROW: ${child.name}'s ${record.data.vaccine} vaccine appointment. Location: ${record.data.location || 'Not specified'}`;
-        await sendNotification(child.parents[0]._id, message, 'sms');
-        await sendNotification(child.parents[0]._id, message, 'email');
-        console.log(`  - Tomorrow: ${child.name} - ${record.data.vaccine}`);
+        const message = `🏥 TOMORROW: ${child.firstName} ${child.lastName}'s ${record.data.vaccine} vaccine appointment. Location: ${record.data.location || 'Not specified'}`;
+        await sendNotification(child.parents[0]._id, child._id, record._id, record.data.vaccine, nextDose, message, 'both', '1-day');
+        console.log(`  - Tomorrow: ${child.firstName} ${child.lastName} - ${record.data.vaccine}`);
       }
     }
     
@@ -117,26 +132,36 @@ const checkVaccineReminders = async () => {
 
 // Initialize cron job
 const initializeVaccineReminders = () => {
-  // Run every day at 9:00 AM
-  // Cron format: second minute hour day month weekday
-  // '0 9 * * *' = At 9:00 AM every day
-  
-  const cronSchedule = process.env.VACCINE_REMINDER_CRON || '0 9 * * *';
-  
-  cron.schedule(cronSchedule, () => {
-    console.log(`\n[${new Date().toLocaleString()}] Running vaccine reminder check...`);
-    checkVaccineReminders();
-  });
-  
-  console.log('✅ Vaccine Reminder System initialized');
-  console.log(`   Schedule: ${cronSchedule} (9:00 AM daily)`);
-  console.log('   Reminders: 30 days, 7 days, 1 day before due date');
-  console.log('   Overdue alerts: Every 7 days\n');
-  
-  // Run once on startup for testing (optional - comment out in production)
-  if (process.env.NODE_ENV !== 'production') {
-    console.log('Running initial check...');
-    setTimeout(() => checkVaccineReminders(), 5000); // Run after 5 seconds
+  try {
+    // Run every day at 9:00 AM
+    // Cron format: second minute hour day month weekday
+    // '0 9 * * *' = At 9:00 AM every day
+    
+    const cronSchedule = process.env.VACCINE_REMINDER_CRON || '0 9 * * *';
+    
+    cron.schedule(cronSchedule, () => {
+      console.log(`\n[${new Date().toLocaleString()}] Running vaccine reminder check...`);
+      checkVaccineReminders().catch(err => {
+        console.error('Cron job error (non-fatal):', err);
+      });
+    });
+    
+    console.log('✅ Vaccine Reminder System initialized');
+    console.log(`   Schedule: ${cronSchedule} (9:00 AM daily)`);
+    console.log('   Reminders: 30 days, 7 days, 1 day before due date');
+    console.log('   Overdue alerts: Every 7 days\n');
+    
+    // Run once on startup for testing (optional - comment out in production)
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('Running initial check...');
+      setTimeout(() => {
+        checkVaccineReminders().catch(err => {
+          console.error('Initial check error (non-fatal):', err);
+        });
+      }, 5000); // Run after 5 seconds
+    }
+  } catch (error) {
+    console.error('Failed to initialize vaccine reminders (non-fatal):', error);
   }
 };
 

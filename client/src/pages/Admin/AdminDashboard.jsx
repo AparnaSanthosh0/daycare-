@@ -466,6 +466,57 @@ const AdminDashboard = () => {
         </Alert>
       )}
 
+      {/* Quick Actions */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>Quick Actions</Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              fullWidth
+              variant="contained"
+              onClick={() => window.location.href = '/admin/orders'}
+              sx={{
+                bgcolor: '#14B8A6',
+                '&:hover': { bgcolor: '#0d9488' },
+                py: 1.5
+              }}
+            >
+              📦 Order Management
+            </Button>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => setCreateChildDialog(true)}
+              sx={{ py: 1.5 }}
+            >
+              ➕ Create Child Profile
+            </Button>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => window.location.href = '/shop'}
+              sx={{ py: 1.5 }}
+            >
+              🛒 Visit Shop
+            </Button>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => setTabValue(8)}
+              sx={{ py: 1.5 }}
+            >
+              🚗 Transport Requests
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
+
       {/* Dashboard Stats */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={2.4}>

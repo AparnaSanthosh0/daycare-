@@ -180,6 +180,10 @@ function App() {
             path="/track-order"
             element={<TrackOrder />}
           />
+          <Route
+            path="/track-order/:orderNumber"
+            element={<TrackOrder />}
+          />
 
           {/* Stores & Preschools - Public Route */}
           <Route

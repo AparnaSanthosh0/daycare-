@@ -61,7 +61,7 @@ const AdminOrders = () => {
         notes: adminNotes
       });
 
-      setMessage('Order confirmed and forwarded to vendors');
+      setMessage('✅ Order confirmed and forwarded to vendors. Waiting for vendor confirmation to assign delivery.');
       setConfirmDialog(false);
       setSelectedOrder(null);
       setEstimatedDelivery('');
@@ -70,32 +70,6 @@ const AdminOrders = () => {
     } catch (error) {
       console.error('Confirm order error:', error);
       setMessage(error.response?.data?.message || 'Failed to confirm order');
-    }
-  };
-
-  const handleShipOrder = async (orderId) => {
-    try {
-      await api.put(`/api/orders/admin/${orderId}/ship`, {
-        trackingNumber: `TT-TRACK-${Date.now()}`
-      });
-
-      setMessage('Order marked as shipped');
-      loadOrders();
-    } catch (error) {
-      console.error('Ship order error:', error);
-      setMessage('Failed to mark order as shipped');
-    }
-  };
-
-  const handleDeliverOrder = async (orderId) => {
-    try {
-      await api.put(`/api/orders/admin/${orderId}/deliver`);
-
-      setMessage('Order marked as delivered');
-      loadOrders();
-    } catch (error) {
-      console.error('Deliver order error:', error);
-      setMessage('Failed to mark order as delivered');
     }
   };
 
@@ -231,45 +205,51 @@ const AdminOrders = () => {
                     {new Date(order.createdAt).toLocaleDateString()}
                   </TableCell>
                   <TableCell>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <IconButton
-                        size="small"
-                        onClick={() => setSelectedOrder(order)}
-                      >
-                        <Visibility />
-                      </IconButton>
-
-                      {order.status === 'pending' && (
+                    <Box sx={{ display: 'flex', gap: 1, flexDirection: 'column' }}>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
                         <IconButton
                           size="small"
-                          color="success"
-                          onClick={() => {
-                            setSelectedOrder(order);
-                            setConfirmDialog(true);
-                          }}
+                          onClick={() => setSelectedOrder(order)}
+                          title="View Details"
                         >
-                          <CheckCircle />
+                          <Visibility />
                         </IconButton>
+
+                        {order.status === 'pending' && (
+                          <IconButton
+                            size="small"
+                            color="success"
+                            onClick={() => {
+                              setSelectedOrder(order);
+                              setConfirmDialog(true);
+                            }}
+                            title="Confirm Order"
+                          >
+                            <CheckCircle />
+                          </IconButton>
+                        )}
+                      </Box>
+                      
+                      {/* Show vendor confirmation status */}
+                      {order.status === 'confirmed' && order.vendorConfirmations && (
+                        <Box sx={{ mt: 0.5 }}>
+                          {order.vendorConfirmations.map((vc, idx) => (
+                            <Chip
+                              key={idx}
+                              size="small"
+                              label={`${vc.vendor?.businessName || 'Vendor'}: ${vc.status}`}
+                              color={vc.status === 'confirmed' ? 'success' : 'warning'}
+                              sx={{ mr: 0.5, mb: 0.5 }}
+                            />
+                          ))}
+                        </Box>
                       )}
-
-                      {order.status === 'confirmed' && (
-                        <IconButton
-                          size="small"
-                          color="primary"
-                          onClick={() => handleShipOrder(order._id)}
-                        >
-                          <LocalShipping />
-                        </IconButton>
-                      )}
-
-                      {order.status === 'shipped' && (
-                        <IconButton
-                          size="small"
-                          color="success"
-                          onClick={() => handleDeliverOrder(order._id)}
-                        >
-                          <CheckCircle />
-                        </IconButton>
+                      
+                      {/* Show delivery info for processing/shipped/delivered */}
+                      {['processing', 'shipped', 'delivered'].includes(order.status) && order.deliveryAssignments && order.deliveryAssignments.length > 0 && (
+                        <Typography variant="caption" color="text.secondary">
+                          {order.deliveryAssignments.length} delivery assignment(s)
+                        </Typography>
                       )}
                     </Box>
                   </TableCell>
