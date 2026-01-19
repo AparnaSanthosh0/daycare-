@@ -25,7 +25,6 @@ import {
 } from '@mui/material';
 import {
   CheckCircle,
-  LocalShipping,
   Visibility
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
@@ -46,7 +45,7 @@ const AdminOrders = () => {
 
   const loadOrders = async () => {
     try {
-      const response = await api.get('/api/orders/admin');
+      const response = await api.get('/orders/admin');
       setOrders(response.data.orders || []);
     } catch (error) {
       console.error('Load orders error:', error);
@@ -56,7 +55,7 @@ const AdminOrders = () => {
 
   const handleConfirmOrder = async () => {
     try {
-      await api.put(`/api/orders/admin/${selectedOrder._id}/confirm`, {
+      await api.put(`/orders/admin/${selectedOrder._id}/confirm`, {
         estimatedDelivery,
         notes: adminNotes
       });

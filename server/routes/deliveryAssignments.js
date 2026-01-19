@@ -6,14 +6,14 @@ const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const { autoAssignDeliveryAgent, getSuggestedAgents, handleAgentRejection } = require('../utils/autoAssignment');
 const { processDeliveryPayment } = require('../utils/paymentDistribution');
-const { verifyToken, checkRole } = require('../middleware/authMiddleware');
+const auth = require('../middleware/auth');
 
 /**
  * Create delivery assignments when vendors confirm order
  * POST /api/delivery-assignments/create
  * Body: { orderId, vendorId }
  */
-router.post('/create', verifyToken, checkRole(['vendor', 'admin']), async (req, res) => {
+router.post('/create', auth, async (req, res) => {
   try {
     const { orderId, vendorId } = req.body;
 
@@ -95,7 +95,7 @@ router.post('/create', verifyToken, checkRole(['vendor', 'admin']), async (req, 
  * Get suggested agents for manual assignment (HYBRID MODE)
  * GET /api/delivery-assignments/:id/suggested-agents
  */
-router.get('/:id/suggested-agents', verifyToken, checkRole(['admin', 'vendor']), async (req, res) => {
+router.get('/:id/suggested-agents', auth, async (req, res) => {
   try {
     const assignment = await DeliveryAssignment.findById(req.params.id);
     
@@ -127,7 +127,7 @@ router.get('/:id/suggested-agents', verifyToken, checkRole(['admin', 'vendor']),
  * POST /api/delivery-assignments/:id/assign-manual
  * Body: { agentId }
  */
-router.post('/:id/assign-manual', verifyToken, checkRole(['admin', 'vendor']), async (req, res) => {
+router.post('/:id/assign-manual', auth, async (req, res) => {
   try {
     const { agentId } = req.body;
     const assignment = await DeliveryAssignment.findById(req.params.id);
@@ -181,7 +181,7 @@ router.post('/:id/assign-manual', verifyToken, checkRole(['admin', 'vendor']), a
  * Auto-assign agent (HYBRID MODE - Automated)
  * POST /api/delivery-assignments/:id/auto-assign
  */
-router.post('/:id/auto-assign', verifyToken, checkRole(['admin']), async (req, res) => {
+router.post('/:id/auto-assign', auth, async (req, res) => {
   try {
     const assignment = await DeliveryAssignment.findById(req.params.id);
 
@@ -206,7 +206,7 @@ router.post('/:id/auto-assign', verifyToken, checkRole(['admin']), async (req, r
  * Get available assignments for agents
  * GET /api/delivery-assignments/available
  */
-router.get('/available', verifyToken, checkRole(['delivery_agent']), async (req, res) => {
+router.get('/available', auth, async (req, res) => {
   try {
     const agent = await User.findById(req.user.id);
 
@@ -245,7 +245,7 @@ router.get('/available', verifyToken, checkRole(['delivery_agent']), async (req,
  * Get agent's current assignments
  * GET /api/delivery-assignments/my-assignments
  */
-router.get('/my-assignments', verifyToken, checkRole(['delivery_agent']), async (req, res) => {
+router.get('/my-assignments', auth, async (req, res) => {
   try {
     const { status } = req.query;
 
@@ -275,7 +275,7 @@ router.get('/my-assignments', verifyToken, checkRole(['delivery_agent']), async 
  * Accept assignment
  * PUT /api/delivery-assignments/:id/accept
  */
-router.put('/:id/accept', verifyToken, checkRole(['delivery_agent']), async (req, res) => {
+router.put('/:id/accept', auth, async (req, res) => {
   try {
     const assignment = await DeliveryAssignment.findById(req.params.id);
 
@@ -312,7 +312,7 @@ router.put('/:id/accept', verifyToken, checkRole(['delivery_agent']), async (req
  * Reject assignment
  * PUT /api/delivery-assignments/:id/reject
  */
-router.put('/:id/reject', verifyToken, checkRole(['delivery_agent']), async (req, res) => {
+router.put('/:id/reject', auth, async (req, res) => {
   try {
     const { reason } = req.body;
     const assignment = await DeliveryAssignment.findById(req.params.id);
@@ -342,7 +342,7 @@ router.put('/:id/reject', verifyToken, checkRole(['delivery_agent']), async (req
  * Mark order picked up from vendor
  * PUT /api/delivery-assignments/:id/pickup
  */
-router.put('/:id/pickup', verifyToken, checkRole(['delivery_agent']), async (req, res) => {
+router.put('/:id/pickup', auth, async (req, res) => {
   try {
     const { location } = req.body; // GPS coordinates
 
@@ -384,7 +384,7 @@ router.put('/:id/pickup', verifyToken, checkRole(['delivery_agent']), async (req
  * Update delivery location (real-time tracking)
  * PUT /api/delivery-assignments/:id/location
  */
-router.put('/:id/location', verifyToken, checkRole(['delivery_agent']), async (req, res) => {
+router.put('/:id/location', auth, async (req, res) => {
   try {
     const { location } = req.body; // { lat, lng }
 
@@ -418,7 +418,7 @@ router.put('/:id/location', verifyToken, checkRole(['delivery_agent']), async (r
  * Mark order delivered
  * PUT /api/delivery-assignments/:id/deliver
  */
-router.put('/:id/deliver', verifyToken, checkRole(['delivery_agent']), async (req, res) => {
+router.put('/:id/deliver', auth, async (req, res) => {
   try {
     const { location, customerRating, notes, proofOfDelivery } = req.body;
 
@@ -485,7 +485,7 @@ router.put('/:id/deliver', verifyToken, checkRole(['delivery_agent']), async (re
  * Get assignment details
  * GET /api/delivery-assignments/:id
  */
-router.get('/:id', verifyToken, async (req, res) => {
+router.get('/:id', auth, async (req, res) => {
   try {
     const assignment = await DeliveryAssignment.findById(req.params.id)
       .populate('order customer vendor deliveryAgent');
@@ -516,7 +516,7 @@ router.get('/:id', verifyToken, async (req, res) => {
  * Get all delivery assignments (Admin)
  * GET /api/delivery-assignments
  */
-router.get('/', verifyToken, checkRole(['admin']), async (req, res) => {
+router.get('/', auth, async (req, res) => {
   try {
     const { status, vendor, agent, page = 1, limit = 20 } = req.query;
 

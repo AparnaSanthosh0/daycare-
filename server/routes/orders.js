@@ -453,9 +453,10 @@ router.put('/admin/:orderId/confirm', auth, async (req, res) => {
       }));
 
       await Order.findByIdAndUpdate(req.params.orderId, {
-      vendorConfirmations,
-      status: 'confirmed'
-    });
+        vendorConfirmations,
+        status: 'confirmed'
+      });
+    }
 
     // Notify vendors about order assignment
     try {
@@ -636,7 +637,6 @@ router.put('/vendor/:orderId/confirm', auth, async (req, res) => {
           console.log(`📦 Vendor: ${vendor.vendorName}, Delivery Fee: ₹${vendorDeliveryFee.toFixed(2)}`);
 
           // STEP 3: Check if we should auto-assign or wait for manual
-          const settings = await PlatformSettings.getSettings();
           
           if (settings.autoAssignment.enabled) {
             // 🤖 AUTO-ASSIGNMENT MODE: Trigger immediately

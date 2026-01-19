@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -15,6 +15,7 @@ import {
   ListItem,
   ListItemText,
   Alert,
+  CircularProgress,
 } from '@mui/material';
 import {
   LocalShipping,
@@ -32,6 +33,7 @@ import {
 } from '@mui/icons-material';
 import { Avatar, IconButton, Tooltip } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
+import api from '../../config/api';
 import DaycareLocationMap from '../../components/Maps/DaycareLocationMap';
 
 const fmtCurrency = (v) => `$${v.toFixed(2)}`;
@@ -42,68 +44,128 @@ const DeliveryDashboard = () => {
   const [tab, setTab] = useState(0);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [orders, setOrders] = useState([
-    {
-      id: 'ORD-1234',
-      items: 2,
-      pickup: 'Baby Essentials',
-      pickupAddr: '45 Commerce St',
-      drop: 'Jane W.',
-      dropAddr: '123 Oak Street',
-      distanceKm: 2.5,
-      pay: 8.5,
-      status: 'available',
-      eta: 'Today 2:30 PM',
-    },
-    {
-      id: 'ORD-5678',
-      items: 1,
-      pickup: 'Pharmacy Hub',
-      pickupAddr: '18 Main Ave',
-      drop: 'Liam D.',
-      dropAddr: '5 Park Lane',
-      distanceKm: 3.2,
-      pay: 9.75,
-      status: 'available',
-      eta: 'Today 3:10 PM',
-    },
-  ]);
-
-  const [activeDelivery, setActiveDelivery] = useState({
-    id: 'ORD-9012',
-    items: 3,
-    pickup: 'Grocery Mart',
-    pickupAddr: '210 Market St',
-    drop: 'Noah S.',
-    dropAddr: '88 Maple Ave',
-    distanceKm: 4.1,
-    pay: 12.25,
-    status: 'enroute',
-    eta: 'Today 4:05 PM',
-    onTimeRate: 97,
+  const [loading, setLoading] = useState(true);
+  const [orders, setOrders] = useState([]);
+  const [activeDelivery, setActiveDelivery] = useState(null);
+  const [completed, setCompleted] = useState([]);
+  const [stats, setStats] = useState({
+    todayDeliveries: 0,
+    todayEarnings: 0,
+    avgRating: 0,
+    onTimeRate: 0,
+    totalOrders: 0,
   });
 
-  const [completed] = useState([
-    { id: 'ORD-4455', pay: 7.5, rating: 4.9, date: '2025-12-05' },
-    { id: 'ORD-3322', pay: 9.1, rating: 4.8, date: '2025-12-04' },
-  ]);
+  // Fetch available assignments
+  const fetchAvailableAssignments = useCallback(async () => {
+    try {
+      console.log('🔍 Fetching available assignments...');
+      console.log('🔧 API baseURL:', api.defaults.baseURL);
+      const response = await api.get('/delivery-assignments/available');
+      console.log('✅ Response:', response.data);
+      setOrders(response.data.assignments || []);
+    } catch (err) {
+      console.error('❌ Error fetching available assignments:', err);
+      console.error('❌ Error response:', err.response);
+      setError(err.response?.data?.message || 'Failed to load available assignments');
+    }
+  }, []);
 
-  const stats = useMemo(() => ({
-    todayDeliveries: 5,
-    todayEarnings: 42.5,
-    avgRating: 4.9,
-    onTimeRate: 97,
-    totalOrders: orders.length,
-  }), [orders.length]);
+  // Fetch my active assignments
+  const fetchMyAssignments = useCallback(async () => {
+    try {
+      const response = await api.get('/delivery-assignments/my-assignments');
+      const assignments = response.data.assignments || [];
+      
+      // Find active delivery (picked up or in transit)
+      const active = assignments.find(a => a.status === 'picked_up' || a.status === 'in_transit');
+      setActiveDelivery(active || null);
+      
+    } catch (err) {
+      console.error('Error fetching my assignments:', err);
+      setError(err.response?.data?.message || 'Failed to load your assignments');
+    }
+  }, []);
 
-  const handleAccept = (id) => {
-    setOrders((prev) => prev.filter((o) => o.id !== id));
-    setSuccess(`Order ${id} accepted.`);
+  // Fetch completed deliveries
+  const fetchCompleted = useCallback(async () => {
+    try {
+      const response = await api.get('/delivery-assignments/my-assignments?status=delivered');
+      setCompleted(response.data.assignments || []);
+    } catch (err) {
+      console.error('Error fetching completed deliveries:', err);
+    }
+  }, []);
+
+  // Fetch stats
+  const fetchStats = useCallback(async () => {
+    try {
+      // Calculate stats from completed deliveries
+      const today = new Date().toDateString();
+      const todayDeliveries = completed.filter(d => 
+        new Date(d.deliveredAt).toDateString() === today
+      );
+      
+      const todayEarnings = todayDeliveries.reduce((sum, d) => sum + (d.agentShare || 0), 0);
+      const avgRating = completed.length > 0 
+        ? completed.reduce((sum, d) => sum + (d.rating || 0), 0) / completed.length 
+        : 0;
+      
+      setStats({
+        todayDeliveries: todayDeliveries.length,
+        todayEarnings: todayEarnings,
+        avgRating: avgRating,
+        onTimeRate: 97, // TODO: Calculate from actual data
+        totalOrders: orders.length + (activeDelivery ? 1 : 0)
+      });
+    } catch (err) {
+      console.error('Error calculating stats:', err);
+    }
+  }, [completed, orders, activeDelivery]);
+
+  // Load all data on mount
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      await Promise.all([
+        fetchAvailableAssignments(),
+        fetchMyAssignments(),
+        fetchCompleted()
+      ]);
+      setLoading(false);
+    };
+    loadData();
+  }, [fetchAvailableAssignments, fetchMyAssignments, fetchCompleted]);
+
+  // Update stats when data changes
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  const handleAccept = async (assignmentId) => {
+    try {
+      await api.put(`/delivery-assignments/${assignmentId}/accept`);
+      setSuccess(`Assignment accepted successfully!`);
+      await Promise.all([fetchAvailableAssignments(), fetchMyAssignments()]);
+    } catch (err) {
+      console.error('Error accepting assignment:', err);
+      setError(err.response?.data?.message || 'Failed to accept assignment');
+    }
   };
 
-  const handleCompleteActive = () => {
-    setSuccess('Delivery completed. Great job!');
-    setActiveDelivery((prev) => ({ ...prev, status: 'delivered' }));
+  const handleCompleteActive = async () => {
+    if (!activeDelivery) return;
+    try {
+      await api.put(`/delivery-assignments/${activeDelivery._id}/deliver`, {
+        notes: 'Delivered successfully'
+      });
+      setSuccess('Delivery completed. Great job!');
+      await Promise.all([fetchMyAssignments(), fetchCompleted()]);
+      setActiveDelivery(null);
+    } catch (err) {
+      console.error('Error completing delivery:', err);
+      setError(err.response?.data?.message || 'Failed to complete delivery');
+    }
   };
 
   const ordersCount = orders.length;
@@ -201,25 +263,25 @@ const DeliveryDashboard = () => {
       {/* Available Orders */}
       {tab === 0 && (
         <Stack spacing={2}>
-          {orders.length === 0 && <Typography color="text.secondary">No available orders.</Typography>}
-          {orders.map((o) => (
-            <Paper key={o.id} sx={{ p: 2.5, borderRadius: 2, boxShadow: '0 10px 24px rgba(0,0,0,0.05)' }}>
+          {loading && <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>}
+          {!loading && orders.length === 0 && <Typography color="text.secondary">No available orders at the moment.</Typography>}
+          {!loading && orders.map((assignment) => (
+            <Paper key={assignment._id} sx={{ p: 2.5, borderRadius: 2, boxShadow: '0 10px 24px rgba(0,0,0,0.05)' }}>
               <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
                 <Stack direction="row" spacing={1} alignItems="center">
-                  <Typography variant="h6">{o.id}</Typography>
-                  <Chip size="small" label={`${o.items} items`} />
+                  <Typography variant="h6">{assignment.orderNumber}</Typography>
+                  <Chip size="small" label={`${assignment.items?.length || 0} items`} />
                 </Stack>
-                <Chip label={`$${o.pay}`} sx={{ backgroundColor: '#f3fff8', color: '#13b655', fontWeight: 600 }} />
+                <Chip label={`₹${assignment.agentShare?.toFixed(2) || '0.00'}`} sx={{ backgroundColor: '#f3fff8', color: '#13b655', fontWeight: 600 }} />
               </Stack>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Pickup from: <strong>{o.pickup}</strong> — {o.pickupAddr}
+                Pickup from: <strong>{assignment.vendorName || 'Vendor'}</strong> — {assignment.pickupLocation?.address || 'N/A'}
               </Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Deliver to: <strong>{o.drop}</strong> — {o.dropAddr}
+                Deliver to: <strong>{assignment.customerName || 'Customer'}</strong> — {assignment.deliveryLocation?.address || 'N/A'}
               </Typography>
               <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-                <Chip icon={<Place />} label={`Distance: ${o.distanceKm} km`} />
-                <Chip icon={<AccessTime />} label={`ETA: ${o.eta}`} />
+                <Chip icon={<Place />} label={`${assignment.pickupLocation?.zone || 'N/A'} → ${assignment.deliveryLocation?.zone || 'N/A'}`} size="small" />
               </Stack>
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
                 <Button
@@ -229,18 +291,9 @@ const DeliveryDashboard = () => {
                     backgroundColor: '#14B8A6',
                     '&:hover': { backgroundColor: '#0d9488' }
                   }}
-                  onClick={() => handleAccept(o.id)}
+                  onClick={() => handleAccept(assignment._id)}
                 >
                   Accept Order
-                </Button>
-                <Button
-                  fullWidth
-                  variant="outlined"
-                  color="inherit"
-                  onClick={() => setSuccess(`Viewing details for ${o.id} (placeholder)`)}
-                  sx={{ color: '#4a4a4a', borderColor: '#d9d9d9' }}
-                >
-                  View Details
                 </Button>
               </Stack>
             </Paper>
@@ -249,23 +302,32 @@ const DeliveryDashboard = () => {
       )}
 
       {/* Active Delivery */}
-      {tab === 1 && (
+      {tab === 1 && !activeDelivery && (
+        <Paper sx={{ p: 3, textAlign: 'center', borderRadius: 2, boxShadow: '0 10px 24px rgba(0,0,0,0.05)' }}>
+          <Typography variant="body1" color="text.secondary">
+            No active delivery at the moment.
+          </Typography>
+        </Paper>
+      )}
+
+      {tab === 1 && activeDelivery && (
         <Paper sx={{ p: 2.5, borderRadius: 2, boxShadow: '0 10px 24px rgba(0,0,0,0.05)' }}>
           <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 1 }}>
             <Typography variant="h6">Active Delivery</Typography>
             <Chip color="success" label={activeDelivery.status === 'delivered' ? 'Completed' : 'In Progress'} />
           </Stack>
-          <Typography variant="body1" fontWeight={600}>{activeDelivery.id} — {activeDelivery.items} items</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Pickup: {activeDelivery.pickup}, {activeDelivery.pickupAddr}
+          <Typography variant="body1" fontWeight={600}>
+            {activeDelivery._id || activeDelivery.id} — {activeDelivery.order?.items?.length || 0} items
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-            Drop: {activeDelivery.drop}, {activeDelivery.dropAddr}
+            Pickup: {activeDelivery.vendor?.businessName || 'Vendor'}, {activeDelivery.vendor?.address || 'Address'}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Drop: {activeDelivery.order?.customer?.name || 'Customer'}, {activeDelivery.order?.shippingAddress?.street || 'Address'}
           </Typography>
           <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-            <Chip icon={<Place />} label={`${activeDelivery.distanceKm} km`} />
-            <Chip icon={<AccessTime />} label={`ETA: ${activeDelivery.eta}`} />
-            <Chip icon={<CheckCircle />} label={`On-Time: ${activeDelivery.onTimeRate}%`} />
+            <Chip icon={<Place />} label={`${activeDelivery.distance?.toFixed(1) || 0} km`} />
+            <Chip icon={<MonetizationOn />} label={`₹${activeDelivery.agentShare || 0}`} />
           </Stack>
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
             {activeDelivery.status !== 'delivered' && (
@@ -284,21 +346,27 @@ const DeliveryDashboard = () => {
       {tab === 2 && (
         <Paper sx={{ p: 2.5, borderRadius: 2, boxShadow: '0 10px 24px rgba(0,0,0,0.05)' }}>
           <Typography variant="h6" sx={{ mb: 1 }}>Completed Deliveries</Typography>
-          <List>
-            {completed.map((c) => (
-              <React.Fragment key={c.id}>
-                <ListItem
-                  secondaryAction={<Chip label={fmtCurrency(c.pay)} color="secondary" />}
-                >
-                  <ListItemText
-                    primary={`${c.id} • Rating: ${c.rating}`}
-                    secondary={c.date}
-                  />
-                </ListItem>
-                <Divider component="li" />
-              </React.Fragment>
-            ))}
-          </List>
+          {completed.length === 0 ? (
+            <Typography color="text.secondary" sx={{ py: 3, textAlign: 'center' }}>
+              No completed deliveries yet.
+            </Typography>
+          ) : (
+            <List>
+              {completed.map((c) => (
+                <React.Fragment key={c._id}>
+                  <ListItem
+                    secondaryAction={<Chip label={`₹${c.agentShare || 0}`} color="secondary" />}
+                  >
+                    <ListItemText
+                      primary={`Order #${c.order?.orderNumber || c._id} ${c.customerRating ? `• Rating: ${c.customerRating}⭐` : ''}`}
+                      secondary={c.deliveredAt ? new Date(c.deliveredAt).toLocaleDateString() : 'N/A'}
+                    />
+                  </ListItem>
+                  <Divider component="li" />
+                </React.Fragment>
+              ))}
+            </List>
+          )}
         </Paper>
       )}
 
@@ -367,7 +435,7 @@ const DeliveryDashboard = () => {
               </Alert>
             </Grid>
 
-            {activeDelivery && activeDelivery.status === 'enroute' && (
+            {activeDelivery && activeDelivery.status !== 'delivered' && (
               <Grid item xs={12}>
                 <Paper sx={{ p: 2, bgcolor: '#e3f2fd', borderRadius: 2 }}>
                   <Typography variant="h6" gutterBottom>
@@ -376,30 +444,30 @@ const DeliveryDashboard = () => {
                   <Grid container spacing={2}>
                     <Grid item xs={12} md={6}>
                       <Typography variant="body2" color="text.secondary">
-                        <strong>Pickup:</strong> {activeDelivery.pickup}
+                        <strong>Pickup:</strong> {activeDelivery.vendor?.businessName || 'Vendor'}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        📍 {activeDelivery.pickupAddr}
+                        📍 {activeDelivery.vendor?.address || 'Address not available'}
                       </Typography>
                     </Grid>
                     <Grid item xs={12} md={6}>
                       <Typography variant="body2" color="text.secondary">
-                        <strong>Drop:</strong> {activeDelivery.drop}
+                        <strong>Drop:</strong> {activeDelivery.order?.customer?.name || 'Customer'}
                       </Typography>
                       <Typography variant="body2" color="text.secondary">
-                        📍 {activeDelivery.dropAddr}
+                        📍 {activeDelivery.order?.shippingAddress?.street || 'Address not available'}
                       </Typography>
                     </Grid>
                     <Grid item xs={12}>
                       <Chip 
-                        label={`Distance: ${activeDelivery.distanceKm} km`} 
+                        label={`Distance: ${activeDelivery.distance?.toFixed(1) || 0} km`} 
                         icon={<Place />} 
                         color="primary" 
                         sx={{ mr: 1 }}
                       />
                       <Chip 
-                        label={`ETA: ${activeDelivery.eta}`} 
-                        icon={<AccessTime />} 
+                        label={`Amount: ₹${activeDelivery.agentShare || 0}`} 
+                        icon={<MonetizationOn />} 
                         color="success"
                       />
                     </Grid>

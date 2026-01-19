@@ -1290,7 +1290,7 @@ const ParentDashboard = ({ initialTab }) => {
     try {
       setOrdersLoading(true);
       setOrdersError('');
-      const response = await api.get('/api/orders/my-orders');
+      const response = await api.get('/orders/my-orders');
       setOrders(response.data?.orders || []);
     } catch (error) {
       console.error('Error fetching orders:', error);

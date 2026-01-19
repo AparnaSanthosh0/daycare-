@@ -47,7 +47,7 @@ const VendorOrders = () => {
 
   const loadOrders = async () => {
     try {
-      const response = await api.get('/api/orders/vendor');
+      const response = await api.get('/orders/vendor');
       setOrders(response.data.orders || []);
     } catch (error) {
       console.error('Load orders error:', error);
@@ -57,7 +57,7 @@ const VendorOrders = () => {
 
   const handleVendorConfirmation = async () => {
     try {
-      await api.put(`/api/orders/vendor/${selectedOrder._id}/confirm`, {
+      await api.put(`/orders/vendor/${selectedOrder._id}/confirm`, {
         status: confirmationStatus,
         notes: vendorNotes,
         ...(confirmationStatus === 'confirmed' && trackingNumber && { trackingNumber })

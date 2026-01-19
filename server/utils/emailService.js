@@ -39,9 +39,9 @@ const sendOrderConfirmationEmail = async (order, customer) => {
         console.log(`${idx + 1}. ${item.product.name} x ${item.quantity} = ₹${(item.quantity * item.price).toFixed(2)}`);
       });
       console.log(`\nDelivery Address:`);
-      console.log(`${order.deliveryAddress.name}`);
-      console.log(`${order.deliveryAddress.street}, ${order.deliveryAddress.city}`);
-      console.log(`${order.deliveryAddress.state} ${order.deliveryAddress.postalCode}`);
+      console.log(`${order.shippingAddress.street || ''}`);
+      console.log(`${order.shippingAddress.city || ''}, ${order.shippingAddress.state || ''}`);
+      console.log(`${order.shippingAddress.zipCode || ''} ${order.shippingAddress.country || ''}`);
       console.log(`\nYou can track your order at: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/track-order/${order.orderNumber}`);
       console.log('\n===================================\n');
       return;
@@ -84,7 +84,7 @@ const sendOrderConfirmationEmail = async (order, customer) => {
               <h1>Order Confirmed! 🎉</h1>
             </div>
             <div class="content">
-              <p>Dear ${customer.name},</p>
+              <p>Dear ${customer.firstName || customer.name || 'Customer'},</p>
               
               <p>Thank you for your order! We're excited to process your purchase.</p>
               
@@ -122,7 +122,7 @@ const sendOrderConfirmationEmail = async (order, customer) => {
                   ` : ''}
                   <tr>
                     <td colspan="4" style="padding: 10px; text-align: right;">Delivery Fee:</td>
-                    <td style="padding: 10px; text-align: right;">₹${order.deliveryFee.toFixed(2)}</td>
+                    <td style="padding: 10px; text-align: right;">₹${(order.shipping || 0).toFixed(2)}</td>
                   </tr>
                   <tr class="total-row" style="font-size: 1.1em;">
                     <td colspan="4" style="padding: 10px; text-align: right;">Total Amount:</td>
@@ -134,10 +134,9 @@ const sendOrderConfirmationEmail = async (order, customer) => {
               <div class="order-info">
                 <h3>Delivery Address</h3>
                 <p>
-                  ${order.deliveryAddress.name}<br>
-                  ${order.deliveryAddress.street}<br>
-                  ${order.deliveryAddress.city}, ${order.deliveryAddress.state} ${order.deliveryAddress.postalCode}
-                  ${order.deliveryAddress.phone ? `<br>Phone: ${order.deliveryAddress.phone}` : ''}
+                  ${order.shippingAddress.street || ''}<br>
+                  ${order.shippingAddress.city || ''}, ${order.shippingAddress.state || ''} ${order.shippingAddress.zipCode || ''}<br>
+                  ${order.shippingAddress.country || ''}
                 </p>
               </div>
 
