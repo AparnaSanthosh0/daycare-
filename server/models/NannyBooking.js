@@ -174,6 +174,26 @@ const nannyBookingSchema = new mongoose.Schema({
     timestamp: { type: Date, default: Date.now },
     photos: [String]
   }],
+
+  // AI / assistant summaries (nanny-generated, stored for parent/admin visibility)
+  summaries: [{
+    title: String,
+    summaryText: String,
+    highlights: [String],
+    categories: {
+      meals: [String],
+      sleep: [String],
+      hygiene: [String],
+      medication: [String],
+      learning: [String],
+      play: [String],
+      safety: [String],
+      other: [String]
+    },
+    generatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    generatedByName: String,
+    generatedAt: { type: Date, default: Date.now }
+  }],
   
   // Rating and review
   rating: {

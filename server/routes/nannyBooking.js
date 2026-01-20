@@ -230,6 +230,158 @@ router.get('/bookings/nanny', auth, async (req, res) => {
   }
 });
 
+// ===== Routine suggestions (lightweight AI) =====
+// Computes typical times for feeding/nap/homework from past logs for this nanny.
+router.get('/bookings/nanny/routine-suggestions', auth, async (req, res) => {
+  try {
+    if (!isNannyUser(req.user)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const days = Math.min(parseInt(req.query.days || '30', 10) || 30, 180);
+    const limit = Math.min(parseInt(req.query.limit || '50', 10) || 50, 200);
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const currentBookingId = req.query.currentBookingId;
+
+    // Get current booking for baseline times
+    let currentBooking = null;
+    if (currentBookingId) {
+      currentBooking = await NannyBooking.findById(currentBookingId)
+        .select('startTime endTime child');
+    }
+
+    const bookings = await NannyBooking.find({
+      nanny: req.user.userId,
+      status: { $in: ['completed', 'in-progress'] },
+      updatedAt: { $gte: since }
+    })
+      .select('serviceNotes activityUpdates createdAt updatedAt startTime child')
+      .sort({ updatedAt: -1 })
+      .limit(limit);
+
+    const buckets = {
+      feeding: [],
+      nap: [],
+      homework: []
+    };
+
+    const getMinutesOfDay = (d) => {
+      const dt = new Date(d);
+      return dt.getHours() * 60 + dt.getMinutes();
+    };
+
+    const parseTimeString = (timeStr) => {
+      if (!timeStr) return null;
+      const parts = timeStr.split(':');
+      if (parts.length >= 2) {
+        return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+      }
+      return null;
+    };
+
+    const pushIfMatch = (text, ts) => {
+      const t = (text || '').toLowerCase();
+      if (!t) return;
+      const m = getMinutesOfDay(ts || Date.now());
+      if (
+        t.includes('meals:') ||
+        t.includes('meal') ||
+        t.includes('feed') ||
+        t.includes('ate') ||
+        t.includes('milk') ||
+        t.includes('snack') ||
+        t.includes('breakfast') ||
+        t.includes('lunch') ||
+        t.includes('dinner')
+      ) buckets.feeding.push(m);
+
+      if (
+        t.includes('sleep:') ||
+        t.includes('nap') ||
+        t.includes('sleep') ||
+        t.includes('rested') ||
+        t.includes('bedtime')
+      ) buckets.nap.push(m);
+
+      if (
+        t.includes('homework') ||
+        t.includes('study') ||
+        t.includes('learning:') ||
+        t.includes('reading') ||
+        t.includes('writing') ||
+        t.includes('practice')
+      ) buckets.homework.push(m);
+    };
+
+    for (const b of bookings) {
+      for (const n of (b.serviceNotes || [])) {
+        pushIfMatch(n.note, n.timestamp);
+      }
+      for (const a of (b.activityUpdates || [])) {
+        pushIfMatch(a.activity, a.timestamp);
+      }
+    }
+
+    const summarize = (arr) => {
+      if (!arr.length) return null;
+      // Use median for robustness
+      const sorted = [...arr].sort((x, y) => x - y);
+      const mid = Math.floor(sorted.length / 2);
+      const median = sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
+      return { typicalMinutes: median, samples: arr.length, isFromData: true };
+    };
+
+    // Smart defaults based on current booking or general best practices
+    const getDefaultFeeding = () => {
+      if (currentBooking?.startTime) {
+        const startMin = parseTimeString(currentBooking.startTime);
+        if (startMin !== null) {
+          // Suggest 1 hour after start (typical breakfast/morning snack)
+          return { typicalMinutes: startMin + 60, samples: 0, isFromData: false, note: 'Suggested based on service start time' };
+        }
+      }
+      // Default: 9:00 AM (breakfast time)
+      return { typicalMinutes: 9 * 60, samples: 0, isFromData: false, note: 'Default suggestion' };
+    };
+
+    const getDefaultNap = () => {
+      if (currentBooking?.startTime) {
+        const startMin = parseTimeString(currentBooking.startTime);
+        if (startMin !== null) {
+          // Suggest 2-3 hours after start (typical nap time)
+          return { typicalMinutes: startMin + 150, samples: 0, isFromData: false, note: 'Suggested based on service start time' };
+        }
+      }
+      // Default: 1:00 PM (afternoon nap)
+      return { typicalMinutes: 13 * 60, samples: 0, isFromData: false, note: 'Default suggestion' };
+    };
+
+    const getDefaultHomework = () => {
+      if (currentBooking?.startTime) {
+        const startMin = parseTimeString(currentBooking.startTime);
+        if (startMin !== null) {
+          // Suggest 30 min after start (typical study time)
+          return { typicalMinutes: startMin + 30, samples: 0, isFromData: false, note: 'Suggested based on service start time' };
+        }
+      }
+      // Default: 4:00 PM (after-school homework time)
+      return { typicalMinutes: 16 * 60, samples: 0, isFromData: false, note: 'Default suggestion' };
+    };
+
+    res.json({
+      feeding: summarize(buckets.feeding) || getDefaultFeeding(),
+      nap: summarize(buckets.nap) || getDefaultNap(),
+      homework: summarize(buckets.homework) || getDefaultHomework(),
+      windowDays: days,
+      bookingsUsed: bookings.length,
+      hasHistoricalData: buckets.feeding.length > 0 || buckets.nap.length > 0 || buckets.homework.length > 0
+    });
+  } catch (error) {
+    console.error('Error computing routine suggestions:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // ===== Admin endpoints =====
 
 // Get all pending nanny bookings for admin review/assignment
@@ -700,6 +852,70 @@ router.post('/bookings/:id/activity', auth, async (req, res) => {
     res.json({ message: 'Activity update added', booking });
   } catch (error) {
     console.error('Error adding activity:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ===== Summaries (Nanny) =====
+
+// Nanny saves a generated daily summary for a booking
+router.post('/bookings/:id/summary', auth, async (req, res) => {
+  try {
+    if (!isNannyUser(req.user)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const { title, summaryText, highlights, categories } = req.body || {};
+    if (!summaryText) {
+      return res.status(400).json({ message: 'summaryText is required' });
+    }
+
+    const booking = await NannyBooking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    if (!booking.nanny || booking.nanny.toString() !== req.user.userId) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    booking.summaries = booking.summaries || [];
+    booking.summaries.push({
+      title: title || 'Daily Summary',
+      summaryText,
+      highlights: Array.isArray(highlights) ? highlights : [],
+      categories: categories && typeof categories === 'object' ? categories : undefined,
+      generatedBy: req.user.userId,
+      generatedByName: `${req.user.firstName || ''} ${req.user.lastName || ''}`.trim()
+    });
+
+    await booking.save();
+    res.json({ message: 'Summary saved', summaries: booking.summaries });
+  } catch (error) {
+    console.error('Error saving summary:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get summaries for a booking (parent or nanny or admin)
+router.get('/bookings/:id/summaries', auth, async (req, res) => {
+  try {
+    const booking = await NannyBooking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    const isParent = req.user.role === 'parent' && booking.parent.toString() === req.user.userId;
+    const isNanny = isNannyUser(req.user) && booking.nanny && booking.nanny.toString() === req.user.userId;
+    const isAdm = isAdmin(req.user);
+
+    if (!isParent && !isNanny && !isAdm) {
+      return res.status(403).json({ message: 'Unauthorized' });
+    }
+
+    res.json(booking.summaries || []);
+  } catch (error) {
+    console.error('Error fetching summaries:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

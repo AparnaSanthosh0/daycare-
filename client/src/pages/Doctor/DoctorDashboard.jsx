@@ -48,7 +48,8 @@ import {
   EventAvailable,
   LocalHospital,
   ShoppingCart,
-  Logout
+  Logout,
+  KeyboardVoice
 } from '@mui/icons-material';
 import api from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -95,6 +96,25 @@ const DoctorDashboard = () => {
     notes: ''
   });
   const [vaOpen, setVaOpen] = useState(false);
+  const [aiHealthSummary, setAiHealthSummary] = useState(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [selectedChildForSummary, setSelectedChildForSummary] = useState(null);
+  const [healthAlerts, setHealthAlerts] = useState([]);
+  const [alertsLoading, setAlertsLoading] = useState(false);
+  const [selectedAlert, setSelectedAlert] = useState(null);
+  const [alertExplanation, setAlertExplanation] = useState(null);
+  const [symptomAnalysis, setSymptomAnalysis] = useState(null);
+  const [symptomForm, setSymptomForm] = useState({ symptoms: '', duration: '', severity: 'low' });
+  const [growthPrediction, setGrowthPrediction] = useState(null);
+  const [growthForm, setGrowthForm] = useState({ height: '', weight: '', headCircumference: '' });
+  const [medicationCheck, setMedicationCheck] = useState(null);
+  const [medicationForm, setMedicationForm] = useState({ medications: '' });
+  const [riskScore, setRiskScore] = useState(null);
+  const [riskScoreLoading, setRiskScoreLoading] = useState(false);
+  const [medicalReport, setMedicalReport] = useState(null);
+  const [reportForm, setReportForm] = useState({ reportType: 'summary', dateRange: { start: '', end: '' } });
+  const [healthPatterns, setHealthPatterns] = useState(null);
+  const [patternsLoading, setPatternsLoading] = useState(false);
 
   // Fetch assigned children
   const fetchChildren = async () => {
@@ -333,7 +353,15 @@ const DoctorDashboard = () => {
               : 'Pediatric Specialist'}
           </Typography>
         </Box>
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <IconButton
+            color="inherit"
+            sx={{ position: 'relative', color: 'text.secondary', p: 1 }}
+            onClick={handleVaOpen}
+            aria-label="Open voice assistant"
+          >
+            <KeyboardVoice sx={{ color: '#14B8A6' }} />
+          </IconButton>
           <Button
             variant="contained"
             startIcon={<ShoppingCart />}
@@ -420,7 +448,8 @@ const DoctorDashboard = () => {
         <Tab label="Overview" icon={<People />} />
         <Tab label="Medical Records" icon={<MedicalServices />} />
         <Tab label="Appointments" icon={<CalendarToday />} />
-        <Tab label="Prescriptions" icon={<LocalHospital />} />
+        <Tab label="AI Health Insights" icon={<LocalHospital />} />
+        <Tab label="Prescriptions" icon={<Medication />} />
         <Tab label="Emergencies" icon={<WarningAmber />} />
       </Tabs>
 
@@ -941,6 +970,330 @@ const DoctorDashboard = () => {
         </Paper>
       )}
 
+      {/* AI Health Insights Tab */}
+      {activeTab === 3 && (
+        <Box>
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Typography variant="h6">AI Health Summary Generator</Typography>
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel>Select Child</InputLabel>
+                <Select
+                  value={selectedChildForSummary || ''}
+                  onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                  label="Select Child"
+                >
+                  {children.map((child) => (
+                    <MenuItem key={child._id} value={child._id}>
+                      {child.firstName} {child.lastName}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+
+            {selectedChildForSummary && (
+              <Box sx={{ mb: 3 }}>
+                <Button
+                  variant="contained"
+                  color="primary"
+                  onClick={async () => {
+                    try {
+                      setAiSummaryLoading(true);
+                      const response = await api.post(`/doctor/ai/health-summary/${selectedChildForSummary}`, {});
+                      setAiHealthSummary(response.data);
+                      setSuccess('Health summary generated successfully');
+                    } catch (error) {
+                      setError('Failed to generate health summary: ' + (error.response?.data?.message || error.message));
+                      console.error('Health summary error:', error);
+                    } finally {
+                      setAiSummaryLoading(false);
+                    }
+                  }}
+                  disabled={aiSummaryLoading}
+                >
+                  {aiSummaryLoading ? 'Generating...' : 'Generate AI Health Summary'}
+                </Button>
+              </Box>
+            )}
+
+            {aiHealthSummary && (
+              <Box>
+                <Card sx={{ mb: 2, bgcolor: '#f5f5f5' }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>
+                      Health Summary for {aiHealthSummary.childInfo.name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Age: {aiHealthSummary.childInfo.age} • Gender: {aiHealthSummary.childInfo.gender}
+                    </Typography>
+                    <Chip 
+                      label={`Overall Health: ${aiHealthSummary.overallHealth}`}
+                      color={aiHealthSummary.overallHealth === 'Good' ? 'success' : aiHealthSummary.overallHealth === 'Fair' ? 'warning' : 'error'}
+                      sx={{ mt: 1 }}
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                      Health Summary
+                    </Typography>
+                    <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                      {aiHealthSummary.healthSummary}
+                    </Typography>
+                  </CardContent>
+                </Card>
+
+                <Card sx={{ mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                      Recent Visit Notes
+                    </Typography>
+                    {aiHealthSummary.visitNotes.map((note, idx) => (
+                      <Box key={idx} sx={{ mb: 2, p: 2, bgcolor: '#f9f9f9', borderRadius: 1 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          {note.date} • {note.status}
+                        </Typography>
+                        <Typography variant="body2" fontWeight={600} sx={{ mt: 0.5 }}>
+                          Reason: {note.reason}
+                        </Typography>
+                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                          <strong>Diagnosis:</strong> {note.diagnosis}
+                        </Typography>
+                        {note.prescription !== 'No prescription' && (
+                          <Typography variant="body2" sx={{ mt: 0.5 }}>
+                            <strong>Prescription:</strong> {note.prescription}
+                          </Typography>
+                        )}
+                        {note.advice !== 'No specific advice recorded' && (
+                          <Typography variant="body2" sx={{ mt: 0.5 }}>
+                            <strong>Advice:</strong> {note.advice}
+                          </Typography>
+                        )}
+                      </Box>
+                    ))}
+                  </CardContent>
+                </Card>
+
+                {aiHealthSummary.keyFindings && aiHealthSummary.keyFindings.length > 0 && (
+                  <Card sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                        Key Findings
+                      </Typography>
+                      {aiHealthSummary.keyFindings.map((finding, idx) => (
+                        <Alert 
+                          key={idx} 
+                          severity={finding.severity === 'high' ? 'error' : 'warning'} 
+                          sx={{ mt: 1 }}
+                        >
+                          <Typography variant="body2">
+                            <strong>{finding.type.replace('_', ' ').toUpperCase()}:</strong> {finding.description}
+                          </Typography>
+                        </Alert>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+
+                {aiHealthSummary.recommendations && aiHealthSummary.recommendations.length > 0 && (
+                  <Card>
+                    <CardContent>
+                      <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                        AI Recommendations
+                      </Typography>
+                      {aiHealthSummary.recommendations.map((rec, idx) => (
+                        <Box key={idx} sx={{ mb: 2, p: 2, bgcolor: '#f0f7ff', borderRadius: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                            <Chip 
+                              label={rec.priority.toUpperCase()} 
+                              color={rec.priority === 'high' ? 'error' : 'warning'} 
+                              size="small" 
+                            />
+                            <Chip label={rec.category.replace('_', ' ')} size="small" variant="outlined" />
+                          </Box>
+                          <Typography variant="body2" fontWeight={600} gutterBottom>
+                            {rec.recommendation}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                            <strong>Explanation:</strong> {rec.explanation}
+                          </Typography>
+                        </Box>
+                      ))}
+                    </CardContent>
+                  </Card>
+                )}
+              </Box>
+            )}
+          </Paper>
+
+          {/* Predictive Health Alerts */}
+          <Paper sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Typography variant="h6">Predictive Health Alerts</Typography>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={async () => {
+                  try {
+                    setAlertsLoading(true);
+                    const response = await api.get('/doctor/ai/health-alerts', {});
+                    setHealthAlerts(response.data.alerts || []);
+                  } catch (error) {
+                    setError('Failed to fetch health alerts: ' + (error.response?.data?.message || error.message));
+                    console.error('Health alerts error:', error);
+                  } finally {
+                    setAlertsLoading(false);
+                  }
+                }}
+                disabled={alertsLoading}
+              >
+                {alertsLoading ? 'Analyzing...' : 'Refresh Alerts'}
+              </Button>
+            </Box>
+
+            {healthAlerts.length === 0 ? (
+              <Alert severity="info">
+                No health alerts detected. Click "Refresh Alerts" to analyze all assigned children.
+              </Alert>
+            ) : (
+              <Box>
+                {healthAlerts.map((childAlert) => (
+                  <Card key={childAlert.childId} sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Typography variant="h6" gutterBottom>
+                        {childAlert.childName}
+                      </Typography>
+                      {childAlert.alerts.map((alert, idx) => (
+                        <Alert 
+                          key={idx}
+                          severity={alert.severity === 'high' ? 'error' : alert.severity === 'medium' ? 'warning' : 'info'}
+                          sx={{ mt: 1 }}
+                          action={
+                            <Button
+                              size="small"
+                              onClick={async () => {
+                                try {
+                                  const response = await api.post('/doctor/ai/explain', {
+                                    alertType: alert.type,
+                                    childId: childAlert.childId,
+                                    data: alert
+                                  });
+                                  setAlertExplanation(response.data);
+                                  setSelectedAlert(alert);
+                                } catch (error) {
+                                  setError('Failed to generate explanation');
+                                }
+                              }}
+                            >
+                              Explain
+                            </Button>
+                          }
+                        >
+                          <Typography variant="subtitle2" fontWeight={600}>
+                            {alert.title}
+                          </Typography>
+                          <Typography variant="body2">
+                            {alert.description}
+                          </Typography>
+                          {alert.recommendedAction && (
+                            <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+                              <strong>Recommended:</strong> {alert.recommendedAction}
+                            </Typography>
+                          )}
+                        </Alert>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ))}
+              </Box>
+            )}
+          </Paper>
+
+          {/* Explainable AI Dialog */}
+          <Dialog
+            open={!!alertExplanation}
+            onClose={() => {
+              setAlertExplanation(null);
+              setSelectedAlert(null);
+            }}
+            maxWidth="md"
+            fullWidth
+          >
+            <DialogTitle>
+              Explainable AI: Why was this alert generated?
+            </DialogTitle>
+            <DialogContent>
+              {alertExplanation && (
+                <Box sx={{ pt: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    {selectedAlert?.title}
+                  </Typography>
+                  
+                  <Card sx={{ mb: 2, bgcolor: '#f5f5f5' }}>
+                    <CardContent>
+                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                        Why was this alert generated?
+                      </Typography>
+                      <Typography variant="body2">
+                        {alertExplanation.explanation.why}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+
+                  <Card sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                        Factors Considered
+                      </Typography>
+                      <List>
+                        {alertExplanation.explanation.factors.map((factor, idx) => (
+                          <ListItem key={idx}>
+                            <ListItemText primary={factor} />
+                          </ListItem>
+                        ))}
+                      </List>
+                    </CardContent>
+                  </Card>
+
+                  <Card sx={{ mb: 2 }}>
+                    <CardContent>
+                      <Typography variant="subtitle2" fontWeight={600} gutterBottom>
+                        AI Reasoning
+                      </Typography>
+                      <Typography variant="body2">
+                        {alertExplanation.explanation.reasoning}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="caption" color="text.secondary">
+                      Confidence Level:
+                    </Typography>
+                    <Chip 
+                      label={alertExplanation.confidence.toUpperCase()} 
+                      color={alertExplanation.confidence === 'high' ? 'success' : 'warning'} 
+                      size="small" 
+                    />
+                  </Box>
+                </Box>
+              )}
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => {
+                setAlertExplanation(null);
+                setSelectedAlert(null);
+              }}>
+                Close
+              </Button>
+            </DialogActions>
+          </Dialog>
+        </Box>
+      )}
+
       {/* Consultation Dialog */}
       <Dialog
         open={consultationDialog.open}
@@ -1211,17 +1564,548 @@ const DoctorDashboard = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Voice Assistant Button and Dialog */}
-      <Box sx={{ position: 'fixed', top: 24, right: 24, zIndex: 9999 }}>
-        <Button variant="contained" color="success" onClick={handleVaOpen} sx={{ borderRadius: '50%', minWidth: 56, minHeight: 56, boxShadow: 3 }}>
-          <span role="img" aria-label="mic">🎤</span>
-        </Button>
-        <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
+      {/* AI Tools Tab */}
+      {activeTab === 4 && (
+        <Box>
+          <Grid container spacing={3}>
+            {/* AI Symptom Analyzer */}
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  🤖 AI Symptom Analyzer & Diagnosis Assistant
+                </Typography>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Select Child</InputLabel>
+                  <Select
+                    value={selectedChildForSummary || ''}
+                    onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                    label="Select Child"
+                  >
+                    {children.map((child) => (
+                      <MenuItem key={child._id} value={child._id}>
+                        {child.firstName} {child.lastName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="Symptoms"
+                  value={symptomForm.symptoms}
+                  onChange={(e) => setSymptomForm({ ...symptomForm, symptoms: e.target.value })}
+                  placeholder="Describe symptoms (e.g., fever, cough, rash)..."
+                  sx={{ mb: 2 }}
+                />
+                <Grid container spacing={2} sx={{ mb: 2 }}>
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Duration (days)"
+                      value={symptomForm.duration}
+                      onChange={(e) => setSymptomForm({ ...symptomForm, duration: e.target.value })}
+                    />
+                  </Grid>
+                  <Grid item xs={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Severity</InputLabel>
+                      <Select
+                        value={symptomForm.severity}
+                        onChange={(e) => setSymptomForm({ ...symptomForm, severity: e.target.value })}
+                        label="Severity"
+                      >
+                        <MenuItem value="low">Low</MenuItem>
+                        <MenuItem value="medium">Medium</MenuItem>
+                        <MenuItem value="high">High</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={async () => {
+                    if (!selectedChildForSummary || !symptomForm.symptoms) {
+                      setError('Please select a child and enter symptoms');
+                      return;
+                    }
+                    try {
+                      const child = children.find(c => c._id === selectedChildForSummary);
+                      const age = Math.floor((new Date() - new Date(child.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000));
+                      const response = await api.post('/doctor/ai/symptom-analyzer', {
+                        childId: selectedChildForSummary,
+                        symptoms: symptomForm.symptoms,
+                        age,
+                        duration: parseInt(symptomForm.duration) || 1,
+                        severity: symptomForm.severity
+                      });
+                      setSymptomAnalysis(response.data);
+                    } catch (error) {
+                      setError('Failed to analyze symptoms');
+                    }
+                  }}
+                >
+                  Analyze Symptoms
+                </Button>
+                {symptomAnalysis && (
+                  <Box sx={{ mt: 3 }}>
+                    <Alert severity={symptomAnalysis.urgency === 'high' ? 'error' : symptomAnalysis.urgency === 'medium' ? 'warning' : 'info'} sx={{ mb: 2 }}>
+                      <Typography variant="subtitle2">Urgency: {symptomAnalysis.urgency.toUpperCase()}</Typography>
+                      <Typography variant="caption">AI Confidence: {symptomAnalysis.aiConfidence}</Typography>
+                    </Alert>
+                    <Typography variant="subtitle2" gutterBottom>Possible Conditions:</Typography>
+                    {symptomAnalysis.possibleConditions.map((cond, idx) => (
+                      <Chip key={idx} label={`${cond.condition} (${(cond.probability * 100).toFixed(0)}%)`} sx={{ m: 0.5 }} />
+                    ))}
+                    {symptomAnalysis.recommendedTests.length > 0 && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="subtitle2" gutterBottom>Recommended Tests:</Typography>
+                        {symptomAnalysis.recommendedTests.map((test, idx) => (
+                          <Chip key={idx} label={test} color="primary" sx={{ m: 0.5 }} />
+                        ))}
+                      </Box>
+                    )}
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>Recommendations:</Typography>
+                      {symptomAnalysis.recommendations.map((rec, idx) => (
+                        <Typography key={idx} variant="body2" sx={{ mt: 0.5 }}>• {rec}</Typography>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* ML Growth Chart Predictions */}
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  📊 ML Growth Chart Predictions
+                </Typography>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Select Child</InputLabel>
+                  <Select
+                    value={selectedChildForSummary || ''}
+                    onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                    label="Select Child"
+                  >
+                    {children.map((child) => (
+                      <MenuItem key={child._id} value={child._id}>
+                        {child.firstName} {child.lastName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Grid container spacing={2} sx={{ mb: 2 }}>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Height (cm)"
+                      value={growthForm.height}
+                      onChange={(e) => setGrowthForm({ ...growthForm, height: e.target.value })}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Weight (kg)"
+                      value={growthForm.weight}
+                      onChange={(e) => setGrowthForm({ ...growthForm, weight: e.target.value })}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Head (cm)"
+                      value={growthForm.headCircumference}
+                      onChange={(e) => setGrowthForm({ ...growthForm, headCircumference: e.target.value })}
+                    />
+                  </Grid>
+                </Grid>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={async () => {
+                    if (!selectedChildForSummary || !growthForm.height || !growthForm.weight) {
+                      setError('Please select a child and enter measurements');
+                      return;
+                    }
+                    try {
+                      const response = await api.post(`/doctor/ai/growth-prediction/${selectedChildForSummary}`, {
+                        height: parseFloat(growthForm.height),
+                        weight: parseFloat(growthForm.weight),
+                        headCircumference: parseFloat(growthForm.headCircumference) || null
+                      });
+                      setGrowthPrediction(response.data);
+                    } catch (error) {
+                      setError('Failed to predict growth');
+                    }
+                  }}
+                >
+                  Predict Growth
+                </Button>
+                {growthPrediction && (
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="subtitle2" gutterBottom>Current Percentiles:</Typography>
+                    <Box sx={{ display: 'flex', gap: 1, mb: 2 }}>
+                      <Chip label={`Height: ${growthPrediction.percentiles.height.toFixed(0)}th percentile`} />
+                      <Chip label={`Weight: ${growthPrediction.percentiles.weight.toFixed(0)}th percentile`} />
+                    </Box>
+                    <Typography variant="subtitle2" gutterBottom>6-Month Predictions:</Typography>
+                    {growthPrediction.predictions.map((pred, idx) => (
+                      <Box key={idx} sx={{ p: 1, bgcolor: '#f5f5f5', borderRadius: 1, mb: 1 }}>
+                        <Typography variant="caption">
+                          Age {pred.age} years: Height {pred.predictedHeight}cm, Weight {pred.predictedWeight}kg
+                        </Typography>
+                      </Box>
+                    ))}
+                    {growthPrediction.alerts.length > 0 && (
+                      <Box sx={{ mt: 2 }}>
+                        {growthPrediction.alerts.map((alert, idx) => (
+                          <Alert key={idx} severity="warning" sx={{ mt: 1 }}>
+                            {alert.message}
+                          </Alert>
+                        ))}
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* Medication Interaction Checker */}
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  💊 Medication Interaction Checker
+                </Typography>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Select Child</InputLabel>
+                  <Select
+                    value={selectedChildForSummary || ''}
+                    onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                    label="Select Child"
+                  >
+                    {children.map((child) => (
+                      <MenuItem key={child._id} value={child._id}>
+                        {child.firstName} {child.lastName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={3}
+                  label="New Medications"
+                  value={medicationForm.medications}
+                  onChange={(e) => setMedicationForm({ ...medicationForm, medications: e.target.value })}
+                  placeholder="Enter medications separated by commas (e.g., Ibuprofen, Amoxicillin)..."
+                  sx={{ mb: 2 }}
+                />
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={async () => {
+                    if (!selectedChildForSummary || !medicationForm.medications) {
+                      setError('Please select a child and enter medications');
+                      return;
+                    }
+                    try {
+                      const meds = medicationForm.medications.split(',').map(m => m.trim()).filter(m => m);
+                      const response = await api.post('/doctor/ai/medication-checker', {
+                        childId: selectedChildForSummary,
+                        newMedications: meds
+                      });
+                      setMedicationCheck(response.data);
+                    } catch (error) {
+                      setError('Failed to check medications');
+                    }
+                  }}
+                >
+                  Check Interactions
+                </Button>
+                {medicationCheck && (
+                  <Box sx={{ mt: 3 }}>
+                    <Alert severity={medicationCheck.safeToPrescribe ? 'success' : 'error'} sx={{ mb: 2 }}>
+                      {medicationCheck.safeToPrescribe ? '✅ Safe to prescribe' : '⚠️ Interactions detected'}
+                    </Alert>
+                    {medicationCheck.interactions.length > 0 && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" gutterBottom>Drug Interactions:</Typography>
+                        {medicationCheck.interactions.map((interaction, idx) => (
+                          <Alert key={idx} severity="error" sx={{ mt: 1 }}>
+                            {interaction.message}
+                          </Alert>
+                        ))}
+                      </Box>
+                    )}
+                    {medicationCheck.allergyChecks.length > 0 && (
+                      <Box sx={{ mb: 2 }}>
+                        <Typography variant="subtitle2" gutterBottom>Allergy Warnings:</Typography>
+                        {medicationCheck.allergyChecks.map((check, idx) => (
+                          <Alert key={idx} severity="error" sx={{ mt: 1 }}>
+                            {check.message}
+                          </Alert>
+                        ))}
+                      </Box>
+                    )}
+                    {medicationCheck.recommendations.length > 0 && (
+                      <Box>
+                        <Typography variant="subtitle2" gutterBottom>Recommendations:</Typography>
+                        {medicationCheck.recommendations.map((rec, idx) => (
+                          <Typography key={idx} variant="body2" sx={{ mt: 0.5 }}>• {rec}</Typography>
+                        ))}
+                      </Box>
+                    )}
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* Health Risk Scoring */}
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  ⚠️ Health Risk Scoring
+                </Typography>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Select Child</InputLabel>
+                  <Select
+                    value={selectedChildForSummary || ''}
+                    onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                    label="Select Child"
+                  >
+                    {children.map((child) => (
+                      <MenuItem key={child._id} value={child._id}>
+                        {child.firstName} {child.lastName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={async () => {
+                    if (!selectedChildForSummary) {
+                      setError('Please select a child');
+                      return;
+                    }
+                    try {
+                      setRiskScoreLoading(true);
+                      const response = await api.get(`/doctor/ai/risk-score/${selectedChildForSummary}`);
+                      setRiskScore(response.data);
+                    } catch (error) {
+                      setError('Failed to calculate risk score');
+                    } finally {
+                      setRiskScoreLoading(false);
+                    }
+                  }}
+                  disabled={riskScoreLoading}
+                >
+                  {riskScoreLoading ? 'Calculating...' : 'Calculate Risk Score'}
+                </Button>
+                {riskScore && (
+                  <Box sx={{ mt: 3 }}>
+                    <Box sx={{ textAlign: 'center', mb: 2 }}>
+                      <Typography variant="h3" color={riskScore.riskLevel === 'high' ? 'error' : riskScore.riskLevel === 'medium' ? 'warning' : 'success'}>
+                        {riskScore.overallRiskScore}
+                      </Typography>
+                      <Chip 
+                        label={riskScore.riskLevel.toUpperCase()} 
+                        color={riskScore.riskLevel === 'high' ? 'error' : riskScore.riskLevel === 'medium' ? 'warning' : 'success'}
+                        sx={{ mt: 1 }}
+                      />
+                    </Box>
+                    <Typography variant="subtitle2" gutterBottom>Risk Factors:</Typography>
+                    {riskScore.factors.map((factor, idx) => (
+                      <Box key={idx} sx={{ p: 1, bgcolor: '#f5f5f5', borderRadius: 1, mb: 1 }}>
+                        <Typography variant="body2">
+                          <strong>{factor.factor}:</strong> {factor.details} (Score: {factor.score})
+                        </Typography>
+                      </Box>
+                    ))}
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>Recommendations:</Typography>
+                      {riskScore.recommendations.map((rec, idx) => (
+                        <Typography key={idx} variant="body2" sx={{ mt: 0.5 }}>• {rec}</Typography>
+                      ))}
+                    </Box>
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* Automated Report Generation */}
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  📄 Automated Report Generation
+                </Typography>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Select Child</InputLabel>
+                  <Select
+                    value={selectedChildForSummary || ''}
+                    onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                    label="Select Child"
+                  >
+                    {children.map((child) => (
+                      <MenuItem key={child._id} value={child._id}>
+                        {child.firstName} {child.lastName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth sx={{ mb: 2 }}>
+                  <InputLabel>Report Type</InputLabel>
+                  <Select
+                    value={reportForm.reportType}
+                    onChange={(e) => setReportForm({ ...reportForm, reportType: e.target.value })}
+                    label="Report Type"
+                  >
+                    <MenuItem value="summary">Summary Report</MenuItem>
+                    <MenuItem value="detailed">Detailed Report</MenuItem>
+                    <MenuItem value="growth">Growth Report</MenuItem>
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={async () => {
+                    if (!selectedChildForSummary) {
+                      setError('Please select a child');
+                      return;
+                    }
+                    try {
+                      const response = await api.post(`/doctor/ai/generate-report/${selectedChildForSummary}`, {
+                        reportType: reportForm.reportType,
+                        dateRange: reportForm.dateRange
+                      });
+                      setMedicalReport(response.data);
+                    } catch (error) {
+                      setError('Failed to generate report');
+                    }
+                  }}
+                >
+                  Generate Report
+                </Button>
+                {medicalReport && (
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="subtitle2" gutterBottom>Report Summary:</Typography>
+                    <Typography variant="body2" sx={{ mb: 2, whiteSpace: 'pre-wrap', p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                      {medicalReport.summary}
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      fullWidth
+                      onClick={() => {
+                        const blob = new Blob([medicalReport.report || medicalReport.content], { type: 'text/plain' });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `medical-report-${Date.now()}.txt`;
+                        a.click();
+                      }}
+                    >
+                      Download Report
+                    </Button>
+                  </Box>
+                )}
+              </Paper>
+            </Grid>
+
+            {/* Pattern Recognition Dashboard */}
+            <Grid item xs={12}>
+              <Paper sx={{ p: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                  <Typography variant="h6">
+                    🔍 Pattern Recognition Dashboard
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    onClick={async () => {
+                      try {
+                        setPatternsLoading(true);
+                        const response = await api.get('/doctor/ai/patterns');
+                        setHealthPatterns(response.data);
+                      } catch (error) {
+                        setError('Failed to analyze patterns');
+                      } finally {
+                        setPatternsLoading(false);
+                      }
+                    }}
+                    disabled={patternsLoading}
+                  >
+                    {patternsLoading ? 'Analyzing...' : 'Analyze Patterns'}
+                  </Button>
+                </Box>
+                {healthPatterns && (
+                  <Grid container spacing={2}>
+                    {healthPatterns.seasonalPatterns.length > 0 && (
+                      <Grid item xs={12} md={6}>
+                        <Card>
+                          <CardContent>
+                            <Typography variant="subtitle1" gutterBottom>Seasonal Patterns</Typography>
+                            {healthPatterns.seasonalPatterns.map((pattern, idx) => (
+                              <Box key={idx} sx={{ p: 1, bgcolor: '#f5f5f5', borderRadius: 1, mb: 1 }}>
+                                <Typography variant="body2">
+                                  <strong>{pattern.month}:</strong> {pattern.visits} visits
+                                </Typography>
+                                <Typography variant="caption">{pattern.insight}</Typography>
+                              </Box>
+                            ))}
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    )}
+                    {healthPatterns.symptomClusters.length > 0 && (
+                      <Grid item xs={12} md={6}>
+                        <Card>
+                          <CardContent>
+                            <Typography variant="subtitle1" gutterBottom>Symptom Clusters</Typography>
+                            {healthPatterns.symptomClusters.map((cluster, idx) => (
+                              <Box key={idx} sx={{ p: 1, bgcolor: '#f5f5f5', borderRadius: 1, mb: 1 }}>
+                                <Typography variant="body2">
+                                  <strong>{cluster.symptom}:</strong> {cluster.frequency} occurrences
+                                </Typography>
+                                <Typography variant="caption">{cluster.insight}</Typography>
+                              </Box>
+                            ))}
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    )}
+                    {healthPatterns.insights.length > 0 && (
+                      <Grid item xs={12}>
+                        <Alert severity="info">
+                          {healthPatterns.insights.map((insight, idx) => (
+                            <Typography key={idx} variant="body2">{insight}</Typography>
+                          ))}
+                        </Alert>
+                      </Grid>
+                    )}
+                  </Grid>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
+        </Box>
+      )}
+
+      {/* Voice Assistant Dialog */}
+      <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
+        <DialogTitle>Voice Assistant</DialogTitle>
+        <DialogContent>
           <Box sx={{ p: 2, bgcolor: '#f6f8fa' }}>
             <VoiceAssistant />
           </Box>
-        </Dialog>
-      </Box>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

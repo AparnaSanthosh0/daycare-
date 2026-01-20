@@ -466,22 +466,73 @@ const NannyServicesTab = () => {
               </Card>
             </Grid>
           ))}
-          {bookings.filter(b => ['completed', 'cancelled', 'rejected'].includes(b.status)).length === 0 && (
+          {bookings.filter(b => b.status === 'completed').length === 0 && (
             <Grid item xs={12}>
-              <Paper sx={{ p: 4, textAlign: 'center' }}>
-                <Assessment sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6">No booking history</Typography>
+              <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#f5f5f5' }}>
                 <Typography variant="body2" color="text.secondary">
-                  Your completed bookings will appear here
+                  No completed services yet
                 </Typography>
               </Paper>
             </Grid>
           )}
-        </Grid>
+          </Grid>
+
+          {/* Cancelled/Rejected Services */}
+          <Typography variant="h6" sx={{ mb: 2, mt: 4, fontWeight: 'bold', color: '#e91e63' }}>
+            Cancelled & Rejected Services
+          </Typography>
+          <Grid container spacing={3}>
+            {bookings.filter(b => ['cancelled', 'rejected'].includes(b.status)).map((booking) => (
+              <Grid item xs={12} md={6} key={booking._id}>
+                <Card>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
+                      <Typography variant="h6">{booking.nannyName}</Typography>
+                      <Chip
+                        label={booking.status === 'cancelled' ? 'Cancelled' : 'Rejected'}
+                        color="error"
+                        size="small"
+                      />
+                    </Box>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="body2" gutterBottom>
+                      <strong>Child:</strong> {booking.child.name}
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>Date:</strong> {new Date(booking.serviceDate).toLocaleDateString()}
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>Amount:</strong> ${booking.totalAmount}
+                    </Typography>
+                    {booking.cancellationReason && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        <strong>Reason:</strong> {booking.cancellationReason}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+            {bookings.filter(b => ['cancelled', 'rejected'].includes(b.status)).length === 0 && (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#f5f5f5' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No cancelled or rejected bookings
+                  </Typography>
+                </Paper>
+              </Grid>
+            )}
+          </Grid>
+        </Box>
       )}
 
       {/* Booking Dialog */}
-      <Dialog open={bookingDialog} onClose={() => setBookingDialog(false)} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={bookingDialog} 
+        onClose={() => setBookingDialog(false)} 
+        maxWidth="sm" 
+        fullWidth
+      >
         <DialogTitle>Book {selectedNanny?.firstName} {selectedNanny?.lastName}</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
@@ -536,7 +587,10 @@ const NannyServicesTab = () => {
                 <Select
                   value={bookingForm.serviceType}
                   label="Service Type"
-                  onChange={(e) => setBookingForm({ ...bookingForm, serviceType: e.target.value, serviceCategory: '' })}
+                  onChange={(e) => {
+                    console.log('Service type selected:', e.target.value);
+                    setBookingForm({ ...bookingForm, serviceType: e.target.value, serviceCategory: '' });
+                  }}
                 >
                   <MenuItem value="regular-care">Regular Care Services (Daily/Weekly/Monthly)</MenuItem>
                   <MenuItem value="educational">Educational & Development Support</MenuItem>
@@ -549,64 +603,65 @@ const NannyServicesTab = () => {
             </Grid>
             {bookingForm.serviceType && (
               <Grid item xs={12}>
+                {/* Use native select to avoid any MUI portal/z-index issues */}
                 <FormControl fullWidth>
-                  <InputLabel>Service Category</InputLabel>
+                  <InputLabel shrink>Service Category</InputLabel>
                   <Select
+                    native
                     value={bookingForm.serviceCategory || ''}
-                    label="Service Category"
-                    onChange={(e) => setBookingForm({ ...bookingForm, serviceCategory: e.target.value })}
-                    displayEmpty
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setBookingForm(prev => ({ ...prev, serviceCategory: val }));
+                    }}
                   >
-                    <MenuItem value="">
-                      <em>Select a category...</em>
-                    </MenuItem>
+                    <option value="">Select a category...</option>
                     {bookingForm.serviceType === 'regular-care' && (
                       <>
-                        <MenuItem value="full-day-care">Full-day child care at home</MenuItem>
-                        <MenuItem value="part-time-supervision">Part-time child supervision</MenuItem>
-                        <MenuItem value="feeding-meal-assistance">Feeding and meal assistance</MenuItem>
-                        <MenuItem value="bathing-hygiene">Bathing and hygiene care</MenuItem>
-                        <MenuItem value="sleep-routine">Sleep routine management</MenuItem>
-                        <MenuItem value="playtime-engagement">Playtime and engagement</MenuItem>
+                        <option value="full-day-care">Full-day child care at home</option>
+                        <option value="part-time-supervision">Part-time child supervision</option>
+                        <option value="feeding-meal-assistance">Feeding and meal assistance</option>
+                        <option value="bathing-hygiene">Bathing and hygiene care</option>
+                        <option value="sleep-routine">Sleep routine management</option>
+                        <option value="playtime-engagement">Playtime and engagement</option>
                       </>
                     )}
                     {bookingForm.serviceType === 'educational' && (
                       <>
-                        <MenuItem value="homework-assistance">Homework assistance</MenuItem>
-                        <MenuItem value="reading-storytelling">Reading and storytelling</MenuItem>
-                        <MenuItem value="activity-learning">Activity-based learning</MenuItem>
-                        <MenuItem value="language-practice">Language practice</MenuItem>
-                        <MenuItem value="motor-skills">Motor skill activities</MenuItem>
+                        <option value="homework-assistance">Homework assistance</option>
+                        <option value="reading-storytelling">Reading and storytelling</option>
+                        <option value="activity-learning">Activity-based learning</option>
+                        <option value="language-practice">Language practice</option>
+                        <option value="motor-skills">Motor skill activities</option>
                       </>
                     )}
                     {bookingForm.serviceType === 'health-safety' && (
                       <>
-                        <MenuItem value="first-aid">Basic first-aid assistance</MenuItem>
-                        <MenuItem value="medication-reminders">Medication reminders</MenuItem>
-                        <MenuItem value="health-monitoring">Monitoring child health conditions</MenuItem>
-                        <MenuItem value="emergency-support">Emergency support coordination</MenuItem>
+                        <option value="first-aid">Basic first-aid assistance</option>
+                        <option value="medication-reminders">Medication reminders</option>
+                        <option value="health-monitoring">Monitoring child health conditions</option>
+                        <option value="emergency-support">Emergency support coordination</option>
                       </>
                     )}
                     {bookingForm.serviceType === 'short-term' && (
                       <>
-                        <MenuItem value="babysitting-hours">Babysitting for a few hours</MenuItem>
-                        <MenuItem value="emergency-care">Emergency care</MenuItem>
-                        <MenuItem value="weekend-care">Weekend care</MenuItem>
-                        <MenuItem value="holiday-care">Holiday care</MenuItem>
+                        <option value="babysitting-hours">Babysitting for a few hours</option>
+                        <option value="emergency-care">Emergency care</option>
+                        <option value="weekend-care">Weekend care</option>
+                        <option value="holiday-care">Holiday care</option>
                       </>
                     )}
                     {bookingForm.serviceType === 'after-school' && (
                       <>
-                        <MenuItem value="school-pickup">School pickup support</MenuItem>
-                        <MenuItem value="homework-supervision">Homework supervision</MenuItem>
-                        <MenuItem value="evening-care">Evening care until parents return</MenuItem>
+                        <option value="school-pickup">School pickup support</option>
+                        <option value="homework-supervision">Homework supervision</option>
+                        <option value="evening-care">Evening care until parents return</option>
                       </>
                     )}
                     {bookingForm.serviceType === 'subscription' && (
                       <>
-                        <MenuItem value="weekly-plan">Weekly Plan</MenuItem>
-                        <MenuItem value="monthly-plan">Monthly Plan</MenuItem>
-                        <MenuItem value="custom-plan">Custom Plan</MenuItem>
+                        <option value="weekly-plan">Weekly Plan</option>
+                        <option value="monthly-plan">Monthly Plan</option>
+                        <option value="custom-plan">Custom Plan</option>
                       </>
                     )}
                   </Select>

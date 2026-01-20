@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -66,14 +66,272 @@ const NannyDashboard = () => {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [serviceNote, setServiceNote] = useState('');
   const [activityUpdate, setActivityUpdate] = useState('');
+  const [summaryDialog, setSummaryDialog] = useState(false);
+  const [generatedSummary, setGeneratedSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [dictatingField, setDictatingField] = useState(null); // 'note' | 'activity'
+  const [routineSuggestions, setRoutineSuggestions] = useState(null);
+  const [routineLoading, setRoutineLoading] = useState(false);
+  const [routineReminders, setRoutineReminders] = useState([]);
   const [vaOpen, setVaOpen] = useState(false);
+
+  const recognitionRef = useRef(null);
+  const isDictatingRef = useRef(false);
+
+  const NOTE_TEMPLATES = [
+    'Meals: Ate well.',
+    'Meals: Refused food.',
+    'Sleep: Slept peacefully.',
+    'Sleep: Difficulty sleeping.',
+    'Hygiene: Bath completed.',
+    'Hygiene: Diaper change done.',
+    'Medication: Given as per instruction.',
+    'Safety: No issues observed.'
+  ];
+
+  const ACTIVITY_TEMPLATES = [
+    'Play: Indoor play (blocks/puzzles).',
+    'Play: Outdoor play.',
+    'Learning: Reading/story time.',
+    'Learning: Writing/drawing activity.',
+    'Motor skills: Fine motor practice.',
+    'Motor skills: Physical activity.'
+  ];
 
   useEffect(() => {
     fetchPendingRequests();
     fetchSchedule();
     fetchHistory();
     fetchPayments();
+    fetchRoutineSuggestions();
   }, []);
+
+  // Update reminder countdown every minute
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRoutineReminders(prev => {
+        const now = Date.now();
+        return prev.map(r => {
+          if (r.fired) return r;
+          if (now >= r.dueAt) {
+            // Fire the reminder
+            if ('Notification' in window && Notification.permission === 'granted') {
+              new Notification(`Reminder: ${r.label}`, {
+                body: `Time for ${r.label.toLowerCase()}!`,
+                icon: '/favicon.ico',
+                tag: r.id
+              });
+            }
+            setSuccess(`⏰ Reminder: ${r.label}!`);
+            return { ...r, fired: true };
+          }
+          return r;
+        });
+      });
+    }, 1000); // Update every second for smooth countdown
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const fetchRoutineSuggestions = async (bookingId = null) => {
+    try {
+      setRoutineLoading(true);
+      let url = '/nanny/bookings/nanny/routine-suggestions?days=30&limit=80';
+      if (bookingId) {
+        url += `&currentBookingId=${bookingId}`;
+      }
+      const res = await api.get(url);
+      setRoutineSuggestions(res.data || null);
+    } catch (e) {
+      console.error('Error fetching routine suggestions:', e);
+      setRoutineSuggestions(null);
+    } finally {
+      setRoutineLoading(false);
+    }
+  };
+
+  const fmtTimeFromMinutes = (mins) => {
+    if (mins === null || mins === undefined) return '';
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    const hh = String(((h + 11) % 12) + 1).padStart(1, '0');
+    const mm = String(m).padStart(2, '0');
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    return `${hh}:${mm} ${ampm}`;
+  };
+
+  const addReminder = (label, minutesFromNow) => {
+    const dueAt = Date.now() + Math.max(1, minutesFromNow) * 60 * 1000;
+    const id = `${label}-${Date.now()}`;
+    const reminder = { id, label, dueAt, createdAt: Date.now(), fired: false };
+    
+    setRoutineReminders((prev) => [...prev, reminder]);
+    setSuccess(`✅ Reminder set: ${label} in ${minutesFromNow} minute${minutesFromNow !== 1 ? 's' : ''}`);
+    
+    // Request browser notification permission
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  };
+
+  const startDictation = (field) => {
+    try {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition) {
+        setError('Speech recognition is not supported in this browser. Please use Chrome.');
+        return;
+      }
+
+      if (isDictatingRef.current && recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+
+      const rec = new SpeechRecognition();
+      recognitionRef.current = rec;
+      isDictatingRef.current = true;
+      setDictatingField(field);
+
+      rec.continuous = false;
+      rec.interimResults = true;
+      rec.lang = 'en-US';
+
+      rec.onresult = (event) => {
+        const transcript = Array.from(event.results).map(r => r[0]?.transcript || '').join(' ').trim();
+        if (!transcript) return;
+        if (field === 'note') {
+          setServiceNote(prev => (prev ? `${prev}\n${transcript}` : transcript));
+        } else if (field === 'activity') {
+          setActivityUpdate(prev => (prev ? `${prev}\n${transcript}` : transcript));
+        }
+      };
+
+      rec.onerror = (e) => {
+        console.error('Dictation error:', e);
+        setError('Voice input failed. Please try again.');
+      };
+
+      rec.onend = () => {
+        isDictatingRef.current = false;
+        setDictatingField(null);
+      };
+
+      rec.start();
+    } catch (e) {
+      console.error('Failed to start dictation:', e);
+      setError('Failed to start voice input.');
+      isDictatingRef.current = false;
+      setDictatingField(null);
+    }
+  };
+
+  const stopDictation = () => {
+    try {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+    } finally {
+      isDictatingRef.current = false;
+      setDictatingField(null);
+    }
+  };
+
+  const bucketLine = (line) => {
+    const t = (line || '').toLowerCase();
+    if (t.includes('meal') || t.includes('ate') || t.includes('food') || t.includes('milk') || t.includes('snack')) return 'meals';
+    if (t.includes('sleep') || t.includes('nap')) return 'sleep';
+    if (t.includes('bath') || t.includes('hygiene') || t.includes('diaper') || t.includes('toilet')) return 'hygiene';
+    if (t.includes('medicine') || t.includes('medication') || t.includes('tablet') || t.includes('syrup')) return 'medication';
+    if (t.includes('read') || t.includes('homework') || t.includes('learn') || t.includes('study') || t.includes('story')) return 'learning';
+    if (t.includes('play') || t.includes('game') || t.includes('toy') || t.includes('outdoor') || t.includes('park')) return 'play';
+    if (t.includes('safe') || t.includes('injury') || t.includes('hurt') || t.includes('emergency') || t.includes('first aid')) return 'safety';
+    return 'other';
+  };
+
+  const generateSummaryFromBooking = (booking) => {
+    const notes = (booking?.serviceNotes || []).map(n => n.note).filter(Boolean);
+    const activities = (booking?.activityUpdates || []).map(a => a.activity).filter(Boolean);
+    const lines = [...notes, ...activities].flatMap(t => t.split('\n')).map(s => s.trim()).filter(Boolean);
+
+    const categories = {
+      meals: [],
+      sleep: [],
+      hygiene: [],
+      medication: [],
+      learning: [],
+      play: [],
+      safety: [],
+      other: []
+    };
+
+    for (const line of lines) {
+      const k = bucketLine(line);
+      categories[k].push(line);
+    }
+
+    const highlights = [];
+    if (categories.meals[0]) highlights.push(categories.meals[0]);
+    if (categories.sleep[0]) highlights.push(categories.sleep[0]);
+    if (categories.play[0]) highlights.push(categories.play[0]);
+    if (categories.learning[0]) highlights.push(categories.learning[0]);
+    if (categories.safety[0]) highlights.push(categories.safety[0]);
+
+    const parts = [];
+    parts.push(`Child: ${booking?.child?.name || 'N/A'}`);
+    parts.push(`Date: ${booking?.serviceDate ? fmtDate(booking.serviceDate) : 'N/A'} (${booking?.startTime || ''} - ${booking?.endTime || ''})`);
+    if (booking?.status) parts.push(`Status: ${booking.status}`);
+    parts.push('');
+    parts.push('Summary:');
+    parts.push(highlights.length ? `- ${highlights.join('\n- ')}` : '- No highlights recorded yet.');
+
+    const summaryText = parts.join('\n');
+    return {
+      title: 'Daily Summary',
+      summaryText,
+      highlights,
+      categories
+    };
+  };
+
+  const openSummary = async (bookingId) => {
+    try {
+      setSummaryLoading(true);
+      const booking = schedule.find(b => b._id === bookingId) || null;
+      if (!booking) {
+        setError('Booking not found in schedule.');
+        return;
+      }
+      const summary = generateSummaryFromBooking(booking);
+      setGeneratedSummary({ bookingId, ...summary });
+      setSummaryDialog(true);
+    } catch (e) {
+      console.error(e);
+      setError('Failed to generate summary.');
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
+
+  const saveSummary = async () => {
+    try {
+      if (!generatedSummary?.bookingId || !generatedSummary?.summaryText) return;
+      setSummaryLoading(true);
+      await api.post(`/nanny/bookings/${generatedSummary.bookingId}/summary`, {
+        title: generatedSummary.title,
+        summaryText: generatedSummary.summaryText,
+        highlights: generatedSummary.highlights,
+        categories: generatedSummary.categories
+      });
+      setSuccess('Summary saved and shared to the booking.');
+      setSummaryDialog(false);
+      setGeneratedSummary(null);
+      await Promise.all([fetchSchedule(), fetchHistory()]);
+    } catch (e) {
+      console.error(e);
+      setError(e.response?.data?.message || 'Failed to save summary');
+    } finally {
+      setSummaryLoading(false);
+    }
+  };
 
   const fetchPayments = async () => {
     try {
@@ -514,6 +772,182 @@ const NannyDashboard = () => {
                           Started at: {new Date(s.actualStartTime).toLocaleTimeString()}
                         </Alert>
                       )}
+                      {/* Routine Assistant */}
+                      <Paper sx={{ p: 2, mb: 2, borderRadius: 2, bgcolor: '#f6fffd', border: `1px solid ${themeColor}33` }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                          <Typography variant="subtitle1" fontWeight={700} sx={{ color: themeColor }}>
+                            AI Task Reminder & Routine Assistant
+                          </Typography>
+                          <Button
+                            size="small"
+                            variant="outlined"
+                            onClick={() => fetchRoutineSuggestions(s._id)}
+                            sx={{ textTransform: 'none' }}
+                          >
+                            Refresh
+                          </Button>
+                        </Box>
+                        {routineLoading ? (
+                          <Typography variant="body2" color="text.secondary">Loading routine suggestions…</Typography>
+                        ) : (
+                          <>
+                            {routineSuggestions?.hasHistoricalData ? (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                ✅ Suggestions based on your recent logs ({routineSuggestions.bookingsUsed} bookings analyzed).
+                              </Typography>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                💡 Showing smart defaults. Add notes with "Meals:", "Sleep:", or "Learning:" to improve suggestions.
+                              </Typography>
+                            )}
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} sx={{ mb: 1 }}>
+                              <Paper sx={{ p: 1.5, flex: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">Feeding time</Typography>
+                                  {routineSuggestions?.feeding?.isFromData && (
+                                    <Chip label="AI" size="small" sx={{ height: 16, fontSize: '0.65rem', bgcolor: themeColor, color: 'white' }} />
+                                  )}
+                                </Box>
+                                <Typography variant="body1" fontWeight={700}>
+                                  {routineSuggestions?.feeding ? fmtTimeFromMinutes(routineSuggestions.feeding.typicalMinutes) : '9:00 AM'}
+                                </Typography>
+                                {routineSuggestions?.feeding?.samples > 0 && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Based on {routineSuggestions.feeding.samples} logs
+                                  </Typography>
+                                )}
+                                <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    sx={{ flex: 1, bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' }, textTransform: 'none' }}
+                                    onClick={() => addReminder('Feeding time', 30)}
+                                  >
+                                    Remind in 30 min
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ textTransform: 'none' }}
+                                    onClick={() => addReminder('Feeding time', 1)}
+                                    title="Test reminder (1 minute)"
+                                  >
+                                    Test
+                                  </Button>
+                                </Stack>
+                              </Paper>
+                              <Paper sx={{ p: 1.5, flex: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">Nap time</Typography>
+                                  {routineSuggestions?.nap?.isFromData && (
+                                    <Chip label="AI" size="small" sx={{ height: 16, fontSize: '0.65rem', bgcolor: themeColor, color: 'white' }} />
+                                  )}
+                                </Box>
+                                <Typography variant="body1" fontWeight={700}>
+                                  {routineSuggestions?.nap ? fmtTimeFromMinutes(routineSuggestions.nap.typicalMinutes) : '1:00 PM'}
+                                </Typography>
+                                {routineSuggestions?.nap?.samples > 0 && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Based on {routineSuggestions.nap.samples} logs
+                                  </Typography>
+                                )}
+                                <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    sx={{ flex: 1, bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' }, textTransform: 'none' }}
+                                    onClick={() => addReminder('Nap time', 45)}
+                                  >
+                                    Remind in 45 min
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ textTransform: 'none' }}
+                                    onClick={() => addReminder('Nap time', 1)}
+                                    title="Test reminder (1 minute)"
+                                  >
+                                    Test
+                                  </Button>
+                                </Stack>
+                              </Paper>
+                              <Paper sx={{ p: 1.5, flex: 1 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+                                  <Typography variant="caption" color="text.secondary">Homework time</Typography>
+                                  {routineSuggestions?.homework?.isFromData && (
+                                    <Chip label="AI" size="small" sx={{ height: 16, fontSize: '0.65rem', bgcolor: themeColor, color: 'white' }} />
+                                  )}
+                                </Box>
+                                <Typography variant="body1" fontWeight={700}>
+                                  {routineSuggestions?.homework ? fmtTimeFromMinutes(routineSuggestions.homework.typicalMinutes) : '4:00 PM'}
+                                </Typography>
+                                {routineSuggestions?.homework?.samples > 0 && (
+                                  <Typography variant="caption" color="text.secondary">
+                                    Based on {routineSuggestions.homework.samples} logs
+                                  </Typography>
+                                )}
+                                <Stack direction="row" spacing={0.5} sx={{ mt: 1 }}>
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    sx={{ flex: 1, bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' }, textTransform: 'none' }}
+                                    onClick={() => addReminder('Homework time', 60)}
+                                  >
+                                    Remind in 60 min
+                                  </Button>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{ textTransform: 'none' }}
+                                    onClick={() => addReminder('Homework time', 1)}
+                                    title="Test reminder (1 minute)"
+                                  >
+                                    Test
+                                  </Button>
+                                </Stack>
+                              </Paper>
+                            </Stack>
+
+                            {routineReminders.length > 0 && (
+                              <Box sx={{ mt: 2 }}>
+                                <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
+                                  Active Reminders:
+                                </Typography>
+                                {routineReminders.map((r) => {
+                                  const minutesLeft = Math.max(0, Math.round((r.dueAt - Date.now()) / 60000));
+                                  return (
+                                    <Alert 
+                                      key={r.id} 
+                                      severity={r.fired ? 'warning' : 'info'} 
+                                      sx={{ mt: 1 }}
+                                      action={
+                                        <Button
+                                          size="small"
+                                          onClick={() => {
+                                            setRoutineReminders(prev => prev.filter(rem => rem.id !== r.id));
+                                          }}
+                                        >
+                                          Dismiss
+                                        </Button>
+                                      }
+                                    >
+                                      {r.fired ? (
+                                        <>⏰ <strong>{r.label}</strong> - Time's up!</>
+                                      ) : (
+                                        <>⏳ <strong>{r.label}</strong> in {minutesLeft} minute{minutesLeft !== 1 ? 's' : ''}</>
+                                      )}
+                                    </Alert>
+                                  );
+                                })}
+                              </Box>
+                            )}
+                          </>
+                        )}
+                      </Paper>
+
+                      <Alert severity="success" sx={{ mb: 2 }}>
+                        Tip: Add notes/activities during the service, then generate an AI summary for the parent.
+                      </Alert>
                       <Stack spacing={2}>
                         <Button
                           variant="contained"
@@ -523,6 +957,16 @@ const NannyDashboard = () => {
                           onClick={() => handleEndService(s._id)}
                         >
                           End Service
+                        </Button>
+                        <Button
+                          variant="contained"
+                          fullWidth
+                          sx={{ bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' } }}
+                          startIcon={<Description />}
+                          disabled={summaryLoading}
+                          onClick={() => openSummary(s._id)}
+                        >
+                          {summaryLoading ? 'Generating Summary...' : 'Generate AI Summary'}
                         </Button>
                         <Button
                           variant="outlined"
@@ -705,6 +1149,19 @@ const NannyDashboard = () => {
       <Dialog open={noteDialog} onClose={() => setNoteDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add Service Note</DialogTitle>
         <DialogContent>
+          <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+            {NOTE_TEMPLATES.map((t) => (
+              <Button
+                key={t}
+                size="small"
+                variant="outlined"
+                sx={{ mb: 1, textTransform: 'none' }}
+                onClick={() => setServiceNote(prev => (prev ? `${prev}\n${t}` : t))}
+              >
+                {t}
+              </Button>
+            ))}
+          </Stack>
           <TextField
             fullWidth
             multiline
@@ -717,6 +1174,13 @@ const NannyDashboard = () => {
           />
         </DialogContent>
         <DialogActions>
+          <Button
+            variant="outlined"
+            onClick={() => (dictatingField === 'note' ? stopDictation() : startDictation('note'))}
+            sx={{ textTransform: 'none' }}
+          >
+            {dictatingField === 'note' ? 'Stop Voice' : 'Voice Input'}
+          </Button>
           <Button onClick={() => setNoteDialog(false)}>Cancel</Button>
           <Button onClick={handleSaveNote} variant="contained" sx={{ bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' } }}>
             Save Note
@@ -728,6 +1192,19 @@ const NannyDashboard = () => {
       <Dialog open={activityDialog} onClose={() => setActivityDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Add Activity Update</DialogTitle>
         <DialogContent>
+          <Stack direction="row" spacing={1} sx={{ mt: 2, flexWrap: 'wrap' }}>
+            {ACTIVITY_TEMPLATES.map((t) => (
+              <Button
+                key={t}
+                size="small"
+                variant="outlined"
+                sx={{ mb: 1, textTransform: 'none' }}
+                onClick={() => setActivityUpdate(prev => (prev ? `${prev}\n${t}` : t))}
+              >
+                {t}
+              </Button>
+            ))}
+          </Stack>
           <TextField
             fullWidth
             multiline
@@ -740,9 +1217,52 @@ const NannyDashboard = () => {
           />
         </DialogContent>
         <DialogActions>
+          <Button
+            variant="outlined"
+            onClick={() => (dictatingField === 'activity' ? stopDictation() : startDictation('activity'))}
+            sx={{ textTransform: 'none' }}
+          >
+            {dictatingField === 'activity' ? 'Stop Voice' : 'Voice Input'}
+          </Button>
           <Button onClick={() => setActivityDialog(false)}>Cancel</Button>
           <Button onClick={handleSaveActivity} variant="contained" sx={{ bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' } }}>
             Save Activity
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Summary Dialog */}
+      <Dialog open={summaryDialog} onClose={() => setSummaryDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>AI Daily Summary</DialogTitle>
+        <DialogContent>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            This summary is generated from service notes and activity updates. Edit if needed, then save to share with parents/admin.
+          </Alert>
+          <TextField
+            fullWidth
+            label="Title"
+            value={generatedSummary?.title || ''}
+            onChange={(e) => setGeneratedSummary(prev => ({ ...prev, title: e.target.value }))}
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            fullWidth
+            multiline
+            rows={10}
+            label="Summary"
+            value={generatedSummary?.summaryText || ''}
+            onChange={(e) => setGeneratedSummary(prev => ({ ...prev, summaryText: e.target.value }))}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setSummaryDialog(false)}>Close</Button>
+          <Button
+            onClick={saveSummary}
+            variant="contained"
+            disabled={summaryLoading || !generatedSummary?.summaryText}
+            sx={{ bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' } }}
+          >
+            Save Summary
           </Button>
         </DialogActions>
       </Dialog>
