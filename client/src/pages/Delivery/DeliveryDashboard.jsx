@@ -33,6 +33,8 @@ import { Avatar, IconButton, Tooltip } from '@mui/material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
 import DaycareLocationMap from '../../components/Maps/DaycareLocationMap';
+import VoiceAssistant from '../../VoiceAssistant';
+import Dialog from '@mui/material/Dialog';
 
 const fmtCurrency = (v) => `$${v.toFixed(2)}`;
 
@@ -53,6 +55,7 @@ const DeliveryDashboard = () => {
     onTimeRate: 0,
     totalOrders: 0,
   });
+  const [vaOpen, setVaOpen] = useState(false);
 
   // Fetch available assignments
   const fetchAvailableAssignments = useCallback(async () => {
@@ -171,6 +174,9 @@ const DeliveryDashboard = () => {
   };
 
   const ordersCount = orders.length;
+
+  const handleVaOpen = () => setVaOpen(true);
+  const handleVaClose = () => setVaOpen(false);
 
   return (
     <Box sx={{ p: 3, bgcolor: '#f7f8fb', minHeight: '100vh' }}>
@@ -480,6 +486,18 @@ const DeliveryDashboard = () => {
           </Grid>
         </Paper>
       )}
+
+      {/* Voice Assistant Button */}
+      <Box sx={{ position: 'fixed', top: 24, right: 24, zIndex: 9999 }}>
+        <Button variant="contained" color="success" onClick={handleVaOpen} sx={{ borderRadius: '50%', minWidth: 56, minHeight: 56, boxShadow: 3 }}>
+          <span role="img" aria-label="mic">🎤</span>
+        </Button>
+        <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
+          <Box sx={{ p: 2, bgcolor: '#f6f8fa' }}>
+            <VoiceAssistant />
+          </Box>
+        </Dialog>
+      </Box>
     </Box>
   );
 };

@@ -52,6 +52,7 @@ import {
 } from '@mui/icons-material';
 import api from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
+import VoiceAssistant from '../../VoiceAssistant';
 
 const DoctorDashboard = () => {
   const navigate = useNavigate();
@@ -93,6 +94,7 @@ const DoctorDashboard = () => {
     healthAdvice: '',
     notes: ''
   });
+  const [vaOpen, setVaOpen] = useState(false);
 
   // Fetch assigned children
   const fetchChildren = async () => {
@@ -294,6 +296,9 @@ const DoctorDashboard = () => {
       fetchAppointments(appointmentFilter);
     }
   }, [activeTab, appointmentFilter]);
+
+  const handleVaOpen = () => setVaOpen(true);
+  const handleVaClose = () => setVaOpen(false);
 
   if (loading) {
     return (
@@ -1205,6 +1210,18 @@ const DoctorDashboard = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Voice Assistant Button and Dialog */}
+      <Box sx={{ position: 'fixed', top: 24, right: 24, zIndex: 9999 }}>
+        <Button variant="contained" color="success" onClick={handleVaOpen} sx={{ borderRadius: '50%', minWidth: 56, minHeight: 56, boxShadow: 3 }}>
+          <span role="img" aria-label="mic">🎤</span>
+        </Button>
+        <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
+          <Box sx={{ p: 2, bgcolor: '#f6f8fa' }}>
+            <VoiceAssistant />
+          </Box>
+        </Dialog>
+      </Box>
     </Box>
   );
 };

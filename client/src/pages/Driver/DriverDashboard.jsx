@@ -46,6 +46,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
 import DaycareLocationMap from '../../components/Maps/DaycareLocationMap';
+import VoiceAssistant from '../../VoiceAssistant';
 
 const DriverDashboard = () => {
   const { user, logout } = useAuth();
@@ -73,6 +74,7 @@ const DriverDashboard = () => {
   const [vehicleIssueForm, setVehicleIssueForm] = useState({ issueType: '', description: '', severity: 'medium' });
   const [vehicleLogForm, setVehicleLogForm] = useState({ date: '', startMileage: '', endMileage: '', fuelLevel: 'full', maintenanceIssues: '', driverNotes: '' });
   const [incidents, setIncidents] = useState([]);
+  const [vaOpen, setVaOpen] = useState(false);
 
   // Fetch routes
   const fetchRoutes = async () => {
@@ -272,6 +274,9 @@ const DriverDashboard = () => {
     : user?.name || 'Driver';
   
   const vehicleNumber = user?.staff?.vehicleNumber || user?.vehicleNumber || '#2';
+
+  const handleVaOpen = () => setVaOpen(true);
+  const handleVaClose = () => setVaOpen(false);
 
   return (
     <Box sx={{ bgcolor: '#fafafa', minHeight: '100vh', p: 3 }}>
@@ -1387,6 +1392,18 @@ const DriverDashboard = () => {
           </Grid>
         </Paper>
       )}
+
+      {/* Voice Assistant Button and Dialog */}
+      <Box sx={{ position: 'fixed', top: 24, right: 24, zIndex: 9999 }}>
+        <Button variant="contained" color="success" onClick={handleVaOpen} sx={{ borderRadius: '50%', minWidth: 56, minHeight: 56, boxShadow: 3 }}>
+          <span role="img" aria-label="mic">🎤</span>
+        </Button>
+        <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
+          <Box sx={{ p: 2, bgcolor: '#f6f8fa' }}>
+            <VoiceAssistant />
+          </Box>
+        </Dialog>
+      </Box>
     </Box>
   );
 };

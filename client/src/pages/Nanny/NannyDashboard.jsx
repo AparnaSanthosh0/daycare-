@@ -38,10 +38,12 @@ import {
   Logout,
   Visibility,
   ShoppingCart,
+  KeyboardVoice
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import api from '../../config/api';
+import VoiceAssistant from '../../VoiceAssistant';
 
 const fmtDate = (d) => {
   const date = new Date(d);
@@ -51,6 +53,7 @@ const fmtDate = (d) => {
 const NannyDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const themeColor = '#1abc9c';
   const [tab, setTab] = useState(0);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -62,6 +65,7 @@ const NannyDashboard = () => {
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [serviceNote, setServiceNote] = useState('');
   const [activityUpdate, setActivityUpdate] = useState('');
+  const [vaOpen, setVaOpen] = useState(false);
 
   useEffect(() => {
     fetchPendingRequests();
@@ -160,6 +164,9 @@ const NannyDashboard = () => {
     }
   };
 
+  const handleVaOpen = () => setVaOpen(true);
+  const handleVaClose = () => setVaOpen(false);
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#f5f5f5' }}>
       {error && <Alert severity="error" sx={{ mb: 2, m: 3 }} onClose={() => setError('')}>{error}</Alert>}
@@ -172,7 +179,7 @@ const NannyDashboard = () => {
             <Typography 
               variant="h4" 
               sx={{ 
-                color: '#e91e63', 
+                color: themeColor, 
                 fontWeight: 'bold',
                 mb: 0.5
               }}
@@ -189,17 +196,26 @@ const NannyDashboard = () => {
               <Typography variant="h6" fontWeight={700}>4.8</Typography>
               <Typography variant="body2" color="text.secondary">(48 reviews)</Typography>
             </Stack>
+            <IconButton
+              color="inherit"
+              sx={{ position: 'relative', color: 'text.secondary', p: 1 }}
+              onClick={handleVaOpen}
+              aria-label="Open voice assistant"
+            >
+              <KeyboardVoice sx={{ color: themeColor }} />
+            </IconButton>
             <IconButton 
               color="inherit" 
-              sx={{ position: 'relative', color: 'text.secondary' }}
+              sx={{ position: 'relative', color: 'text.secondary', p: 1 }}
               onClick={() => navigate('/shop')}
+              aria-label="Shop"
             >
               <ShoppingCart />
               <Box sx={{ 
                 position: 'absolute', 
                 top: 5, 
                 right: 5, 
-                bgcolor: '#e91e63', 
+                bgcolor: themeColor, 
                 color: 'white', 
                 borderRadius: '50%', 
                 width: 18, 
@@ -240,11 +256,11 @@ const NannyDashboard = () => {
               color: 'text.secondary',
               minHeight: '64px',
               '&.Mui-selected': {
-                color: '#e91e63'
+                color: themeColor
               }
             },
             '& .MuiTabs-indicator': {
-              backgroundColor: '#e91e63',
+              backgroundColor: themeColor,
               height: 3
             }
           }}
@@ -271,7 +287,7 @@ const NannyDashboard = () => {
               <Chip 
                 label={`${totalPending} Pending`}
                 sx={{
-                  bgcolor: '#e91e63',
+                  bgcolor: themeColor,
                   color: 'white',
                   fontWeight: 'bold',
                   fontSize: '0.9rem',
@@ -325,7 +341,7 @@ const NannyDashboard = () => {
                             <Button
                               variant="contained"
                               fullWidth
-                              sx={{ bgcolor: '#4caf50', '&:hover': { bgcolor: '#45a049' } }}
+                              sx={{ bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' } }}
                               startIcon={<CheckCircle />}
                               onClick={() => handleRequestAction(r._id, 'accepted')}
                             >
@@ -395,7 +411,7 @@ const NannyDashboard = () => {
                         <Button
                           variant="contained"
                           fullWidth
-                          sx={{ mt: 2, bgcolor: '#2196f3', '&:hover': { bgcolor: '#1976d2' } }}
+                          sx={{ mt: 2, bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' } }}
                           startIcon={<PlayArrow />}
                           onClick={() => handleStartService(s._id)}
                         >
@@ -570,7 +586,7 @@ const NannyDashboard = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setNoteDialog(false)}>Cancel</Button>
-          <Button onClick={handleSaveNote} variant="contained" color="primary">
+          <Button onClick={handleSaveNote} variant="contained" sx={{ bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' } }}>
             Save Note
           </Button>
         </DialogActions>
@@ -593,10 +609,17 @@ const NannyDashboard = () => {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setActivityDialog(false)}>Cancel</Button>
-          <Button onClick={handleSaveActivity} variant="contained" color="primary">
+          <Button onClick={handleSaveActivity} variant="contained" sx={{ bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' } }}>
             Save Activity
           </Button>
         </DialogActions>
+      </Dialog>
+
+      {/* Voice Assistant Dialog */}
+      <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
+        <Box sx={{ p: 2, bgcolor: '#f6f8fa' }}>
+          <VoiceAssistant themeColor={themeColor} />
+        </Box>
       </Dialog>
 
       </Box>

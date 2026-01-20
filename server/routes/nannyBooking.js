@@ -3,6 +3,19 @@ const router = express.Router();
 const auth = require('../middleware/auth');
 const NannyBooking = require('../models/NannyBooking');
 const User = require('../models/User');
+const { sendMail } = require('../utils/mailer');
+
+// Helper: determine if current user is a nanny (supports both staff+nanny and dedicated nanny role)
+function isNannyUser(user) {
+  if (!user) return false;
+  const isStaffNanny = user.role === 'staff' && user.staff?.staffType === 'nanny';
+  const isNannyRole = user.role === 'nanny';
+  return isStaffNanny || isNannyRole;
+}
+
+function isAdmin(user) {
+  return !!user && user.role === 'admin';
+}
 
 // Get all nannies (for parents to view)
 router.get('/nannies', auth, async (req, res) => {
@@ -152,7 +165,7 @@ router.get('/bookings/parent', auth, async (req, res) => {
 // Get nanny's booking requests
 router.get('/bookings/nanny', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'staff' || req.user.staff?.staffType !== 'nanny') {
+    if (!isNannyUser(req.user)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -174,10 +187,86 @@ router.get('/bookings/nanny', auth, async (req, res) => {
   }
 });
 
+// ===== Admin endpoints =====
+
+// Get all pending nanny bookings for admin review/assignment
+router.get('/bookings/admin/pending', auth, async (req, res) => {
+  try {
+    if (!isAdmin(req.user)) {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const bookings = await NannyBooking.find({ status: 'pending' })
+      .populate('parent', 'firstName lastName phone address')
+      .populate('nanny', 'firstName lastName phone')
+      .sort({ serviceDate: 1 });
+
+    res.json(bookings);
+  } catch (error) {
+    console.error('Error fetching admin nanny bookings:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Admin assigns/changes nanny for a booking
+router.put('/bookings/:id/assign', auth, async (req, res) => {
+  try {
+    if (!isAdmin(req.user)) {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+
+    const { nannyId } = req.body;
+    if (!nannyId) {
+      return res.status(400).json({ message: 'nannyId is required' });
+    }
+
+    const nanny = await User.findById(nannyId);
+    if (!nanny || !isNannyUser(nanny)) {
+      return res.status(404).json({ message: 'Nanny not found or not a nanny user' });
+    }
+
+    const booking = await NannyBooking.findById(req.params.id).populate('parent', 'firstName lastName email');
+    if (!booking) {
+      return res.status(404).json({ message: 'Booking not found' });
+    }
+
+    booking.nanny = nanny._id;
+    booking.nannyName = `${nanny.firstName} ${nanny.lastName}`;
+    // Keep status as 'pending' so nanny still has to accept
+    await booking.save();
+
+    // Notify parent by email (best effort)
+    try {
+      const parentEmail = booking.parent?.email;
+      if (parentEmail) {
+        const subject = 'Your nanny booking has been assigned';
+        const html = `
+          <p>Hi ${booking.parent.firstName} ${booking.parent.lastName},</p>
+          <p>Your nanny booking request for <b>${booking.child?.name || 'your child'}</b> on 
+          <b>${booking.serviceDate ? new Date(booking.serviceDate).toLocaleString() : ''}</b> has been
+          <b>approved and assigned</b> to <b>${booking.nannyName}</b>.</p>
+          <p>Address: ${booking.parentAddress || 'On file'}</p>
+          <p>The nanny will review and accept the booking from their dashboard.</p>
+          <p>Regards,<br/>TinyTots Team</p>
+        `;
+        const text = `Hi ${booking.parent.firstName} ${booking.parent.lastName},\n\nYour nanny booking request has been approved and assigned to ${booking.nannyName}.\n\nRegards,\nTinyTots Team`;
+        await sendMail({ to: parentEmail, subject, html, text });
+      }
+    } catch (mailErr) {
+      console.warn('Failed to send nanny assignment email:', mailErr?.message || mailErr);
+    }
+
+    res.json({ message: 'Nanny assigned successfully', booking });
+  } catch (error) {
+    console.error('Error assigning nanny:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Get pending requests for nanny
 router.get('/bookings/nanny/pending', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'staff' || req.user.staff?.staffType !== 'nanny') {
+    if (!isNannyUser(req.user)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -198,7 +287,7 @@ router.get('/bookings/nanny/pending', auth, async (req, res) => {
 // Accept booking (Nanny)
 router.put('/bookings/:id/accept', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'staff' || req.user.staff?.staffType !== 'nanny') {
+    if (!isNannyUser(req.user)) {
       return res.status(403).json({ message: 'Only nannies can accept bookings' });
     }
 
@@ -224,7 +313,7 @@ router.put('/bookings/:id/accept', auth, async (req, res) => {
 // Reject booking (Nanny)
 router.put('/bookings/:id/reject', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'staff' || req.user.staff?.staffType !== 'nanny') {
+    if (!isNannyUser(req.user)) {
       return res.status(403).json({ message: 'Only nannies can reject bookings' });
     }
 
@@ -250,7 +339,7 @@ router.put('/bookings/:id/reject', auth, async (req, res) => {
 // Start service (Nanny)
 router.put('/bookings/:id/start', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'staff' || req.user.staff?.staffType !== 'nanny') {
+    if (!isNannyUser(req.user)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 
@@ -277,7 +366,7 @@ router.put('/bookings/:id/start', auth, async (req, res) => {
 // End service (Nanny)
 router.put('/bookings/:id/end', auth, async (req, res) => {
   try {
-    if (req.user.role !== 'staff' || req.user.staff?.staffType !== 'nanny') {
+    if (!isNannyUser(req.user)) {
       return res.status(403).json({ message: 'Access denied' });
     }
 

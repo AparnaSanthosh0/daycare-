@@ -33,7 +33,8 @@ import {
   ListItemText,
   ListItemIcon,
   Badge,
-  Snackbar
+  Snackbar,
+  CardActions
 } from '@mui/material';
 import {
   Person,
@@ -52,6 +53,7 @@ import {
   Receipt,
   Message,
   ShoppingCart,
+  KeyboardVoice,
   Notifications,
   Logout as LogoutIcon,
   DirectionsCar
@@ -67,6 +69,7 @@ import DaycareLocationMap from '../../components/Maps/DaycareLocationMap';
 import PickupTracker from '../../components/Maps/PickupTracker';
 import TransportRouteMap from '../../components/Maps/TransportRouteMap';
 import VaccinationCard from '../../components/Parents/VaccinationCard';
+import VoiceAssistant from '../../VoiceAssistant';
 
 // Simple helper to format date strings
 const formatDate = (d) => {
@@ -556,7 +559,7 @@ const ParentDashboard = ({ initialTab }) => {
   //             const v = e.target.value; setEditFields((f) => { const arr = [...f.emergencyContacts]; arr[idx] = { ...arr[idx], relationship: v }; return { ...f, emergencyContacts: arr }; });
   //           }} /></Grid>
   //           <Grid item xs={2} sm={1} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-  //             <IconButton color="error" onClick={() => setEditFields((f) => ({ ...f, emergencyContacts: f.emergencyContacts.filter((_, i) => i !== idx) }))}><Delete /></IconButton>
+  //             <IconButton color="error" onClick={() => setEditFields((f) => ({ ...f, emergencyContacts: f.emergencyContacts.filter((_, i) => i !== idx) }))><Delete /></IconButton>
   //           </Grid>
   //         </Grid>
   //       ))}
@@ -595,7 +598,7 @@ const ParentDashboard = ({ initialTab }) => {
   //             const v = e.target.value; setEditFields((f) => { const arr = [...f.authorizedPickup]; arr[idx] = { ...arr[idx], relationship: v }; return { ...f, authorizedPickup: arr }; });
   //           }} /></Grid>
   //           <Grid item xs={2} sm={1} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-  //             <IconButton color="error" onClick={() => setEditFields((f) => ({ ...f, authorizedPickup: f.authorizedPickup.filter((_, i) => i !== idx) }))}><Delete /></IconButton>
+  //             <IconButton color="error" onClick={() => setEditFields((f) => ({ ...f, authorizedPickup: f.authorizedPickup.filter((_, i) => i !== idx) }))><Delete /></IconButton>
   //           </Grid>
   //         </Grid>
   //       ))}
@@ -1358,6 +1361,10 @@ const ParentDashboard = ({ initialTab }) => {
 
   // StaffCard removed - moved to different location
 
+  const [vaOpen, setVaOpen] = useState(false);
+  const handleVaOpen = () => setVaOpen(true);
+  const handleVaClose = () => setVaOpen(false);
+
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#f5f5f5' }}>
       {/* Header */}
@@ -1383,16 +1390,29 @@ const ParentDashboard = ({ initialTab }) => {
               </Box>
             </Grid>
 
-            {/* Right: Shopping Cart, Notifications, Logout */}
+            {/* Right: Voice Assistant, Shopping Cart, Notifications, Logout */}
             <Grid item>
-              <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
+                {/* Voice Assistant */}
+                <IconButton
+                  color="inherit"
+                  sx={{ color: 'text.secondary', p: 1 }}
+                  onClick={handleVaOpen}
+                  aria-label="Open voice assistant"
+                  size="large"
+                >
+                  <KeyboardVoice fontSize="medium" />
+                </IconButton>
+
                 {/* Shopping Cart with Badge */}
                 <IconButton 
                   color="inherit" 
-                  sx={{ position: 'relative', color: 'text.secondary' }}
+                  sx={{ position: 'relative', color: 'text.secondary', p: 1 }}
                   onClick={() => navigate('/shop')}
+                  aria-label="Shop"
+                  size="large"
                 >
-                  <ShoppingCart />
+                  <ShoppingCart fontSize="medium" />
                   <Box sx={{ 
                     position: 'absolute', 
                     top: 5, 
@@ -1415,8 +1435,10 @@ const ParentDashboard = ({ initialTab }) => {
                 {/* Notifications with Badge */}
                 <IconButton 
                   color="inherit" 
-                  sx={{ position: 'relative', color: 'text.secondary' }}
+                  sx={{ position: 'relative', color: 'text.secondary', p: 1 }}
                   onClick={handleNotificationsOpen}
+                  aria-label="Notifications"
+                  size="large"
                 >
                   <Badge 
                     badgeContent={notifications.filter(n => !n.read).length} 
@@ -3057,7 +3079,7 @@ const ParentDashboard = ({ initialTab }) => {
                             <Card sx={{ border: '2px solid #673AB7', bgcolor: '#f3e5f5' }}>
                               <CardContent>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
-                                  <Typography variant="h6" sx={{ fontWeight: 600, color: '#673AB7' }}>
+                                  <Typography variant="h6" color="#673AB7" sx={{ fontWeight: 600 }}>
                                     {program.programName}
                                   </Typography>
                                   <Chip label="ENROLLED" size="small" color="success" />
@@ -3146,47 +3168,56 @@ const ParentDashboard = ({ initialTab }) => {
                                   
                                   <Divider sx={{ my: 2 }} />
                                   
-                                  <Box sx={{ mb: 2 }}>
-                                    <Typography variant="caption" color="text.secondary">Schedule</Typography>
-                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                      {program.schedule.days.join(', ')}
-                                    </Typography>
-                                    <Typography variant="body2">
-                                      {program.schedule.startTime} - {program.schedule.endTime}
-                                    </Typography>
-                                  </Box>
-                                  
-                                  <Box sx={{ mb: 2 }}>
-                                    <Typography variant="caption" color="text.secondary">Age Group</Typography>
-                                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                      {program.ageGroup.min} - {program.ageGroup.max} years
-                                    </Typography>
-                                  </Box>
-                                  
-                                  <Box sx={{ mb: 2 }}>
-                                    <Typography variant="caption" color="text.secondary">Enrollment</Typography>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                      <LinearProgress 
-                                        variant="determinate" 
-                                        value={(program.currentEnrollment / program.capacity) * 100}
-                                        sx={{ flexGrow: 1, height: 8, borderRadius: 1 }}
-                                      />
-                                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                                        {program.currentEnrollment}/{program.capacity}
+                                  <Grid container spacing={2}>
+                                    <Grid item xs={12}>
+                                      <Typography variant="subtitle2" color="text.secondary">Enrolled Child</Typography>
+                                      <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                                        {children.find(c => c._id === activeChildId)?.firstName} {children.find(c => c._id === activeChildId)?.lastName}
                                       </Typography>
-                                    </Box>
-                                  </Box>
-                                  
-                                  <Box sx={{ mb: 2 }}>
-                                    <Typography variant="caption" color="text.secondary">Fees</Typography>
-                                    <Typography variant="h6" sx={{ fontWeight: 600, color: '#4CAF50' }}>
-                                      {program.fees.amount === 0 ? 'FREE' : `$${program.fees.amount} ${program.fees.frequency}`}
-                                    </Typography>
-                                  </Box>
-                                  
+                                    </Grid>
+                                    
+                                    <Grid item xs={6}>
+                                      <Typography variant="subtitle2" color="text.secondary">Schedule</Typography>
+                                      <Typography variant="body2">
+                                        {program.schedule.days.join(', ')}
+                                      </Typography>
+                                      <Typography variant="body2">
+                                        {program.schedule.startTime} - {program.schedule.endTime}
+                                      </Typography>
+                                    </Grid>
+                                    
+                                    <Grid item xs={6}>
+                                      <Typography variant="subtitle2" color="text.secondary">Location</Typography>
+                                      <Typography variant="body2">{program.location}</Typography>
+                                    </Grid>
+                                    
+                                    <Grid item xs={6}>
+                                      <Typography variant="subtitle2" color="text.secondary">Age Group</Typography>
+                                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                        {program.ageGroup.min} - {program.ageGroup.max} years
+                                      </Typography>
+                                    </Grid>
+                                    
+                                    <Grid item xs={6}>
+                                      <Typography variant="subtitle2" color="text.secondary">Fees</Typography>
+                                      <Typography variant="body1" sx={{ fontWeight: 600, color: '#4CAF50' }}>
+                                        {program.fees.amount === 0 ? 'FREE' : `$${program.fees.amount} ${program.fees.frequency}`}
+                                      </Typography>
+                                    </Grid>
+                                    
+                                    {program.requirements && (
+                                      <Grid item xs={12}>
+                                        <Alert severity="info">
+                                          <Typography variant="subtitle2">Requirements</Typography>
+                                          <Typography variant="body2">{program.requirements}</Typography>
+                                        </Alert>
+                                      </Grid>
+                                    )}
+                                  </Grid>
+                                </CardContent>
+                                <CardActions sx={{ justifyContent: 'flex-end', p: 2 }}>
                                   <Button
                                     variant="contained"
-                                    fullWidth
                                     disabled={isEnrolled || isFull || !activeChildId}
                                     onClick={() => {
                                       setSelectedProgram(program);
@@ -3200,7 +3231,7 @@ const ParentDashboard = ({ initialTab }) => {
                                   >
                                     {isEnrolled ? '✓ Enrolled' : isFull ? 'Full' : !activeChildId ? 'Select Child First' : 'Enroll Now'}
                                   </Button>
-                                </CardContent>
+                                </CardActions>
                               </Card>
                             </Grid>
                           );
@@ -4516,7 +4547,7 @@ const ParentDashboard = ({ initialTab }) => {
                 
                 <Grid item xs={6}>
                   <Typography variant="subtitle2" color="text.secondary">Age Group</Typography>
-                  <Typography variant="body2">
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
                     {selectedProgram.ageGroup.min} - {selectedProgram.ageGroup.max} years
                   </Typography>
                 </Grid>
@@ -4575,6 +4606,13 @@ const ParentDashboard = ({ initialTab }) => {
           {transportMessage.text}
         </Alert>
       </Snackbar>
+
+      {/* Voice Assistant Dialog */}
+        <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
+          <Box sx={{ p: 2, bgcolor: '#f6f8fa' }}>
+          <VoiceAssistant themeColor="#1abc9c" activeChildId={activeChildId} />
+          </Box>
+        </Dialog>
     </Box>
   );
 };

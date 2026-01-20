@@ -38,6 +38,8 @@ import {
   DirectionsCar
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
+import VoiceAssistant from '../../VoiceAssistant';
+import Dialog from '@mui/material/Dialog';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { API_BASE_URL } from '../../config/api';
 
@@ -147,6 +149,9 @@ const getMenuItems = (userRole, user) => {
 };
 
 const DashboardHeader = () => {
+    const [vaOpen, setVaOpen] = React.useState(false);
+    const handleVaOpen = () => setVaOpen(true);
+    const handleVaClose = () => setVaOpen(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -267,17 +272,43 @@ const DashboardHeader = () => {
         </Box>
 
         {/* Ecommerce Icon */}
-        <IconButton
-          onClick={() => navigate('/shop')}
-          sx={{
-            backgroundColor: 'rgba(26,188,156,0.08)',
-            '&:hover': { backgroundColor: 'rgba(26,188,156,0.18)' },
-            color: '#1abc9c'
-          }}
-          aria-label="Go to ecommerce shop"
-        >
-          <ShoppingCart />
-        </IconButton>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <IconButton
+            onClick={() => navigate('/shop')}
+            sx={{
+              backgroundColor: 'rgba(26,188,156,0.08)',
+              '&:hover': { backgroundColor: 'rgba(26,188,156,0.18)' },
+              color: '#1abc9c'
+            }}
+            aria-label="Go to ecommerce shop"
+          >
+            <ShoppingCart />
+          </IconButton>
+          {/* Voice Assistant Button */}
+          <IconButton
+            onClick={handleVaOpen}
+            sx={{
+              background: 'linear-gradient(135deg, #43ea7f, #1abc9c)',
+              color: '#fff',
+              boxShadow: '0 2px 8px rgba(67,234,127,0.15)',
+              width: 44,
+              height: 44,
+              ml: 1
+            }}
+            aria-label="Open Voice Assistant"
+          >
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="12" fill="rgba(255,255,255,0.08)"/>
+              <path d="M12 17c1.66 0 3-1.34 3-3V9c0-1.66-1.34-3-3-3s-3 1.34-3 3v5c0 1.66 1.34 3 3 3zm5-3c0 2.5-2 4.5-5 4.5S7 16.5 7 14h2c0 1.38 1.12 2.5 2.5 2.5S14 15.38 14 14h2z" fill="#fff"/>
+            </svg>
+          </IconButton>
+        </Box>
+      {/* Voice Assistant Dialog */}
+      <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
+        <Box sx={{ p: 2, bgcolor: '#f6f8fa' }}>
+          <VoiceAssistant />
+        </Box>
+      </Dialog>
 
         {/* User Menu */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

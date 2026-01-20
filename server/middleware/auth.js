@@ -40,7 +40,13 @@ const auth = async (req, res, next) => {
       userId: decoded.userId || decoded._id || decoded.id,
       role: decoded.role,
       email: user.email,
-      _id: user._id ? user._id.toString() : decoded.userId
+      _id: user._id ? user._id.toString() : decoded.userId,
+      // Expose commonly used profile fields so downstream routes don't need to re-query
+      firstName: user.firstName,
+      lastName: user.lastName,
+      staff: user.staff,
+      address: user.address,
+      phone: user.phone
     };
     next();
   } catch (error) {

@@ -28,6 +28,7 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  CircularProgress,
   CardHeader
 } from '@mui/material';
 import {
@@ -44,6 +45,7 @@ import DemandPrediction from '../../components/DemandPrediction';
 import SmartSearch from '../../components/Common/SmartSearch';
 import TransportManagement from '../../components/Admin/TransportManagement';
 import VaccinationManagement from '../../components/Admin/VaccinationManagement';
+import VoiceAssistant from '../../VoiceAssistant';
 
 const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -110,6 +112,17 @@ const AdminDashboard = () => {
   // Form states
   const [reason, setReason] = useState('');
 
+  // Voice Assistant dialog state
+  const [vaOpen, setVaOpen] = useState(false);
+  const handleVaOpen = () => setVaOpen(true);
+  const handleVaClose = () => setVaOpen(false);
+
+  // Nanny bookings (Admin workflow)
+  const [nannyBookings, setNannyBookings] = useState([]);
+  const [nannyLoading, setNannyLoading] = useState(false);
+  const [nannyError, setNannyError] = useState('');
+  const [nannies, setNannies] = useState([]);
+
   // Fetch dashboard data
   const fetchDashboardData = async () => {
     try {
@@ -159,6 +172,25 @@ const AdminDashboard = () => {
     }
   };
 
+  // Fetch nanny bookings + available nannies for admin workflow
+  const fetchNannyData = async () => {
+    try {
+      setNannyLoading(true);
+      setNannyError('');
+      const [bookingsRes, nanniesRes] = await Promise.all([
+        api.get('/nanny/bookings/admin/pending'),
+        api.get('/nanny/nannies')
+      ]);
+      setNannyBookings(bookingsRes.data || []);
+      setNannies(nanniesRes.data || []);
+    } catch (error) {
+      console.error('Error fetching nanny data:', error);
+      setNannyError('Failed to load nanny service requests');
+    } finally {
+      setNannyLoading(false);
+    }
+  };
+
 
   // Fetch all users with details
   const fetchAllUsersData = async () => {
@@ -181,6 +213,7 @@ const AdminDashboard = () => {
     fetchStaffAssignments();
     fetchChildrenAndStaff();
     fetchAllUsersData();
+    fetchNannyData();
   }, []);
 
   // Handle approve/reject actions
@@ -569,6 +602,111 @@ const AdminDashboard = () => {
         onChange={(e) => setSearchTerm(e.target.value)}
         sx={{ mb: 3 }}
       />
+
+      {/* Nanny Service Requests */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h5">Nanny Service Requests</Typography>
+          <Button
+            variant="outlined"
+            onClick={fetchNannyData}
+            sx={{ textTransform: 'none' }}
+          >
+            Refresh
+          </Button>
+        </Box>
+        {nannyError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {nannyError}
+          </Alert>
+        )}
+        {nannyLoading ? (
+          <Box sx={{ py: 3, textAlign: 'center' }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : nannyBookings.length === 0 ? (
+          <Typography color="text.secondary">No pending nanny bookings.</Typography>
+        ) : (
+          <Box sx={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#f8fafc' }}>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Parent</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Child</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Service Date</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Time</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Address</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Assigned Nanny</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Assign</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nannyBookings.map((b) => (
+                  <tr key={b._id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                    <td style={{ padding: 12 }}>
+                      <Typography variant="body2" fontWeight={600}>
+                        {b.parentName || `${b.parent?.firstName || ''} ${b.parent?.lastName || ''}`.trim()}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {b.parentPhone}
+                      </Typography>
+                    </td>
+                    <td style={{ padding: 12 }}>
+                      <Typography variant="body2">{b.child?.name}</Typography>
+                      {b.child?.age && (
+                        <Typography variant="caption" color="text.secondary">
+                          {b.child.age} yrs
+                        </Typography>
+                      )}
+                    </td>
+                    <td style={{ padding: 12 }}>
+                      {b.serviceDate ? new Date(b.serviceDate).toLocaleDateString() : '-'}
+                    </td>
+                    <td style={{ padding: 12 }}>
+                      {b.startTime} - {b.endTime}
+                    </td>
+                    <td style={{ padding: 12, maxWidth: 260 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        {b.parentAddress || b.parent?.address || '-'}
+                      </Typography>
+                    </td>
+                    <td style={{ padding: 12 }}>
+                      <Typography variant="body2">
+                        {b.nannyName || 'Not assigned'}
+                      </Typography>
+                    </td>
+                    <td style={{ padding: 12 }}>
+                      <TextField
+                        select
+                        size="small"
+                        label="Select Nanny"
+                        value={b.nanny?._id || ''}
+                        onChange={async (e) => {
+                          try {
+                            const nannyId = e.target.value;
+                            await api.put(`/nanny/bookings/${b._id}/assign`, { nannyId });
+                            fetchNannyData();
+                          } catch (err) {
+                            console.error('Error assigning nanny:', err);
+                            setNannyError('Failed to assign nanny');
+                          }
+                        }}
+                        sx={{ minWidth: 200 }}
+                      >
+                        {nannies.map((n) => (
+                          <MenuItem key={n._id} value={n._id}>
+                            {n.firstName} {n.lastName}
+                          </MenuItem>
+                        ))}
+                      </TextField>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Box>
+        )}
+      </Paper>
 
       {/* Pending Approvals */}
       <Paper sx={{ p: 3 }}>
@@ -1490,6 +1628,18 @@ const AdminDashboard = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Voice Assistant Button and Dialog */}
+      <Box sx={{ position: 'fixed', top: 24, right: 24, zIndex: 9999 }}>
+        <Button variant="contained" color="success" onClick={handleVaOpen} sx={{ borderRadius: '50%', minWidth: 56, minHeight: 56, boxShadow: 3 }}>
+          <span role="img" aria-label="mic">🎤</span>
+        </Button>
+        <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
+          <Box sx={{ p: 2, bgcolor: '#f6f8fa' }}>
+            <VoiceAssistant />
+          </Box>
+        </Dialog>
+      </Box>
 
     </Box>
   );

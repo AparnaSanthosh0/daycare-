@@ -42,7 +42,6 @@ import {
   School as SchoolIcon,
   Restaurant as RestaurantIcon,
   LocalHospital as LocalHospitalIcon,
-  AccessTime as AccessTimeIcon,
   EmergencyShare as EmergencyIcon,
   DirectionsBus as TransportIcon,
   Chat as ChatIcon,
@@ -53,8 +52,14 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
 import SmartSearch from '../Common/SmartSearch';
+import VoiceAssistant from '../../VoiceAssistant';
+
+// (Removed duplicate Dialog import if present)
 
 const TeacherDashboard = () => {
+    // Voice Assistant dialog handlers
+    const handleVaOpen = () => setVaOpen(true);
+    const handleVaClose = () => setVaOpen(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [currentTab, setCurrentTab] = useState(0);
@@ -63,26 +68,20 @@ const TeacherDashboard = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [attendanceData, setAttendanceData] = useState({});
+  const [attendanceData] = useState({});
   const [feedbackText, setFeedbackText] = useState('');
   const [serviceCategory, setServiceCategory] = useState('Meal & Nutrition');
   const [rating, setRating] = useState(5);
   const [classificationResult, setClassificationResult] = useState(null);
+  const [vaOpen, setVaOpen] = useState(false);
 
   // Visitor Management States
   const [visitors, setVisitors] = useState([]);
   const [visitorStats, setVisitorStats] = useState({ total: 0, checkedIn: 0, checkedOut: 0 });
-  const [visitorForm, setVisitorForm] = useState({
-    visitorName: '',
-    purpose: 'Parent Meeting',
-    purposeDetails: '',
-    contactNumber: '',
-    idProofType: '',
-    idProofNumber: '',
-    relatedChild: '',
-    temperature: '',
-    notes: ''
-  });
+  const [visitorMessage, setVisitorMessage] = useState({ type: '', text: '' });
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
+  const [selectedVisitor, setSelectedVisitor] = useState(null);
+  const [checkoutNotes, setCheckoutNotes] = useState('');
   const [pickupForm, setPickupForm] = useState({
     childId: '',
     pickupPersonName: '',
@@ -90,76 +89,48 @@ const TeacherDashboard = () => {
     idProofNumber: ''
   });
   const [pickupResult, setPickupResult] = useState(null);
-  const [visitorMessage, setVisitorMessage] = useState({ type: '', text: '' });
-  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
-  const [selectedVisitor, setSelectedVisitor] = useState(null);
-  const [checkoutNotes, setCheckoutNotes] = useState('');
+  const [visitorForm, setVisitorForm] = useState({
+    visitorName: '',
+    purpose: 'Parent Meeting',
+    purposeDetails: ''
+  });
 
   const menuItems = [
-    { label: 'Attendance', icon: <AccessTimeIcon />, path: '/teacher' },
-    { label: 'Meal Planning', icon: <RestaurantIcon />, path: '/teacher/meals' },
-    { label: 'Activities', icon: <SchoolIcon />, path: '/teacher/activities' },
-    { label: 'Visitor Management', icon: <PeopleIcon />, path: '/teacher/visitors' },
-    { label: 'Emergency Response', icon: <EmergencyIcon />, path: '/teacher/emergency' },
-    { label: 'Transport & Pickup', icon: <TransportIcon />, path: '/teacher/transport' },
-    { label: 'Communication', icon: <ChatIcon />, path: '/teacher/communication' },
-    { label: 'Reports', icon: <AssessmentIcon />, path: '/teacher/reports' },
-    { label: 'Feedback', icon: <FeedbackIcon />, path: '/teacher/feedback' },
-    { label: 'Profile', icon: <ProfileIcon />, path: '/teacher/profile' }
+    { label: 'Dashboard', icon: <SchoolIcon />, path: '/teacher' },
+    { label: 'Attendance', icon: <CalendarIcon />, path: '/attendance' },
+    { label: 'Staff', icon: <PeopleIcon />, path: '/staff' },
+    { label: 'Profile', icon: <ProfileIcon />, path: '/profile' }
   ];
-
-  useEffect(() => {
-    fetchStudents();
-  }, []);
 
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      // Fetch all children in the system
-      const response = await api.get('/children');
-      console.log('Children fetched:', response.data);
-      setStudents(response.data || []);
-      
-      // Fetch today's attendance for all students
-      const today = new Date().toISOString().split('T')[0];
-      const attendanceRes = await api.get(`/api/reports/attendance?date=${today}`);
-      const attendanceMap = {};
-      (attendanceRes.data || []).forEach(record => {
-        if (record.entityType === 'child') {
-          attendanceMap[record.entityId] = record;
-        }
-      });
-      setAttendanceData(attendanceMap);
+      // Reuse the same endpoint used elsewhere for staff-assigned children.
+      if (user?._id) {
+        const res = await api.get(`/api/children/staff/${user._id}`);
+        setStudents(res.data?.children || []);
+        return;
+      }
+      setStudents([]);
     } catch (error) {
       console.error('Error fetching students:', error);
-      console.error('Error response:', error.response?.data);
-      console.error('Error status:', error.response?.status);
-      // If /api/children fails (permission issue), try my-children
+      // Best-effort fallback for older routes (if any).
       try {
-        console.log('Trying /api/staff/my-children...');
-        const response = await api.get('/staff/my-children');
-        console.log('My children fetched:', response.data);
-        setStudents(response.data || []);
-        
-        // Fetch today's attendance
-        const today = new Date().toISOString().split('T')[0];
-        const attendanceRes = await api.get(`/api/reports/attendance?date=${today}`);
-        const attendanceMap = {};
-        (attendanceRes.data || []).forEach(record => {
-          if (record.entityType === 'child') {
-            attendanceMap[record.entityId] = record;
-          }
-        });
-        setAttendanceData(attendanceMap);
-      } catch (err) {
-        console.error('Error fetching my children:', err);
-        console.error('Error response:', err.response?.data);
-        console.error('Error status:', err.response?.status);
+        const res = await api.get('/children');
+        setStudents(Array.isArray(res.data) ? res.data : (res.data?.children || []));
+      } catch (e) {
+        setStudents([]);
       }
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchStudents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?._id]);
+  // ...existing code...
 
   const handleTabChange = (event, newValue) => {
     setCurrentTab(newValue);
@@ -693,6 +664,8 @@ const TeacherDashboard = () => {
           </Grid>
         </Box>
       </Paper>
+
+      {/* Voice Assistant Button moved to header */}
     </Box>
     );
   };
@@ -1408,17 +1381,10 @@ const TeacherDashboard = () => {
       </Paper>
 
       {/* Meal & Health Monitoring */}
-      <Paper elevation={0} sx={{ p: 3, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <RestaurantIcon sx={{ color: '#FF3B30' }} />
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Meal & Health Monitoring
-          </Typography>
-        </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Ensure proper nutrition, track food intake, and monitor health conditions.
+      <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
+          Meal & Health Monitoring
         </Typography>
-        
         <Grid container spacing={3}>
           <Grid item xs={12} md={4}>
             <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
@@ -2539,6 +2505,17 @@ const TeacherDashboard = () => {
         </Box>
       </Drawer>
 
+      {/* Voice Assistant Dialog */}
+      <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="sm" fullWidth>
+        <DialogTitle>Voice Assistant</DialogTitle>
+        <DialogContent>
+          <VoiceAssistant themeColor="#1abc9c" />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleVaClose} sx={{ color: '#666' }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Header */}
       <Paper 
         elevation={0} 
@@ -2567,10 +2544,18 @@ const TeacherDashboard = () => {
           </Box>
           <Box sx={{ display: 'flex', gap: 2 }}>
             <IconButton 
+              onClick={handleVaOpen}
+              sx={{ color: '#1abc9c' }}
+              aria-label="Open voice assistant"
+            >
+              <ChatIcon />
+            </IconButton>
+            <IconButton 
               onClick={() => navigate('/shop')}
               sx={{ 
                 color: '#1abc9c'
               }}
+              aria-label="Shop"
             >
               <ShoppingCartIcon />
             </IconButton>
