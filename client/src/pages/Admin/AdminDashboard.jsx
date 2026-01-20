@@ -122,6 +122,12 @@ const AdminDashboard = () => {
   const [nannyLoading, setNannyLoading] = useState(false);
   const [nannyError, setNannyError] = useState('');
   const [nannies, setNannies] = useState([]);
+  
+  // Payment management
+  const [pendingPayments, setPendingPayments] = useState([]);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [paymentDialog, setPaymentDialog] = useState({ open: false, payment: null });
+  const [payoutForm, setPayoutForm] = useState({ payoutMethod: 'bank_transfer', payoutDetails: {}, payoutTransactionId: '' });
 
   // Fetch dashboard data
   const fetchDashboardData = async () => {
@@ -191,6 +197,19 @@ const AdminDashboard = () => {
     }
   };
 
+  // Fetch pending payments
+  const fetchPendingPayments = async () => {
+    try {
+      setPaymentLoading(true);
+      const response = await api.get('/nanny/payments/admin/pending');
+      setPendingPayments(response.data || []);
+    } catch (error) {
+      console.error('Error fetching pending payments:', error);
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
 
   // Fetch all users with details
   const fetchAllUsersData = async () => {
@@ -214,6 +233,7 @@ const AdminDashboard = () => {
     fetchChildrenAndStaff();
     fetchAllUsersData();
     fetchNannyData();
+    fetchPendingPayments();
   }, []);
 
   // Handle approve/reject actions
@@ -636,8 +656,9 @@ const AdminDashboard = () => {
                   <th style={{ padding: 12, textAlign: 'left' }}>Service Date</th>
                   <th style={{ padding: 12, textAlign: 'left' }}>Time</th>
                   <th style={{ padding: 12, textAlign: 'left' }}>Address</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Status</th>
                   <th style={{ padding: 12, textAlign: 'left' }}>Assigned Nanny</th>
-                  <th style={{ padding: 12, textAlign: 'left' }}>Assign</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -645,10 +666,12 @@ const AdminDashboard = () => {
                   <tr key={b._id} style={{ borderBottom: '1px solid #e5e7eb' }}>
                     <td style={{ padding: 12 }}>
                       <Typography variant="body2" fontWeight={600}>
-                        {b.parentName || `${b.parent?.firstName || ''} ${b.parent?.lastName || ''}`.trim()}
+                        {b.parentName || (b.parent?.firstName && b.parent?.lastName ? 
+                          `${b.parent.firstName} ${b.parent.lastName}` : 
+                          b.parent?.firstName || b.parent?.lastName || 'N/A')}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        {b.parentPhone}
+                        {b.parentPhone || b.parent?.phone || ''}
                       </Typography>
                     </td>
                     <td style={{ padding: 12 }}>
@@ -667,8 +690,21 @@ const AdminDashboard = () => {
                     </td>
                     <td style={{ padding: 12, maxWidth: 260 }}>
                       <Typography variant="body2" color="text.secondary">
-                        {b.parentAddress || b.parent?.address || '-'}
+                        {b.parentAddress || (b.parent?.address ? 
+                          (typeof b.parent.address === 'string' ? b.parent.address : 
+                            `${b.parent.address.street || ''}, ${b.parent.address.city || ''}, ${b.parent.address.state || ''} ${b.parent.address.zipCode || ''}`.trim()) 
+                          : '-')}
                       </Typography>
+                    </td>
+                    <td style={{ padding: 12 }}>
+                      <Chip 
+                        label={b.status === 'admin-approved' ? 'Approved' : b.status === 'pending' ? 'Pending' : b.status}
+                        color={
+                          b.status === 'admin-approved' ? 'success' :
+                          b.status === 'pending' ? 'warning' : 'default'
+                        }
+                        size="small"
+                      />
                     </td>
                     <td style={{ padding: 12 }}>
                       <Typography variant="body2">
@@ -676,29 +712,56 @@ const AdminDashboard = () => {
                       </Typography>
                     </td>
                     <td style={{ padding: 12 }}>
-                      <TextField
-                        select
-                        size="small"
-                        label="Select Nanny"
-                        value={b.nanny?._id || ''}
-                        onChange={async (e) => {
-                          try {
-                            const nannyId = e.target.value;
-                            await api.put(`/nanny/bookings/${b._id}/assign`, { nannyId });
-                            fetchNannyData();
-                          } catch (err) {
-                            console.error('Error assigning nanny:', err);
-                            setNannyError('Failed to assign nanny');
-                          }
-                        }}
-                        sx={{ minWidth: 200 }}
-                      >
-                        {nannies.map((n) => (
-                          <MenuItem key={n._id} value={n._id}>
-                            {n.firstName} {n.lastName}
-                          </MenuItem>
-                        ))}
-                      </TextField>
+                      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                        {b.status === 'pending' && (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            color="success"
+                            onClick={async () => {
+                              try {
+                                await api.put(`/nanny/bookings/${b._id}/approve`);
+                                setSuccess('Booking approved! Email sent to parent.');
+                                fetchNannyData();
+                              } catch (err) {
+                                console.error('Error approving booking:', err);
+                                setNannyError(err.response?.data?.message || 'Failed to approve booking');
+                              }
+                            }}
+                          >
+                            Approve
+                          </Button>
+                        )}
+                        <FormControl size="small" sx={{ minWidth: 180 }}>
+                          <InputLabel>Assign Nanny</InputLabel>
+                          <Select
+                            value={b.nanny?._id || ''}
+                            label="Assign Nanny"
+                            disabled={b.status === 'pending'}
+                            onChange={async (e) => {
+                              try {
+                                const nannyId = e.target.value;
+                                if (!nannyId) return;
+                                await api.put(`/nanny/bookings/${b._id}/assign`, { nannyId });
+                                setSuccess('Nanny assigned successfully! Email sent to parent.');
+                                fetchNannyData();
+                              } catch (err) {
+                                console.error('Error assigning nanny:', err);
+                                setNannyError(err.response?.data?.message || 'Failed to assign nanny');
+                              }
+                            }}
+                          >
+                            <MenuItem value="">
+                              <em>Select nanny...</em>
+                            </MenuItem>
+                            {nannies.map((n) => (
+                              <MenuItem key={n._id} value={n._id}>
+                                {n.firstName} {n.lastName}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Box>
                     </td>
                   </tr>
                 ))}
@@ -707,6 +770,221 @@ const AdminDashboard = () => {
           </Box>
         )}
       </Paper>
+
+      {/* Payment Management */}
+      <Paper sx={{ p: 3, mb: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h5">Payment Management</Typography>
+          <Button
+            variant="outlined"
+            onClick={fetchPendingPayments}
+            sx={{ textTransform: 'none' }}
+          >
+            Refresh
+          </Button>
+        </Box>
+        {paymentLoading ? (
+          <Box sx={{ py: 3, textAlign: 'center' }}>
+            <CircularProgress size={24} />
+          </Box>
+        ) : pendingPayments.length === 0 ? (
+          <Typography color="text.secondary">No pending payments.</Typography>
+        ) : (
+          <Box sx={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e0e0e0' }}>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Parent</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Nanny</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Service Date</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Total Amount</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Commission</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Nanny Payout</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Status</th>
+                  <th style={{ padding: '12px', textAlign: 'left' }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pendingPayments.map((p) => (
+                  <tr key={p._id} style={{ borderBottom: '1px solid #e0e0e0' }}>
+                    <td style={{ padding: '12px' }}>
+                      {p.parent?.firstName} {p.parent?.lastName}
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      {p.nanny?.firstName} {p.nanny?.lastName}
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      {p.booking?.serviceDate ? new Date(p.booking.serviceDate).toLocaleDateString() : 'N/A'}
+                    </td>
+                    <td style={{ padding: '12px' }}>${p.totalAmount}</td>
+                    <td style={{ padding: '12px' }}>${p.commissionAmount} ({p.commissionRate}%)</td>
+                    <td style={{ padding: '12px', fontWeight: 'bold', color: '#1abc9c' }}>
+                      ${p.payoutAmount}
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <Chip
+                        label={
+                          p.status === 'parent_confirmed' ? 'Parent Confirmed' :
+                          p.status === 'admin_approved' ? 'Approved' :
+                          p.status
+                        }
+                        color={
+                          p.status === 'parent_confirmed' ? 'warning' :
+                          p.status === 'admin_approved' ? 'info' :
+                          'default'
+                        }
+                        size="small"
+                      />
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      {p.status === 'parent_confirmed' && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={() => {
+                            setPaymentDialog({ open: true, payment: p });
+                            setPayoutForm({
+                              payoutMethod: 'bank_transfer',
+                              payoutDetails: {},
+                              payoutTransactionId: ''
+                            });
+                          }}
+                          sx={{ mr: 1, bgcolor: '#1abc9c', '&:hover': { bgcolor: '#169b83' } }}
+                        >
+                          Approve & Pay
+                        </Button>
+                      )}
+                      {p.status === 'admin_approved' && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="success"
+                          onClick={async () => {
+                            try {
+                              const transactionId = prompt('Enter transaction ID (optional):') || '';
+                              await api.put(`/nanny/payments/${p._id}/mark-paid`, {
+                                payoutTransactionId: transactionId
+                              });
+                              setSuccess('Payment marked as paid. Nanny notified.');
+                              fetchPendingPayments();
+                            } catch (err) {
+                              console.error('Error marking payment as paid:', err);
+                              setError(err.response?.data?.message || 'Failed to mark payment as paid');
+                            }
+                          }}
+                        >
+                          Mark Paid
+                        </Button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </Box>
+        )}
+      </Paper>
+
+      {/* Payment Approval Dialog */}
+      <Dialog open={paymentDialog.open} onClose={() => setPaymentDialog({ open: false, payment: null })} maxWidth="sm" fullWidth>
+        <DialogTitle>Approve Payment & Initiate Payout</DialogTitle>
+        <DialogContent>
+          {paymentDialog.payment && (
+            <Box sx={{ mt: 2 }}>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                Review the payment details and initiate payout to the nanny.
+              </Alert>
+              <Box sx={{ mb: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                <Typography variant="body2"><strong>Parent:</strong> {paymentDialog.payment.parent?.firstName} {paymentDialog.payment.parent?.lastName}</Typography>
+                <Typography variant="body2"><strong>Nanny:</strong> {paymentDialog.payment.nanny?.firstName} {paymentDialog.payment.nanny?.lastName}</Typography>
+                <Typography variant="body2"><strong>Total Amount:</strong> ${paymentDialog.payment.totalAmount}</Typography>
+                <Typography variant="body2"><strong>Commission:</strong> ${paymentDialog.payment.commissionAmount}</Typography>
+                <Typography variant="h6" color="primary"><strong>Nanny Payout:</strong> ${paymentDialog.payment.payoutAmount}</Typography>
+              </Box>
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Payout Method</InputLabel>
+                <Select
+                  value={payoutForm.payoutMethod}
+                  label="Payout Method"
+                  onChange={(e) => setPayoutForm({ ...payoutForm, payoutMethod: e.target.value })}
+                >
+                  <MenuItem value="bank_transfer">Bank Transfer</MenuItem>
+                  <MenuItem value="upi">UPI</MenuItem>
+                  <MenuItem value="wallet">Wallet</MenuItem>
+                </Select>
+              </FormControl>
+              {payoutForm.payoutMethod === 'bank_transfer' && (
+                <>
+                  <TextField
+                    fullWidth
+                    label="Bank Account"
+                    value={payoutForm.payoutDetails.bankAccount || ''}
+                    onChange={(e) => setPayoutForm({
+                      ...payoutForm,
+                      payoutDetails: { ...payoutForm.payoutDetails, bankAccount: e.target.value }
+                    })}
+                    sx={{ mb: 2 }}
+                  />
+                  <TextField
+                    fullWidth
+                    label="IFSC Code"
+                    value={payoutForm.payoutDetails.ifscCode || ''}
+                    onChange={(e) => setPayoutForm({
+                      ...payoutForm,
+                      payoutDetails: { ...payoutForm.payoutDetails, ifscCode: e.target.value }
+                    })}
+                    sx={{ mb: 2 }}
+                  />
+                </>
+              )}
+              {payoutForm.payoutMethod === 'upi' && (
+                <TextField
+                  fullWidth
+                  label="UPI ID"
+                  value={payoutForm.payoutDetails.upiId || ''}
+                  onChange={(e) => setPayoutForm({
+                    ...payoutForm,
+                    payoutDetails: { ...payoutForm.payoutDetails, upiId: e.target.value }
+                  })}
+                  sx={{ mb: 2 }}
+                />
+              )}
+              {payoutForm.payoutMethod === 'wallet' && (
+                <TextField
+                  fullWidth
+                  label="Wallet ID"
+                  value={payoutForm.payoutDetails.walletId || ''}
+                  onChange={(e) => setPayoutForm({
+                    ...payoutForm,
+                    payoutDetails: { ...payoutForm.payoutDetails, walletId: e.target.value }
+                  })}
+                  sx={{ mb: 2 }}
+                />
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentDialog({ open: false, payment: null })}>Cancel</Button>
+          <Button
+            onClick={async () => {
+              try {
+                await api.put(`/nanny/payments/${paymentDialog.payment._id}/approve`, payoutForm);
+                setSuccess('Payment approved. Ready for payout.');
+                setPaymentDialog({ open: false, payment: null });
+                fetchPendingPayments();
+              } catch (err) {
+                console.error('Error approving payment:', err);
+                setError(err.response?.data?.message || 'Failed to approve payment');
+              }
+            }}
+            variant="contained"
+            sx={{ bgcolor: '#1abc9c', '&:hover': { bgcolor: '#169b83' } }}
+          >
+            Approve Payment
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Pending Approvals */}
       <Paper sx={{ p: 3 }}>

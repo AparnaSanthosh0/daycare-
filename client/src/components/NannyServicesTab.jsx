@@ -18,7 +18,11 @@ import {
   DialogContent,
   DialogActions,
   Alert,
-  Rating
+  Rating,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem
 } from '@mui/material';
 import {
   Person,
@@ -36,7 +40,9 @@ const NannyServicesTab = () => {
   const [selectedNanny, setSelectedNanny] = useState(null);
   const [bookingDialog, setBookingDialog] = useState(false);
   const [reviewDialog, setReviewDialog] = useState(false);
+  const [paymentConfirmDialog, setPaymentConfirmDialog] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
+  const [paymentConfirmForm, setPaymentConfirmForm] = useState({ rating: 5, feedback: '', issues: '' });
   const [bookingForm, setBookingForm] = useState({
     nannyId: '',
     childName: '',
@@ -52,7 +58,10 @@ const NannyServicesTab = () => {
     safetyGuidelines: '',
     emergencyContact: { name: '', phone: '', relationship: '' },
     parentAddress: user?.address ? `${user.address.street || ''}, ${user.address.city || ''}, ${user.address.state || ''} ${user.address.zipCode || ''}`.trim() : '',
-    parentPhone: user?.phone || ''
+    parentPhone: user?.phone || '',
+    serviceType: 'regular-care',
+    serviceCategory: '',
+    subscriptionPlan: null
   });
   const [reviewForm, setReviewForm] = useState({ rating: 5, review: '' });
 
@@ -96,6 +105,16 @@ const NannyServicesTab = () => {
         return;
       }
       
+      if (!bookingForm.parentAddress) {
+        alert('Please enter the service address where the nanny will come');
+        return;
+      }
+      
+      if (!bookingForm.parentPhone) {
+        alert('Please enter your contact phone number');
+        return;
+      }
+      
       if (!bookingForm.hours || bookingForm.hours <= 0) {
         alert('Please enter valid hours');
         return;
@@ -122,7 +141,10 @@ const NannyServicesTab = () => {
         safetyGuidelines: '',
         emergencyContact: { name: '', phone: '', relationship: '' },
         parentAddress: user?.address ? `${user.address.street || ''}, ${user.address.city || ''}, ${user.address.state || ''} ${user.address.zipCode || ''}`.trim() : '',
-        parentPhone: user?.phone || ''
+        parentPhone: user?.phone || '',
+        serviceType: 'regular-care',
+        serviceCategory: '',
+        subscriptionPlan: null
       });
       alert('Booking request submitted successfully!');
     } catch (error) {
@@ -134,7 +156,7 @@ const NannyServicesTab = () => {
 
   const handleReviewSubmit = async () => {
     try {
-      await api.post(`/api/nanny/bookings/${selectedBooking._id}/review`, reviewForm);
+      await api.post(`/nanny/bookings/${selectedBooking._id}/review`, reviewForm);
       setReviewDialog(false);
       fetchBookings();
       setReviewForm({ rating: 5, review: '' });
@@ -147,12 +169,12 @@ const NannyServicesTab = () => {
 
   const handleCancelBooking = async (bookingId, reason) => {
     try {
-      await api.put(`/api/nanny/bookings/${bookingId}/cancel`, { reason });
+      await api.put(`/nanny/bookings/${bookingId}/cancel`, { reason: reason || 'Cancelled by parent' });
       fetchBookings();
       alert('Booking cancelled successfully');
     } catch (error) {
       console.error('Error cancelling booking:', error);
-      alert('Failed to cancel booking');
+      alert(error.response?.data?.message || 'Failed to cancel booking');
     }
   };
 
@@ -226,17 +248,81 @@ const NannyServicesTab = () => {
 
       {/* Tab 1: My Bookings */}
       {nannyTab === 1 && (
-        <Grid container spacing={3}>
-          {bookings.filter(b => ['pending', 'accepted', 'in-progress'].includes(b.status)).map((booking) => (
+        <Box>
+          {/* In Progress Bookings */}
+          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#1abc9c' }}>
+            In Progress Services
+          </Typography>
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            {bookings.filter(b => b.status === 'in-progress').map((booking) => (
+              <Grid item xs={12} md={6} key={booking._id}>
+                <Card>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
+                      <Typography variant="h6">{booking.nannyName}</Typography>
+                      <Chip
+                        label="In Progress"
+                        color="info"
+                        size="small"
+                      />
+                    </Box>
+                    <Divider sx={{ my: 2 }} />
+                    <Typography variant="body2" gutterBottom>
+                      <strong>Child:</strong> {booking.child.name}
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>Date:</strong> {new Date(booking.serviceDate).toLocaleDateString()}
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>Time:</strong> {booking.startTime} - {booking.endTime}
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>Hours:</strong> {booking.hours} hrs
+                    </Typography>
+                    <Typography variant="body2" gutterBottom>
+                      <strong>Amount:</strong> ${booking.totalAmount}
+                    </Typography>
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      Service is currently in progress
+                    </Alert>
+                    {booking.serviceNotes && booking.serviceNotes.length > 0 && (
+                      <Box sx={{ mt: 2 }}>
+                        <Typography variant="caption" color="text.secondary">
+                          Latest Note: {booking.serviceNotes[booking.serviceNotes.length - 1].note}
+                        </Typography>
+                      </Box>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+            ))}
+            {bookings.filter(b => b.status === 'in-progress').length === 0 && (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#f5f5f5' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No services in progress
+                  </Typography>
+                </Paper>
+              </Grid>
+            )}
+          </Grid>
+
+          {/* Active Bookings (Pending, Approved, Accepted) */}
+          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#1abc9c' }}>
+            Active Bookings
+          </Typography>
+          <Grid container spacing={3}>
+            {bookings.filter(b => ['pending', 'admin-approved', 'accepted'].includes(b.status)).map((booking) => (
             <Grid item xs={12} md={6} key={booking._id}>
               <Card>
                 <CardContent>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
                     <Typography variant="h6">{booking.nannyName}</Typography>
                     <Chip
-                      label={booking.status}
+                      label={booking.status === 'admin-approved' ? 'Approved' : booking.status === 'pending' ? 'Pending' : booking.status}
                       color={
                         booking.status === 'accepted' ? 'success' :
+                        booking.status === 'admin-approved' ? 'info' :
                         booking.status === 'pending' ? 'warning' :
                         booking.status === 'in-progress' ? 'info' : 'default'
                       }
@@ -259,11 +345,6 @@ const NannyServicesTab = () => {
                   <Typography variant="body2" gutterBottom>
                     <strong>Amount:</strong> ${booking.totalAmount}
                   </Typography>
-                  {booking.status === 'in-progress' && (
-                    <Alert severity="info" sx={{ mt: 2 }}>
-                      Service is currently in progress
-                    </Alert>
-                  )}
                   {booking.serviceNotes && booking.serviceNotes.length > 0 && (
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="caption" color="text.secondary">
@@ -271,13 +352,19 @@ const NannyServicesTab = () => {
                       </Typography>
                     </Box>
                   )}
-                  {booking.status === 'pending' && (
+                  {(booking.status === 'pending' || booking.status === 'admin-approved' || booking.status === 'accepted') && (
                     <Button
                       fullWidth
                       variant="outlined"
                       color="error"
                       sx={{ mt: 2 }}
-                      onClick={() => handleCancelBooking(booking._id, 'Changed plans')}
+                      onClick={() => {
+                        const reason =
+                          prompt('Please provide a reason for cancellation (optional):') || 'Cancelled by parent';
+                        if (reason !== null) {
+                          handleCancelBooking(booking._id, reason);
+                        }
+                      }}
                     >
                       Cancel Booking
                     </Button>
@@ -286,24 +373,28 @@ const NannyServicesTab = () => {
               </Card>
             </Grid>
           ))}
-          {bookings.filter(b => ['pending', 'accepted', 'in-progress'].includes(b.status)).length === 0 && (
-            <Grid item xs={12}>
-              <Paper sx={{ p: 4, textAlign: 'center' }}>
-                <Event sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h6">No active bookings</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Book a nanny to see your bookings here
-                </Typography>
-              </Paper>
-            </Grid>
-          )}
-        </Grid>
+            {bookings.filter(b => ['pending', 'admin-approved', 'accepted'].includes(b.status)).length === 0 && (
+              <Grid item xs={12}>
+                <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#f5f5f5' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No active bookings
+                  </Typography>
+                </Paper>
+              </Grid>
+            )}
+          </Grid>
+        </Box>
       )}
 
       {/* Tab 2: History */}
       {nannyTab === 2 && (
-        <Grid container spacing={3}>
-          {bookings.filter(b => ['completed', 'cancelled', 'rejected'].includes(b.status)).map((booking) => (
+        <Box>
+          {/* Completed Services */}
+          <Typography variant="h6" sx={{ mb: 2, fontWeight: 'bold', color: '#1abc9c' }}>
+            Completed Services
+          </Typography>
+          <Grid container spacing={3} sx={{ mb: 4 }}>
+            {bookings.filter(b => b.status === 'completed').map((booking) => (
             <Grid item xs={12} md={6} key={booking._id}>
               <Card>
                 <CardContent>
@@ -339,7 +430,26 @@ const NannyServicesTab = () => {
                       )}
                     </Box>
                   )}
-                  {booking.status === 'completed' && !booking.rating && (
+                  {booking.status === 'completed' && booking.payment?.status === 'payment_held' && (
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      sx={{ mt: 2, bgcolor: '#1abc9c', '&:hover': { bgcolor: '#169b83' } }}
+                      onClick={() => {
+                        setSelectedBooking(booking);
+                        setPaymentConfirmForm({ rating: booking.rating || 5, feedback: booking.review || '', issues: '' });
+                        setPaymentConfirmDialog(true);
+                      }}
+                    >
+                      Confirm Payment & Rate Service
+                    </Button>
+                  )}
+                  {booking.status === 'completed' && booking.payment?.status !== 'payment_held' && !booking.rating && booking.payment?.status === 'parent_confirmed' && (
+                    <Alert severity="info" sx={{ mt: 2 }}>
+                      Payment confirmed. Waiting for admin approval.
+                    </Alert>
+                  )}
+                  {booking.status === 'completed' && booking.payment?.status === 'paid_to_nanny' && !booking.rating && (
                     <Button
                       fullWidth
                       variant="contained"
@@ -421,6 +531,124 @@ const NannyServicesTab = () => {
               />
             </Grid>
             <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Service Type</InputLabel>
+                <Select
+                  value={bookingForm.serviceType}
+                  label="Service Type"
+                  onChange={(e) => setBookingForm({ ...bookingForm, serviceType: e.target.value, serviceCategory: '' })}
+                >
+                  <MenuItem value="regular-care">Regular Care Services (Daily/Weekly/Monthly)</MenuItem>
+                  <MenuItem value="educational">Educational & Development Support</MenuItem>
+                  <MenuItem value="health-safety">Health & Safety Support</MenuItem>
+                  <MenuItem value="short-term">Short-Term / On-Demand Services</MenuItem>
+                  <MenuItem value="after-school">After-School Services</MenuItem>
+                  <MenuItem value="subscription">Subscription-Based Plans</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            {bookingForm.serviceType && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Service Category</InputLabel>
+                  <Select
+                    value={bookingForm.serviceCategory || ''}
+                    label="Service Category"
+                    onChange={(e) => setBookingForm({ ...bookingForm, serviceCategory: e.target.value })}
+                    displayEmpty
+                  >
+                    <MenuItem value="">
+                      <em>Select a category...</em>
+                    </MenuItem>
+                    {bookingForm.serviceType === 'regular-care' && (
+                      <>
+                        <MenuItem value="full-day-care">Full-day child care at home</MenuItem>
+                        <MenuItem value="part-time-supervision">Part-time child supervision</MenuItem>
+                        <MenuItem value="feeding-meal-assistance">Feeding and meal assistance</MenuItem>
+                        <MenuItem value="bathing-hygiene">Bathing and hygiene care</MenuItem>
+                        <MenuItem value="sleep-routine">Sleep routine management</MenuItem>
+                        <MenuItem value="playtime-engagement">Playtime and engagement</MenuItem>
+                      </>
+                    )}
+                    {bookingForm.serviceType === 'educational' && (
+                      <>
+                        <MenuItem value="homework-assistance">Homework assistance</MenuItem>
+                        <MenuItem value="reading-storytelling">Reading and storytelling</MenuItem>
+                        <MenuItem value="activity-learning">Activity-based learning</MenuItem>
+                        <MenuItem value="language-practice">Language practice</MenuItem>
+                        <MenuItem value="motor-skills">Motor skill activities</MenuItem>
+                      </>
+                    )}
+                    {bookingForm.serviceType === 'health-safety' && (
+                      <>
+                        <MenuItem value="first-aid">Basic first-aid assistance</MenuItem>
+                        <MenuItem value="medication-reminders">Medication reminders</MenuItem>
+                        <MenuItem value="health-monitoring">Monitoring child health conditions</MenuItem>
+                        <MenuItem value="emergency-support">Emergency support coordination</MenuItem>
+                      </>
+                    )}
+                    {bookingForm.serviceType === 'short-term' && (
+                      <>
+                        <MenuItem value="babysitting-hours">Babysitting for a few hours</MenuItem>
+                        <MenuItem value="emergency-care">Emergency care</MenuItem>
+                        <MenuItem value="weekend-care">Weekend care</MenuItem>
+                        <MenuItem value="holiday-care">Holiday care</MenuItem>
+                      </>
+                    )}
+                    {bookingForm.serviceType === 'after-school' && (
+                      <>
+                        <MenuItem value="school-pickup">School pickup support</MenuItem>
+                        <MenuItem value="homework-supervision">Homework supervision</MenuItem>
+                        <MenuItem value="evening-care">Evening care until parents return</MenuItem>
+                      </>
+                    )}
+                    {bookingForm.serviceType === 'subscription' && (
+                      <>
+                        <MenuItem value="weekly-plan">Weekly Plan</MenuItem>
+                        <MenuItem value="monthly-plan">Monthly Plan</MenuItem>
+                        <MenuItem value="custom-plan">Custom Plan</MenuItem>
+                      </>
+                    )}
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+            {bookingForm.serviceType === 'subscription' && (
+              <>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Fixed Hours per Week"
+                    type="number"
+                    value={bookingForm.subscriptionPlan?.fixedHours || ''}
+                    onChange={(e) => setBookingForm({
+                      ...bookingForm,
+                      subscriptionPlan: {
+                        ...bookingForm.subscriptionPlan,
+                        planType: bookingForm.serviceCategory === 'weekly-plan' ? 'weekly' : bookingForm.serviceCategory === 'monthly-plan' ? 'monthly' : 'custom',
+                        fixedHours: parseInt(e.target.value) || 0
+                      }
+                    })}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Discount %"
+                    type="number"
+                    value={bookingForm.subscriptionPlan?.discountPercentage || 0}
+                    onChange={(e) => setBookingForm({
+                      ...bookingForm,
+                      subscriptionPlan: {
+                        ...bookingForm.subscriptionPlan,
+                        discountPercentage: parseFloat(e.target.value) || 0
+                      }
+                    })}
+                  />
+                </Grid>
+              </>
+            )}
+            <Grid item xs={12}>
               <TextField
                 fullWidth
                 label="Service Date"
@@ -460,6 +688,27 @@ const NannyServicesTab = () => {
             <Grid item xs={12}>
               <TextField
                 fullWidth
+                label="Service Address *"
+                placeholder="Enter your home address where service will be provided"
+                value={bookingForm.parentAddress}
+                onChange={(e) => setBookingForm({ ...bookingForm, parentAddress: e.target.value })}
+                required
+                helperText="This is where the nanny will come to provide service"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Contact Phone *"
+                placeholder="Your phone number"
+                value={bookingForm.parentPhone}
+                onChange={(e) => setBookingForm({ ...bookingForm, parentPhone: e.target.value })}
+                required
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
                 label="Special Instructions"
                 multiline
                 rows={3}
@@ -473,6 +722,75 @@ const NannyServicesTab = () => {
           <Button onClick={() => setBookingDialog(false)}>Cancel</Button>
           <Button onClick={handleBookingSubmit} variant="contained" color="primary">
             Submit Booking
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Payment Confirmation Dialog */}
+      <Dialog open={paymentConfirmDialog} onClose={() => setPaymentConfirmDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Confirm Service Completion & Payment</DialogTitle>
+        <DialogContent>
+          <Box sx={{ mt: 2 }}>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              Please confirm that the service was completed satisfactorily. Your payment will be held by the platform until admin approval.
+            </Alert>
+            <Typography variant="body2" gutterBottom sx={{ mt: 2 }}>Rate the Service</Typography>
+            <Rating
+              value={paymentConfirmForm.rating}
+              onChange={(_, value) => setPaymentConfirmForm({ ...paymentConfirmForm, rating: value })}
+              size="large"
+            />
+            <TextField
+              fullWidth
+              label="Feedback (Optional)"
+              multiline
+              rows={3}
+              value={paymentConfirmForm.feedback}
+              onChange={(e) => setPaymentConfirmForm({ ...paymentConfirmForm, feedback: e.target.value })}
+              sx={{ mt: 2 }}
+              placeholder="How was the service? Any comments?"
+            />
+            <TextField
+              fullWidth
+              label="Issues or Complaints (Optional)"
+              multiline
+              rows={2}
+              value={paymentConfirmForm.issues}
+              onChange={(e) => setPaymentConfirmForm({ ...paymentConfirmForm, issues: e.target.value })}
+              sx={{ mt: 2 }}
+              placeholder="Report any issues or concerns..."
+            />
+            {selectedBooking && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: '#f5f5f5', borderRadius: 1 }}>
+                <Typography variant="body2"><strong>Total Amount:</strong> ${selectedBooking.totalAmount}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Platform Commission: ${selectedBooking.payment?.commissionAmount || 0} ({selectedBooking.payment?.commissionRate || 10}%)
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Nanny Payout: ${selectedBooking.payment?.nannyPayoutAmount || 0}
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPaymentConfirmDialog(false)}>Cancel</Button>
+          <Button 
+            onClick={async () => {
+              try {
+                await api.post(`/nanny/bookings/${selectedBooking._id}/confirm-payment`, paymentConfirmForm);
+                setPaymentConfirmDialog(false);
+                fetchBookings();
+                alert('Payment confirmed! Admin will review and approve the payout.');
+              } catch (error) {
+                console.error('Error confirming payment:', error);
+                alert(error.response?.data?.message || 'Failed to confirm payment');
+              }
+            }} 
+            variant="contained" 
+            sx={{ bgcolor: '#1abc9c', '&:hover': { bgcolor: '#169b83' } }}
+          >
+            Confirm Payment
           </Button>
         </DialogActions>
       </Dialog>

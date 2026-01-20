@@ -53,7 +53,12 @@ const Register = ({ fixedRole, fixedStaffType }) => {
     lastName: '',
     email: '',
     phone: '',
-    city: '',
+    address: {
+      street: '',
+      city: '',
+      state: '',
+      zipCode: ''
+    },
     username: '',
 
     // Staff-only details
@@ -289,6 +294,14 @@ const Register = ({ fixedRole, fixedStaffType }) => {
       Object.entries(formData).forEach(([key, value]) => {
         if (key === 'certificateFile') {
           if (value) payload.append('certificate', value);
+        } else if (key === 'address') {
+          // Handle address object for FormData
+          if (value && typeof value === 'object') {
+            if (value.street) payload.append('address[street]', value.street);
+            if (value.city) payload.append('address[city]', value.city);
+            if (value.state) payload.append('address[state]', value.state);
+            if (value.zipCode) payload.append('address[zipCode]', value.zipCode);
+          }
         } else if (key !== 'confirmPassword') {
           // Do not send empty yearsOfExperience
           if (key === 'yearsOfExperience' && (value === '' || value === null || value === undefined)) return;
@@ -319,6 +332,7 @@ const Register = ({ fixedRole, fixedStaffType }) => {
         rest.numberOfChildren = rest.numberOfChildren || 1;
         rest.additionalChildren = rest.additionalChildren || [];
       }
+      // Address is already included in rest since it's an object
       payload = rest;
     }
 
@@ -501,6 +515,64 @@ const Register = ({ fixedRole, fixedStaffType }) => {
                           </InputAdornment>
                         ),
                       }}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Typography variant="subtitle2" sx={{ mb: 1, fontWeight: 600 }}>
+                      Address
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      name="address.street"
+                      label="Street Address"
+                      value={formData.address.street}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        address: { ...prev.address, street: e.target.value }
+                      }))}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      name="address.city"
+                      label="City"
+                      value={formData.address.city}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        address: { ...prev.address, city: e.target.value }
+                      }))}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      fullWidth
+                      name="address.state"
+                      label="State"
+                      value={formData.address.state}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        address: { ...prev.address, state: e.target.value }
+                      }))}
+                      sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={3}>
+                    <TextField
+                      fullWidth
+                      name="address.zipCode"
+                      label="Zip Code"
+                      value={formData.address.zipCode}
+                      onChange={(e) => setFormData(prev => ({
+                        ...prev,
+                        address: { ...prev.address, zipCode: e.target.value }
+                      }))}
                       sx={{ '& .MuiOutlinedInput-root': { borderRadius: 2 } }}
                     />
                   </Grid>

@@ -51,10 +51,107 @@ const nannyBookingSchema = new mongoose.Schema({
   
   totalAmount: Number,
   
+  // Service Type & Category
+  serviceType: {
+    type: String,
+    enum: [
+      'regular-care',           // Daily/Weekly/Monthly
+      'educational',            // Educational & Development Support
+      'health-safety',          // Health & Safety Support
+      'short-term',             // Short-Term / On-Demand
+      'after-school',           // After-School Services
+      'subscription'            // Subscription-Based Plans
+    ],
+    default: 'regular-care'
+  },
+  serviceCategory: {
+    type: String,
+    enum: [
+      // Regular Care
+      'full-day-care',
+      'part-time-supervision',
+      'feeding-meal-assistance',
+      'bathing-hygiene',
+      'sleep-routine',
+      'playtime-engagement',
+      // Educational
+      'homework-assistance',
+      'reading-storytelling',
+      'activity-learning',
+      'language-practice',
+      'motor-skills',
+      // Health & Safety
+      'first-aid',
+      'medication-reminders',
+      'health-monitoring',
+      'emergency-support',
+      // Short-Term
+      'babysitting-hours',
+      'emergency-care',
+      'weekend-care',
+      'holiday-care',
+      // After-School
+      'school-pickup',
+      'homework-supervision',
+      'evening-care'
+    ]
+  },
+  
+  // Subscription Plan (if serviceType is 'subscription')
+  subscriptionPlan: {
+    planType: {
+      type: String,
+      enum: ['weekly', 'monthly', 'custom']
+    },
+    fixedHours: Number,
+    fixedNanny: { type: Boolean, default: true },
+    discountPercentage: { type: Number, default: 0 },
+    startDate: Date,
+    endDate: Date,
+    recurring: { type: Boolean, default: false }
+  },
+  
   status: {
     type: String,
-    enum: ['pending', 'accepted', 'rejected', 'in-progress', 'completed', 'cancelled'],
+    enum: ['pending', 'admin-approved', 'accepted', 'rejected', 'in-progress', 'completed', 'cancelled'],
     default: 'pending'
+  },
+  
+  // Payment & Escrow System
+  payment: {
+    status: {
+      type: String,
+      enum: ['pending', 'paid', 'payment_held', 'parent_confirmed', 'admin_approved', 'paid_to_nanny'],
+      default: 'pending'
+    },
+    amount: Number,                    // Total amount paid by parent
+    commissionRate: { type: Number, default: 10 }, // Platform commission percentage
+    commissionAmount: Number,          // Calculated commission
+    nannyPayoutAmount: Number,        // Amount to be paid to nanny
+    paymentMethod: {
+      type: String,
+      enum: ['bank_transfer', 'upi', 'wallet', 'cash']
+    },
+    paymentId: String,                 // Payment gateway transaction ID
+    paidAt: Date,                      // When parent paid
+    heldAt: Date,                      // When payment was held by admin
+    parentConfirmedAt: Date,          // When parent confirmed service completion
+    adminApprovedAt: Date,            // When admin approved payout
+    paidToNannyAt: Date,              // When nanny received payment
+    payoutMethod: String,             // How nanny will receive payment
+    payoutDetails: {                  // Nanny payment details
+      bankAccount: String,
+      ifscCode: String,
+      upiId: String,
+      walletId: String
+    },
+    parentConfirmation: {
+      confirmed: { type: Boolean, default: false },
+      confirmedAt: Date,
+      rating: Number,
+      feedback: String,
+      issues: String                  // Any complaints/issues
+    }
   },
   
   parentInstructions: String,

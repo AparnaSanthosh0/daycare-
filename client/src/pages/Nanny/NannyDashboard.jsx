@@ -60,6 +60,7 @@ const NannyDashboard = () => {
   const [requests, setRequests] = useState([]);
   const [schedule, setSchedule] = useState([]);
   const [history, setHistory] = useState([]);
+  const [payments, setPayments] = useState([]);
   const [noteDialog, setNoteDialog] = useState(false);
   const [activityDialog, setActivityDialog] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -71,7 +72,17 @@ const NannyDashboard = () => {
     fetchPendingRequests();
     fetchSchedule();
     fetchHistory();
+    fetchPayments();
   }, []);
+
+  const fetchPayments = async () => {
+    try {
+      const response = await api.get('/nanny/payments/nanny/history');
+      setPayments(response.data || []);
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+    }
+  };
 
   const fetchPendingRequests = async () => {
     try {
@@ -84,10 +95,16 @@ const NannyDashboard = () => {
 
   const fetchSchedule = async () => {
     try {
-      const response = await api.get('/nanny/bookings/nanny?status=accepted');
-      setSchedule(response.data || []);
+      // Fetch all bookings (accepted and in-progress) for the nanny
+      const response = await api.get('/nanny/bookings/nanny');
+      // Filter to only show accepted and in-progress bookings
+      const filtered = (response.data || []).filter(b => 
+        b.status === 'accepted' || b.status === 'in-progress'
+      );
+      setSchedule(filtered);
     } catch (error) {
       console.error('Error fetching schedule:', error);
+      setSchedule([]);
     }
   };
 
@@ -105,7 +122,7 @@ const NannyDashboard = () => {
   const handleRequestAction = async (id, status) => {
     try {
       const endpoint = status === 'accepted' ? 'accept' : 'reject';
-      await api.put(`/api/nanny/bookings/${id}/${endpoint}`);
+      await api.put(`/nanny/bookings/${id}/${endpoint}`);
       setSuccess(`Request ${status === 'accepted' ? 'accepted' : 'rejected'}.`);
       fetchPendingRequests();
       fetchSchedule();
@@ -117,9 +134,15 @@ const NannyDashboard = () => {
 
   const handleStartService = async (bookingId) => {
     try {
-      await api.put(`/api/nanny/bookings/${bookingId}/start`);
+      await api.put(`/nanny/bookings/${bookingId}/start`);
       setSuccess('Service started. Time tracking in progress.');
-      fetchSchedule();
+      // Refresh all data to show the updated booking
+      await Promise.all([
+        fetchSchedule(),
+        fetchPendingRequests()
+      ]);
+      // Switch to Active Service tab to show the started service
+      setTab(2);
     } catch (error) {
       setError('Failed to start service');
       console.error(error);
@@ -128,7 +151,7 @@ const NannyDashboard = () => {
 
   const handleEndService = async (bookingId) => {
     try {
-      await api.put(`/api/nanny/bookings/${bookingId}/end`);
+      await api.put(`/nanny/bookings/${bookingId}/end`);
       setSuccess('Service ended successfully.');
       fetchSchedule();
       fetchHistory();
@@ -140,7 +163,7 @@ const NannyDashboard = () => {
 
   const handleSaveNote = async () => {
     try {
-      await api.post(`/api/nanny/bookings/${selectedBooking}/notes`, { note: serviceNote });
+      await api.post(`/nanny/bookings/${selectedBooking}/notes`, { note: serviceNote });
       setSuccess('Service note saved for parents.');
       setNoteDialog(false);
       setServiceNote('');
@@ -153,7 +176,7 @@ const NannyDashboard = () => {
 
   const handleSaveActivity = async () => {
     try {
-      await api.post(`/api/nanny/bookings/${selectedBooking}/activity`, { activity: activityUpdate });
+      await api.post(`/nanny/bookings/${selectedBooking}/activity`, { activity: activityUpdate });
       setSuccess('Activity update added.');
       setActivityDialog(false);
       setActivityUpdate('');
@@ -269,6 +292,7 @@ const NannyDashboard = () => {
           <Tab label="My Schedule" icon={<Schedule />} iconPosition="start" />
           <Tab label="Active Service" icon={<Person />} iconPosition="start" />
           <Tab label="Service History" icon={<Description />} iconPosition="start" />
+          <Tab label="Payment History" icon={<Star />} iconPosition="start" />
           <Tab label="Reviews" icon={<Star />} iconPosition="start" />
         </Tabs>
       </Box>
@@ -323,6 +347,12 @@ const NannyDashboard = () => {
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
                               <strong>Hours:</strong> {r.hours} hrs | <strong>Rate:</strong> ${r.hourlyRate}/hr | <strong>Total:</strong> ${r.totalAmount}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              <strong>Service Address:</strong> {r.parentAddress || (r.parent?.address ? 
+                                (typeof r.parent.address === 'string' ? r.parent.address :
+                                  `${r.parent.address.street || ''}, ${r.parent.address.city || ''}, ${r.parent.address.state || ''} ${r.parent.address.zipCode || ''}`.trim())
+                                : 'Not provided')}
                             </Typography>
                             {r.child.allergies && (
                               <Alert severity="warning" sx={{ mt: 1 }}>
@@ -382,7 +412,11 @@ const NannyDashboard = () => {
             My Schedule
           </Typography>
           {schedule.length === 0 ? (
-            <Typography color="text.secondary">No scheduled bookings.</Typography>
+            <Paper sx={{ p: 4, textAlign: 'center', bgcolor: 'white' }}>
+              <Typography color="text.secondary" variant="h6">
+                No scheduled bookings.
+              </Typography>
+            </Paper>
           ) : (
             <Grid container spacing={3}>
               {schedule.map((s) => (
@@ -406,6 +440,10 @@ const NannyDashboard = () => {
                         <Typography variant="body2"><strong>Time:</strong> {s.startTime} - {s.endTime}</Typography>
                         <Typography variant="body2"><strong>Hours:</strong> {s.hours} hrs</Typography>
                         <Typography variant="body2"><strong>Amount:</strong> ${s.totalAmount}</Typography>
+                        <Typography variant="body2"><strong>Service Address:</strong> {s.parentAddress || (s.parent?.address ? 
+                          (typeof s.parent.address === 'string' ? s.parent.address :
+                            `${s.parent.address.street || ''}, ${s.parent.address.city || ''}, ${s.parent.address.state || ''} ${s.parent.address.zipCode || ''}`.trim())
+                          : 'Not provided')}</Typography>
                       </Stack>
                       {s.status === 'accepted' && (
                         <Button
@@ -417,6 +455,11 @@ const NannyDashboard = () => {
                         >
                           Start Service
                         </Button>
+                      )}
+                      {s.status === 'in-progress' && (
+                        <Alert severity="info" sx={{ mt: 2 }}>
+                          Service in progress - Go to "Active Service" tab to manage
+                        </Alert>
                       )}
                       <Button
                         variant="outlined"
@@ -446,7 +489,14 @@ const NannyDashboard = () => {
             Active Service
           </Typography>
           {schedule.filter(s => s.status === 'in-progress').length === 0 ? (
-            <Typography color="text.secondary">No active service at the moment.</Typography>
+            <Paper sx={{ p: 4, textAlign: 'center', bgcolor: 'white' }}>
+              <Typography color="text.secondary" variant="h6" gutterBottom>
+                No active service at the moment.
+              </Typography>
+              <Typography color="text.secondary" variant="body2">
+                Start a service from "My Schedule" tab to begin tracking time.
+              </Typography>
+            </Paper>
           ) : (
             <Grid container spacing={3}>
               {schedule.filter(s => s.status === 'in-progress').map((s) => (
@@ -541,8 +591,90 @@ const NannyDashboard = () => {
         </Box>
       )}
 
-      {/* Reviews */}
+      {/* Payment History */}
       {tab === 4 && (
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
+            Payment History
+          </Typography>
+          {payments.length === 0 ? (
+            <Paper sx={{ p: 4, textAlign: 'center', bgcolor: 'white' }}>
+              <Typography color="text.secondary" variant="h6">
+                No payments yet.
+              </Typography>
+              <Typography color="text.secondary" variant="body2">
+                Your completed services will appear here once payments are processed.
+              </Typography>
+            </Paper>
+          ) : (
+            <Grid container spacing={3}>
+              {payments.map((payment) => (
+                <Grid item xs={12} md={6} key={payment._id}>
+                  <Card sx={{ borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', mb: 2 }}>
+                        <Typography variant="h6" fontWeight={700}>
+                          {payment.parent?.firstName} {payment.parent?.lastName}
+                        </Typography>
+                        <Chip
+                          label={
+                            payment.status === 'paid' ? 'Paid' :
+                            payment.status === 'admin_approved' ? 'Approved' :
+                            payment.status === 'parent_confirmed' ? 'Pending Approval' :
+                            payment.status
+                          }
+                          color={
+                            payment.status === 'paid' ? 'success' :
+                            payment.status === 'admin_approved' ? 'info' :
+                            payment.status === 'parent_confirmed' ? 'warning' :
+                            'default'
+                          }
+                          size="small"
+                        />
+                      </Box>
+                      <Divider sx={{ my: 2 }} />
+                      <Stack spacing={1}>
+                        <Typography variant="body2">
+                          <strong>Child:</strong> {payment.booking?.child?.name || 'N/A'}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Service Date:</strong> {payment.booking?.serviceDate ? fmtDate(payment.booking.serviceDate) : 'N/A'}
+                        </Typography>
+                        <Typography variant="body2">
+                          <strong>Hours:</strong> {payment.booking?.hours || 0} hrs
+                        </Typography>
+                        <Divider />
+                        <Typography variant="h6" color="success.main">
+                          <strong>Total Amount:</strong> ${payment.totalAmount}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          <strong>Platform Commission:</strong> ${payment.commissionAmount} ({payment.commissionRate}%)
+                        </Typography>
+                        <Typography variant="h6" color="primary.main">
+                          <strong>Your Payout:</strong> ${payment.payoutAmount}
+                        </Typography>
+                        {payment.paidAt && (
+                          <Typography variant="caption" color="text.secondary">
+                            Paid on: {new Date(payment.paidAt).toLocaleDateString()}
+                          </Typography>
+                        )}
+                        {payment.payoutTransactionId && (
+                          <Typography variant="caption" color="text.secondary">
+                            Transaction ID: {payment.payoutTransactionId}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Box>
+      )}
+
+      {/* Reviews */}
+      {tab === 5 && (
         <Box>
           <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 3 }}>
             Reviews & Ratings

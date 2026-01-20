@@ -39,6 +39,12 @@ api.interceptors.request.use(
       }
     }
 
+    // Prevent accidental double '/api/api' when callers include '/api' in the path.
+    // Our baseURL already ends with '/api', so normalize any url starting with '/api/' → '/'
+    if (typeof config.url === 'string' && config.url.startsWith('/api/')) {
+      config.url = config.url.replace(/^\/api\//, '/');
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

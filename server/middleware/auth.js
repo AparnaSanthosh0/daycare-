@@ -35,6 +35,9 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ message: 'Invalid token format' });
     }
 
+    // Ensure staff object is properly included
+    const staffData = user.staff || (user.role === 'staff' ? {} : undefined);
+    
     req.user = {
       ...decoded,
       userId: decoded.userId || decoded._id || decoded.id,
@@ -44,10 +47,19 @@ const auth = async (req, res, next) => {
       // Expose commonly used profile fields so downstream routes don't need to re-query
       firstName: user.firstName,
       lastName: user.lastName,
-      staff: user.staff,
+      staff: staffData,
       address: user.address,
       phone: user.phone
     };
+    
+    // Debug logging for nanny users
+    if (user.role === 'staff' && staffData?.staffType === 'nanny') {
+      console.log('✅ Nanny user authenticated:', {
+        userId: req.user.userId,
+        role: req.user.role,
+        staffType: req.user.staff?.staffType
+      });
+    }
     next();
   } catch (error) {
     console.error('Auth middleware error:', error);
