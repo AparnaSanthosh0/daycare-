@@ -24,7 +24,7 @@ const NearbyParentsMap = () => {
   useEffect(() => {
     const fetchActivePickups = async () => {
       try {
-        const response = await api.get('/api/location/active-pickups');
+        const response = await api.get('/location/active-pickups');
         setActivePickups(response.data.pickups || []);
       } catch (error) {
         console.error('Failed to fetch active pickups:', error);

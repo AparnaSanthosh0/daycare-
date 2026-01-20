@@ -50,7 +50,7 @@ const ParentFeedback = () => {
         return;
       }
 
-      await api.post('/api/parents/me/feedback', payload);
+      await api.post('/parents/me/feedback', payload);
       setFeedbackData({ category: 'feedback', subject: '', details: '' });
       setMessage('Feedback submitted successfully!');
     } catch (error) {
@@ -69,7 +69,7 @@ const ParentFeedback = () => {
         return;
       }
 
-      const response = await api.post('/api/feedback-classification/predict', {
+      const response = await api.post('/feedback-classification/predict', {
         text: aiData.feedbackText,
         serviceCategory: aiData.serviceCategory,
         rating: parseInt(aiData.rating)

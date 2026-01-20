@@ -116,7 +116,7 @@ const TeacherDashboard = () => {
     try {
       setLoading(true);
       // Fetch all children in the system
-      const response = await api.get('/api/children');
+      const response = await api.get('/children');
       console.log('Children fetched:', response.data);
       setStudents(response.data || []);
       
@@ -137,7 +137,7 @@ const TeacherDashboard = () => {
       // If /api/children fails (permission issue), try my-children
       try {
         console.log('Trying /api/staff/my-children...');
-        const response = await api.get('/api/staff/my-children');
+        const response = await api.get('/staff/my-children');
         console.log('My children fetched:', response.data);
         setStudents(response.data || []);
         
@@ -172,7 +172,7 @@ const TeacherDashboard = () => {
   // Visitor Management Functions
   const fetchVisitors = async () => {
     try {
-      const response = await api.get('/api/visitors/today');
+      const response = await api.get('/visitors/today');
       setVisitors(response.data.visitors || []);
       setVisitorStats(response.data.stats || { total: 0, checkedIn: 0, checkedOut: 0 });
     } catch (error) {
@@ -193,7 +193,7 @@ const TeacherDashboard = () => {
         return;
       }
 
-      await api.post('/api/visitors/check-in', visitorForm);
+      await api.post('/visitors/check-in', visitorForm);
       setVisitorMessage({ type: 'success', text: 'Visitor checked in successfully!' });
       
       // Reset form
@@ -256,7 +256,7 @@ const TeacherDashboard = () => {
         return;
       }
 
-      const response = await api.post('/api/visitors/verify-pickup', pickupForm);
+      const response = await api.post('/visitors/verify-pickup', pickupForm);
       setPickupResult(response.data);
       
       if (response.data.authorized) {
@@ -323,7 +323,7 @@ const TeacherDashboard = () => {
         const checkInDateTime = new Date();
         checkInDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
 
-        await api.post('/api/staff-ops/attendance/child/' + selectedStudent._id, {
+        await api.post('/staff-ops/attendance/child/' + selectedStudent._id, {
           date: today.toISOString().split('T')[0],
           status: 'present',
           checkInAt: checkInDateTime.toISOString(),
@@ -345,7 +345,7 @@ const TeacherDashboard = () => {
       try {
         const today = new Date();
 
-        await api.post('/api/staff-ops/attendance/child/' + selectedStudent._id, {
+        await api.post('/staff-ops/attendance/child/' + selectedStudent._id, {
           date: today.toISOString().split('T')[0],
           status: 'absent',
           notes: 'Marked absent by teacher'

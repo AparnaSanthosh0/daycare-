@@ -33,7 +33,7 @@ const Children = () => {
     (async () => {
       try {
         setLoading(true);
-        const res = await api.get('/api/children');
+        const res = await api.get('/children');
         if (!mounted) return;
         setChildren(Array.isArray(res.data) ? res.data : (res.data.children || []));
       } catch (e) {
@@ -93,9 +93,9 @@ const Children = () => {
         medicalConditions: form.medicalInfo ? [{ condition: form.medicalInfo }] : [],
         emergencyContacts
       };
-      await api.post('/api/children', payload);
+      await api.post('/children', payload);
       setCreateOpen(false);
-      const res = await api.get('/api/children');
+      const res = await api.get('/children');
       setChildren(Array.isArray(res.data) ? res.data : (res.data.children || []));
     } catch (e) {
       console.error('Create child error:', e);
@@ -117,7 +117,7 @@ const Children = () => {
           />
           <Button variant="contained" startIcon={<Add />} onClick={() => openCreate()}>Add Child</Button>
           <IconButton onClick={async () => {
-            const res = await api.get('/api/children');
+            const res = await api.get('/children');
             setChildren(Array.isArray(res.data) ? res.data : (res.data.children || []));
           }}><Refresh /></IconButton>
         </Box>

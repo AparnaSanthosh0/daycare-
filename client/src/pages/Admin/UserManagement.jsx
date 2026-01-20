@@ -71,7 +71,7 @@ const UserManagement = () => {
         status: statusFilter
       };
 
-      const response = await api.get('/api/admin/users', { params });
+      const response = await api.get('/admin/users', { params });
       setUsers(response.data.users);
       setTotalUsers(response.data.total);
     } catch (error) {

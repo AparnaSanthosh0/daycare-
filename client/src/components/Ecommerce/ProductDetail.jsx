@@ -99,13 +99,13 @@ export default function ProductDetail() {
         }
         // Load all products for recommendations
         try {
-          const { data } = await api.get('/api/products', { params: { all: true } });
+          const { data } = await api.get('/products', { params: { all: true } });
           if (mounted) setAllProducts(data.products || []);
         } catch {}
       } catch (e) {
         // Fallback: fetch list and pick by id
         try {
-          const { data } = await api.get('/api/products', { params: { all: true } });
+          const { data } = await api.get('/products', { params: { all: true } });
           const found = (data.products || []).find((p) => (p._id === id || p.id === id));
           if (mounted && found) {
             const image = toAbsoluteImageUrl(found.image || (Array.isArray(found.images) && found.images[0]));

@@ -40,7 +40,7 @@ const Activities = () => {
   async function createActivity() {
     setLoading(true);
     try {
-      await api.post('/api/activities/activities', { child: child || undefined, program, date, title, description, category });
+      await api.post('/activities/activities', { child: child || undefined, program, date, title, description, category });
       setTitle(''); setDescription('');
       await listActivities();
     } finally { setLoading(false); }
@@ -66,7 +66,7 @@ const Activities = () => {
   async function createMilestone() {
     setLoading(true);
     try {
-      await api.post('/api/activities/milestones', { child: mChild, date: mDate, category: mCategory, title: mTitle });
+      await api.post('/activities/milestones', { child: mChild, date: mDate, category: mCategory, title: mTitle });
       setMTitle('');
       await listMilestones();
     } finally { setLoading(false); }

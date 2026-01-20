@@ -39,7 +39,7 @@ const DemandPrediction = () => {
     setPredictionResult(null);
 
     try {
-      const response = await api.post('/api/demand-prediction/predict', {
+      const response = await api.post('/demand-prediction/predict', {
         product_type: formData.product_type,
         previous_sales: parseInt(formData.previous_sales),
         delivery_time: parseFloat(formData.delivery_time),

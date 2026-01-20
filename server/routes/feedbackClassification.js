@@ -267,7 +267,7 @@ router.post('/retrain', auth, async (req, res) => {
   try {
     // Check if user is admin
     const User = require('../models/User');
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.userId);
     if (user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Admin role required.' });
     }

@@ -48,7 +48,7 @@ const ResetPassword = () => {
     if (password !== confirm) { setError('Passwords do not match'); return; }
     setLoading(true); setError(''); setMessage('');
     try {
-      await api.post('/api/auth/reset-password', { email, token, password });
+      await api.post('/auth/reset-password', { email, token, password });
       setMessage('Password has been reset. Redirecting to login...');
       setTimeout(() => navigate('/login'), 1200);
     } catch (e) {

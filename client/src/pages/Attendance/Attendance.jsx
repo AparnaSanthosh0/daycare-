@@ -57,7 +57,7 @@ const Attendance = () => {
     try {
       setLoading(true); setError(''); setMessage('');
       const payload = { entityType, entityId, when };
-      const res = await api.post('/api/attendance/check-in', payload);
+      const res = await api.post('/attendance/check-in', payload);
       setMessage(res.data.message || 'Checked in');
     } catch (e) {
       setError(e.response?.data?.message || 'Check-in failed');
@@ -70,7 +70,7 @@ const Attendance = () => {
     try {
       setLoading(true); setError(''); setMessage('');
       const payload = { entityType, entityId, when };
-      const res = await api.post('/api/attendance/check-out', payload);
+      const res = await api.post('/attendance/check-out', payload);
       setMessage(res.data.message || 'Checked out');
     } catch (e) {
       setError(e.response?.data?.message || 'Check-out failed');
@@ -83,7 +83,7 @@ const Attendance = () => {
     try {
       setLoading(true); setError(''); setMessage('');
       const payload = { entityType, entityId, date: when };
-      const res = await api.post('/api/attendance/mark-absence', payload);
+      const res = await api.post('/attendance/mark-absence', payload);
       setMessage(res.data.message || 'Marked absent');
     } catch (e) {
       setError(e.response?.data?.message || 'Mark absent failed');
@@ -236,7 +236,7 @@ const Attendance = () => {
       const loadActivity = async () => {
         try {
           setActivityLoading(true);
-          const res = await api.get('/api/attendance/recent-activity');
+          const res = await api.get('/attendance/recent-activity');
           setRecentActivity(res.data || []);
         } catch (e) {
           console.error('Failed to load recent activity:', e);

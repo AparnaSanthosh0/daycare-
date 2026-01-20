@@ -14,7 +14,7 @@ const ForgotPassword = () => {
     setLoading(true); setError(''); setMessage(''); setDevResetUrl('');
     try {
       // Backend-only reset: sends a temporary password by email
-      const { data } = await api.post('/api/auth/forgot-password', { email });
+      const { data } = await api.post('/auth/forgot-password', { email });
       setMessage('If this email exists, a reset link has been sent.');
       if (data?.resetUrl) setDevResetUrl(data.resetUrl);
     } catch (e) {

@@ -64,7 +64,7 @@ const NannyServicesTab = () => {
   const fetchNannies = async () => {
     try {
       console.log('🔍 Fetching nannies from API...');
-      const response = await api.get('/api/nanny/nannies');
+      const response = await api.get('/nanny/nannies');
       console.log('✅ API Response:', response.data);
       console.log('📊 Number of nannies:', response.data?.length || 0);
       setNannies(response.data || []);
@@ -81,7 +81,7 @@ const NannyServicesTab = () => {
 
   const fetchBookings = async () => {
     try {
-      const response = await api.get('/api/nanny/bookings/parent');
+      const response = await api.get('/nanny/bookings/parent');
       setBookings(response.data || []);
     } catch (error) {
       console.error('Error fetching bookings:', error);
@@ -102,7 +102,7 @@ const NannyServicesTab = () => {
       }
 
       console.log('📤 Submitting booking:', bookingForm);
-      const response = await api.post('/api/nanny/bookings', bookingForm);
+      const response = await api.post('/nanny/bookings', bookingForm);
       console.log('✅ Booking created:', response.data);
       
       setBookingDialog(false);

@@ -70,7 +70,7 @@ const TransportManagement = () => {
 
   const fetchRequests = async () => {
     try {
-      const response = await api.get('/api/transport/requests/all');
+      const response = await api.get('/transport/requests/all');
       setRequests(response.data.requests || []);
     } catch (error) {
       console.error('Error fetching requests:', error);
@@ -79,7 +79,7 @@ const TransportManagement = () => {
 
   const fetchAssignments = async () => {
     try {
-      const response = await api.get('/api/transport/assignments/all');
+      const response = await api.get('/transport/assignments/all');
       setAssignments(response.data.assignments || []);
     } catch (error) {
       console.error('Error fetching assignments:', error);
@@ -89,7 +89,7 @@ const TransportManagement = () => {
   const fetchDrivers = async () => {
     try {
       // Fetch all users from admin endpoint
-      const response = await api.get('/api/admin/users');
+      const response = await api.get('/admin/users');
       console.log('Full API Response:', response.data);
       
       const allUsers = response.data.users || response.data || [];

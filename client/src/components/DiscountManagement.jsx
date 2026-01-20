@@ -59,8 +59,8 @@ const DiscountManagement = ({ userRole }) => {
   const loadDiscounts = async () => {
     try {
       const [pendingRes, productsRes] = await Promise.all([
-        api.get('/api/admin/discounts/pending'),
-        api.get('/api/products?all=true')
+        api.get('/admin/discounts/pending'),
+        api.get('/products?all=true')
       ]);
       
       setPendingDiscounts(pendingRes.data || []);

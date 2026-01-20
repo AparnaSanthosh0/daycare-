@@ -37,7 +37,7 @@ const TransportTracking = () => {
   const fetchTransportInfo = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/parents/me/transport');
+      const response = await api.get('/parents/me/transport');
       setTransportData(response.data);
       setError('');
     } catch (err) {

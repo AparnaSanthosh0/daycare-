@@ -119,7 +119,7 @@ const DashboardProfile = () => {
       setSaving(true);
       setError('');
       setMessage('');
-      await api.put('/api/auth/profile', form);
+      await api.put('/auth/profile', form);
       await refreshUser?.();
       setMessage('Profile updated successfully');
       setEditing(false);
@@ -462,7 +462,7 @@ const PasswordChangeSection = () => {
 
     try {
       setChanging(true);
-      await api.post('/api/auth/change-password', {
+      await api.post('/auth/change-password', {
         currentPassword: passwordForm.currentPassword,
         newPassword: passwordForm.newPassword
       });

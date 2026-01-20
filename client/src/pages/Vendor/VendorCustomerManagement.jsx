@@ -50,7 +50,7 @@ const VendorCustomerManagement = () => {
   const fetchCustomers = React.useCallback(async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/customers/vendor/list', {
+      const response = await api.get('/customers/vendor/list', {
         params: {
           page: currentPage,
           limit: 20,
@@ -79,7 +79,7 @@ const VendorCustomerManagement = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await api.get('/api/customers/vendor/stats');
+      const response = await api.get('/customers/vendor/stats');
       setStats(response.data);
     } catch (err) {
       console.error('Failed to load stats:', err);

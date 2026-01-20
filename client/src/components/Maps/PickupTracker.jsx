@@ -74,7 +74,7 @@ const PickupTracker = ({ parentId, childId }) => {
           
           try {
             // Start tracking with initial location
-            const response = await api.post('/api/location/start-tracking', {
+            const response = await api.post('/location/start-tracking', {
               childId: childId || 'child-456',
               parentLocation: initialPos
             });
@@ -103,7 +103,7 @@ const PickupTracker = ({ parentId, childId }) => {
 
                 // Update server with trackingId
                 try {
-                  await api.put('/api/location/update-location', {
+                  await api.put('/location/update-location', {
                     trackingId: response.data.trackingId,
                     location: pos
                   });
@@ -173,7 +173,7 @@ const PickupTracker = ({ parentId, childId }) => {
 
     try {
       if (trackingId) {
-        await api.post('/api/location/stop-tracking', {
+        await api.post('/location/stop-tracking', {
           trackingId: trackingId
         });
       }

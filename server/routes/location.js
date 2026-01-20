@@ -19,9 +19,9 @@ router.post('/start-tracking', auth, async (req, res) => {
     }
 
     // Create tracking session
-    const trackingId = `${req.user.id}_${childId}_${Date.now()}`;
+    const trackingId = `${req.user.userId}_${childId}_${Date.now()}`;
     activeTracking.set(trackingId, {
-      userId: req.user.id,
+      userId: req.user.userId,
       childId,
       startTime: new Date(),
       lastLocation: parentLocation,

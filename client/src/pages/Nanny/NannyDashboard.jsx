@@ -71,7 +71,7 @@ const NannyDashboard = () => {
 
   const fetchPendingRequests = async () => {
     try {
-      const response = await api.get('/api/nanny/bookings/nanny/pending');
+      const response = await api.get('/nanny/bookings/nanny/pending');
       setRequests(response.data || []);
     } catch (error) {
       console.error('Error fetching requests:', error);
@@ -80,7 +80,7 @@ const NannyDashboard = () => {
 
   const fetchSchedule = async () => {
     try {
-      const response = await api.get('/api/nanny/bookings/nanny?status=accepted');
+      const response = await api.get('/nanny/bookings/nanny?status=accepted');
       setSchedule(response.data || []);
     } catch (error) {
       console.error('Error fetching schedule:', error);
@@ -89,7 +89,7 @@ const NannyDashboard = () => {
 
   const fetchHistory = async () => {
     try {
-      const response = await api.get('/api/nanny/bookings/nanny?status=completed');
+      const response = await api.get('/nanny/bookings/nanny?status=completed');
       setHistory(response.data || []);
     } catch (error) {
       console.error('Error fetching history:', error);

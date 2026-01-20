@@ -237,7 +237,7 @@ const ParentDashboard = ({ initialTab }) => {
         setErrorMsg('This area is for Parent accounts. Please sign in as a Parent to view your children and gallery.');
         return;
       }
-      const res = await api.get('/api/parents/me/children');
+      const res = await api.get('/parents/me/children');
       setChildren(res.data || []);
       if ((res.data || []).length > 0 && !activeChildId) {
         setActiveChildId(res.data[0]._id);
@@ -297,7 +297,7 @@ const ParentDashboard = ({ initialTab }) => {
       }
 
       // Submit admission request
-      await api.post('/api/parents/me/admissions', addChildForm);
+      await api.post('/parents/me/admissions', addChildForm);
       
       setAddChildSuccess('Child admission request submitted successfully! Awaiting admin approval.');
       
@@ -332,7 +332,7 @@ const ParentDashboard = ({ initialTab }) => {
     try {
       setNotificationsLoading(true);
       // Try to fetch recommendations/notifications
-      const response = await api.get('/api/recommendations/received');
+      const response = await api.get('/recommendations/received');
       setNotifications(response.data || []);
     } catch (error) {
       console.error('Error fetching notifications:', error);
@@ -365,7 +365,7 @@ const ParentDashboard = ({ initialTab }) => {
     
     const interval = setInterval(async () => {
       try {
-        const res = await api.get('/api/parents/me/children');
+        const res = await api.get('/parents/me/children');
         const newChildren = res.data || [];
         
         // Only update if the number of children changed (new admission approved)
@@ -392,13 +392,13 @@ const ParentDashboard = ({ initialTab }) => {
     try {
       if (user?.role !== 'parent') return;
       const [pRes, gRes, aRes, actRes, mRes, rRes, sRes] = await Promise.all([
-        api.get(`/api/children/${childId}`),
-        api.get(`/api/children/${childId}/gallery`),
-        api.get(`/api/children/${childId}/attendance`),
-        api.get(`/api/children/${childId}/activities`),
-        api.get(`/api/children/${childId}/meals`),
-        api.get(`/api/children/${childId}/reports`),
-        api.get(`/api/children/${childId}/staff`)
+        api.get(`/children/${childId}`),
+        api.get(`/children/${childId}/gallery`),
+        api.get(`/children/${childId}/attendance`),
+        api.get(`/children/${childId}/activities`),
+        api.get(`/children/${childId}/meals`),
+        api.get(`/children/${childId}/reports`),
+        api.get(`/children/${childId}/staff`)
       ]);
       setProfile(pRes.data);
       setGallery(gRes.data || []);
@@ -452,9 +452,9 @@ const ParentDashboard = ({ initialTab }) => {
     const interval = setInterval(async () => {
       try {
         const [aRes, actRes, mRes] = await Promise.all([
-          api.get(`/api/children/${activeChildId}/attendance`),
-          api.get(`/api/children/${activeChildId}/activities`),
-          api.get(`/api/children/${activeChildId}/meals`)
+          api.get(`/children/${activeChildId}/attendance`),
+          api.get(`/children/${activeChildId}/activities`),
+          api.get(`/children/${activeChildId}/meals`)
         ]);
         setAttendance(aRes.data || null);
         setActivities(actRes.data || { recent: [], count: 0 });
@@ -472,7 +472,7 @@ const ParentDashboard = ({ initialTab }) => {
       const form = new FormData();
       form.append('photo', file);
       form.append('caption', caption);
-      const res = await api.post(`/api/children/${activeChildId}/gallery`, form, {
+      const res = await api.post(`/children/${activeChildId}/gallery`, form, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setGallery((g) => [...g, res.data.photo]);
@@ -484,7 +484,7 @@ const ParentDashboard = ({ initialTab }) => {
   const handleDeletePhoto = async (photoId) => {
     if (!activeChildId || !photoId) return;
     try {
-      await api.delete(`/api/children/${activeChildId}/gallery/${photoId}`);
+      await api.delete(`/children/${activeChildId}/gallery/${photoId}`);
       setGallery((g) => g.filter((p) => p._id !== photoId));
     } catch (e) {
       console.error('Delete photo error:', e);
@@ -933,7 +933,7 @@ const ParentDashboard = ({ initialTab }) => {
   //   const age = calculateAge(profile.dateOfBirth);
   //   const allergies = profile.allergies || [];
   //   try {
-  //     const response = await api.post('/api/meal-recommendations/predict', {
+  //     const response = await api.post('/meal-recommendations/predict', {
   //       age: age,
   //       dietaryPreference: 'balanced',
   //       hasAllergy: allergies.length > 0
@@ -973,8 +973,8 @@ const ParentDashboard = ({ initialTab }) => {
     
     try {
       const [invoicesRes, paymentsRes] = await Promise.all([
-        api.get(`/api/billing/invoices/child/${activeChildId}`),
-        api.get(`/api/billing/payments/child/${activeChildId}`)
+        api.get(`/billing/invoices/child/${activeChildId}`),
+        api.get(`/billing/payments/child/${activeChildId}`)
       ]);
       
       setBillingData({
@@ -1042,7 +1042,7 @@ const ParentDashboard = ({ initialTab }) => {
   // Fetch appointments
   const fetchAppointments = async () => {
     try {
-      const response = await api.get('/api/appointments/parent');
+      const response = await api.get('/appointments/parent');
       setAppointments(response.data || []);
     } catch (error) {
       console.error('Error fetching appointments:', error);
@@ -1074,7 +1074,7 @@ const ParentDashboard = ({ initialTab }) => {
         return;
       }
 
-      await api.post('/api/appointments', appointmentForm);
+      await api.post('/appointments', appointmentForm);
       
       setAppointmentSuccess('Appointment request submitted successfully! The doctor will review and confirm.');
       setAppointmentDialog(false);
@@ -1099,7 +1099,7 @@ const ParentDashboard = ({ initialTab }) => {
   // After School Programs Functions
   const fetchAfterSchoolPrograms = async () => {
     try {
-      const response = await api.get('/api/afterschool/programs');
+      const response = await api.get('/afterschool/programs');
       setAfterSchoolPrograms(response.data || []);
     } catch (error) {
       console.error('Error fetching after school programs:', error);
@@ -1108,7 +1108,7 @@ const ParentDashboard = ({ initialTab }) => {
 
   const fetchMyEnrollments = async () => {
     try {
-      const response = await api.get('/api/afterschool/my-enrollments');
+      const response = await api.get('/afterschool/my-enrollments');
       setMyEnrollments(response.data || []);
     } catch (error) {
       console.error('Error fetching enrollments:', error);
@@ -1126,7 +1126,7 @@ const ParentDashboard = ({ initialTab }) => {
         return;
       }
 
-      await api.post(`/api/afterschool/programs/${programId}/enroll`, {
+      await api.post(`/afterschool/programs/${programId}/enroll`, {
         childId: activeChildId
       });
 
@@ -1157,7 +1157,7 @@ const ParentDashboard = ({ initialTab }) => {
     }
 
     try {
-      await api.post(`/api/afterschool/programs/${programId}/unenroll`, {
+      await api.post(`/afterschool/programs/${programId}/unenroll`, {
         childId: activeChildId
       });
 
@@ -1180,7 +1180,7 @@ const ParentDashboard = ({ initialTab }) => {
   // Fetch transport requests
   const fetchTransportRequests = useCallback(async () => {
     try {
-      const response = await api.get('/api/transport/my-requests');
+      const response = await api.get('/transport/my-requests');
       setTransportRequests(response.data.requests || []);
     } catch (error) {
       console.error('Error fetching transport requests:', error);
@@ -1193,7 +1193,7 @@ const ParentDashboard = ({ initialTab }) => {
       return;
     }
     try {
-      const response = await api.get(`/api/transport/my-assignment/${profile._id}`);
+      const response = await api.get(`/transport/my-assignment/${profile._id}`);
       setTransportAssignment(response.data.assignment);
     } catch (error) {
       // No assignment found is okay
@@ -1232,7 +1232,7 @@ const ParentDashboard = ({ initialTab }) => {
 
     setTransportLoading(true);
     try {
-      const response = await api.post('/api/transport/request', {
+      const response = await api.post('/transport/request', {
         childId: profile._id,
         childName: profile.firstName + ' ' + (profile.lastName || ''),
         pickupAddress: transportForm.pickupAddress,
@@ -1277,7 +1277,7 @@ const ParentDashboard = ({ initialTab }) => {
     }
 
     try {
-      await api.delete(`/api/transport/request/${requestId}`);
+      await api.delete(`/transport/request/${requestId}`);
       alert('Transport request cancelled');
       fetchTransportRequests();
     } catch (error) {
@@ -2004,7 +2004,7 @@ const ParentDashboard = ({ initialTab }) => {
                                     if (editFields.newAllergy?.trim()) {
                                       const updatedAllergies = [...(profile.allergies || []), editFields.newAllergy.trim()];
                                       try {
-                                        await api.put(`/api/children/${activeChildId}`, { allergies: updatedAllergies });
+                                                  await api.put(`/children/${activeChildId}`, { allergies: updatedAllergies });
                                         setProfile({ ...profile, allergies: updatedAllergies });
                                         setEditFields({ ...editFields, newAllergy: '' });
                                       } catch (error) {
@@ -2038,9 +2038,9 @@ const ParentDashboard = ({ initialTab }) => {
                                   sx={{ bgcolor: '#14B8A6', '&:hover': { bgcolor: '#0F766E' }, minWidth: '80px' }}
                                   onClick={async () => {
                                     if (editFields.newMedicalCondition?.trim()) {
-                                      const updatedConditions = [...(profile.medicalConditions || []), editFields.newMedicalCondition.trim()];
+                                      const updatedConditions = [...(profile?.medicalConditions || []), editFields.newMedicalCondition.trim()];
                                       try {
-                                        await api.put(`/api/children/${activeChildId}`, { medicalConditions: updatedConditions });
+                                                  await api.put(`/children/${activeChildId}`, { medicalConditions: updatedConditions });
                                         setProfile({ ...profile, medicalConditions: updatedConditions });
                                         setEditFields({ ...editFields, newMedicalCondition: '' });
                                       } catch (error) {
@@ -2101,7 +2101,7 @@ const ParentDashboard = ({ initialTab }) => {
                                           };
                                           const updatedContacts = [...(profile.emergencyContacts || []), newContact];
                                           try {
-                                            await api.put(`/api/children/${activeChildId}`, { emergencyContacts: updatedContacts });
+                                                  await api.put(`/children/${activeChildId}`, { emergencyContacts: updatedContacts });
                                             setProfile({ ...profile, emergencyContacts: updatedContacts });
                                             setEditFields({ 
                                               ...editFields, 
@@ -2169,7 +2169,7 @@ const ParentDashboard = ({ initialTab }) => {
                                           };
                                           const updatedPickups = [...(profile.authorizedPickups || []), newPickup];
                                           try {
-                                            await api.put(`/api/children/${activeChildId}`, { authorizedPickups: updatedPickups });
+                                                  await api.put(`/children/${activeChildId}`, { authorizedPickups: updatedPickups });
                                             setProfile({ ...profile, authorizedPickups: updatedPickups });
                                             setEditFields({ 
                                               ...editFields, 
@@ -2203,7 +2203,7 @@ const ParentDashboard = ({ initialTab }) => {
                                   <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
                                     Allergies
                                   </Typography>
-                                  {profile.allergies && profile.allergies.length > 0 ? (
+                                  {profile && profile.allergies && profile.allergies.length > 0 ? (
                                     <List>
                                       {profile.allergies.map((allergy, index) => (
                                         <ListItem 
@@ -2215,7 +2215,7 @@ const ParentDashboard = ({ initialTab }) => {
                                               onClick={async () => {
                                                 const updatedAllergies = profile.allergies.filter((_, i) => i !== index);
                                                 try {
-                                                  await api.put(`/api/children/${activeChildId}`, { allergies: updatedAllergies });
+                                                  await api.put(`/children/${activeChildId}`, { allergies: updatedAllergies });
                                                   setProfile({ ...profile, allergies: updatedAllergies });
                                                 } catch (error) {
                                                   console.error('Error removing allergy:', error);
@@ -2243,9 +2243,9 @@ const ParentDashboard = ({ initialTab }) => {
                                   <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
                                     Medical Conditions
                                   </Typography>
-                                  {profile.medicalConditions && profile.medicalConditions.length > 0 ? (
+                                  {profile?.medicalConditions && profile.medicalConditions.length > 0 ? (
                                     <List>
-                                      {profile.medicalConditions.map((condition, index) => (
+                                      {profile?.medicalConditions?.map((condition, index) => (
                                         <ListItem 
                                           key={index}
                                           secondaryAction={
@@ -2253,9 +2253,9 @@ const ParentDashboard = ({ initialTab }) => {
                                               edge="end" 
                                               color="error"
                                               onClick={async () => {
-                                                const updatedConditions = profile.medicalConditions.filter((_, i) => i !== index);
+                                                const updatedConditions = profile?.medicalConditions?.filter((_, i) => i !== index) || [];
                                                 try {
-                                                  await api.put(`/api/children/${activeChildId}`, { medicalConditions: updatedConditions });
+                                                  await api.put(`/children/${activeChildId}`, { medicalConditions: updatedConditions });
                                                   setProfile({ ...profile, medicalConditions: updatedConditions });
                                                 } catch (error) {
                                                   console.error('Error removing condition:', error);
@@ -2283,7 +2283,7 @@ const ParentDashboard = ({ initialTab }) => {
                                   <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
                                     Emergency Contacts
                                   </Typography>
-                                  {profile.emergencyContacts && profile.emergencyContacts.length > 0 ? (
+                                  {profile && profile.emergencyContacts && profile.emergencyContacts.length > 0 ? (
                                     <List>
                                       {profile.emergencyContacts.map((contact, index) => (
                                         <ListItem 
@@ -2295,7 +2295,7 @@ const ParentDashboard = ({ initialTab }) => {
                                               onClick={async () => {
                                                 const updatedContacts = profile.emergencyContacts.filter((_, i) => i !== index);
                                                 try {
-                                                  await api.put(`/api/children/${activeChildId}`, { emergencyContacts: updatedContacts });
+                                                  await api.put(`/children/${activeChildId}`, { emergencyContacts: updatedContacts });
                                                   setProfile({ ...profile, emergencyContacts: updatedContacts });
                                                 } catch (error) {
                                                   console.error('Error removing contact:', error);
@@ -2326,7 +2326,7 @@ const ParentDashboard = ({ initialTab }) => {
                                   <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
                                     Authorized Pickups
                                   </Typography>
-                                  {profile.authorizedPickups && profile.authorizedPickups.length > 0 ? (
+                                  {profile && profile.authorizedPickups && profile.authorizedPickups.length > 0 ? (
                                     <List>
                                       {profile.authorizedPickups.map((pickup, index) => (
                                         <ListItem 
@@ -2338,7 +2338,7 @@ const ParentDashboard = ({ initialTab }) => {
                                               onClick={async () => {
                                                 const updatedPickups = profile.authorizedPickups.filter((_, i) => i !== index);
                                                 try {
-                                                  await api.put(`/api/children/${activeChildId}`, { authorizedPickups: updatedPickups });
+                                                  await api.put(`/children/${activeChildId}`, { authorizedPickups: updatedPickups });
                                                   setProfile({ ...profile, authorizedPickups: updatedPickups });
                                                 } catch (error) {
                                                   console.error('Error removing pickup:', error);
@@ -3851,7 +3851,7 @@ const ParentDashboard = ({ initialTab }) => {
                                     details: editFields.fbDetails || '' 
                                   };
                                   if (!payload.subject || !payload.details) return;
-                                  await api.post('/api/parents/me/feedback', payload);
+                                  await api.post('/parents/me/feedback', payload);
                                   setEditFields(f => ({ ...f, fbSubject: '', fbDetails: '' }));
                                   alert('Feedback submitted successfully!');
                                 } catch (e) { 
@@ -3925,7 +3925,7 @@ const ParentDashboard = ({ initialTab }) => {
                                     return;
                                   }
                                   
-                                  const response = await api.post('/api/feedback-classification/predict', {
+                                  const response = await api.post('/feedback-classification/predict', {
                                     text: editFields.aiFeedbackText,
                                     serviceCategory: editFields.aiServiceCategory || 'meal',
                                     rating: parseInt(editFields.aiRating) || 5

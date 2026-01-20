@@ -38,7 +38,7 @@ const CustomerOrders = () => {
     try {
       setLoading(true);
       setError('');
-      const response = await api.get('/api/orders/customer');
+      const response = await api.get('/orders/customer');
       setOrders(response.data.orders || []);
     } catch (err) {
       console.error('Error loading orders:', err);

@@ -50,7 +50,7 @@ const FeedbackClassification = () => {
 
   const fetchCategories = useCallback(async () => {
     try {
-      const response = await api.get('/api/feedback-classification/categories');
+      const response = await api.get('/feedback-classification/categories');
       setCategories(response.data.categories || serviceCategories);
     } catch (error) {
       console.error('Error fetching categories:', error);
@@ -60,7 +60,7 @@ const FeedbackClassification = () => {
 
   const fetchStats = useCallback(async () => {
     try {
-      const response = await api.get('/api/feedback-classification/stats');
+      const response = await api.get('/feedback-classification/stats');
       setStats(response.data);
     } catch (error) {
       console.error('Error fetching stats:', error);
@@ -83,7 +83,7 @@ const FeedbackClassification = () => {
     setClassification(null);
 
     try {
-      const response = await api.post('/api/feedback-classification/predict', {
+      const response = await api.post('/feedback-classification/predict', {
         feedback_text: feedbackText,
         rating: rating,
         service_category: serviceCategory
@@ -100,7 +100,7 @@ const FeedbackClassification = () => {
   const retrainModel = async () => {
     setRetraining(true);
     try {
-      await api.post('/api/feedback-classification/retrain');
+      await api.post('/feedback-classification/retrain');
       await fetchStats();
       alert('Model retrained successfully!');
     } catch (error) {

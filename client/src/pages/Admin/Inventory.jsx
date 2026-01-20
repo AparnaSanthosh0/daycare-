@@ -29,8 +29,8 @@ export default function Inventory() {
     try {
       const params = { ...filters };
       const [itemsRes, movesRes] = await Promise.all([
-        api.get('/api/inventory/items', { params }),
-        api.get('/api/inventory/movements', { params }),
+        api.get('/inventory/items', { params }),
+        api.get('/inventory/movements', { params }),
       ]);
       setItems(itemsRes.data.items || []);
       setMovements(movesRes.data.movements || []);
@@ -43,9 +43,9 @@ export default function Inventory() {
   const loadAll = useCallback(async () => {
     try {
       const [wh, pr, vs] = await Promise.all([
-        api.get('/api/inventory/warehouses'),
-        api.get('/api/products'),
-        api.get('/api/inventory/vendor-stock'),
+        api.get('/inventory/warehouses'),
+        api.get('/products'),
+        api.get('/inventory/vendor-stock'),
       ]);
       setWarehouses(wh.data.warehouses || []);
       setProducts(pr.data.products || []);
@@ -87,7 +87,7 @@ export default function Inventory() {
           <Button variant="outlined" onClick={refreshLists}>Refresh</Button>
           <Button variant="contained" onClick={async () => {
             try {
-              await api.post('/api/inventory/alerts/low-stock/send');
+              await api.post('/inventory/alerts/low-stock/send');
               setSuccess('Low stock alert email sent (if items found).');
               await refreshLists();
             } catch (e) {
@@ -610,9 +610,9 @@ export default function Inventory() {
                 setError('Please enter Warehouse Name and Code');
                 return;
               }
-              await api.post('/api/inventory/warehouses', whForm);
+              await api.post('/inventory/warehouses', whForm);
               setWhForm({ name: '', code: '' });
-              const { data } = await api.get('/api/inventory/warehouses');
+              const { data } = await api.get('/inventory/warehouses');
               setWarehouses(data.warehouses || []);
               setSuccess('Warehouse added');
             } catch (e) {
@@ -693,7 +693,7 @@ export default function Inventory() {
           <Button variant="contained" onClick={async () => {
             try {
               const payload = { ...itemForm, quantity: Number(itemForm.quantity || 0), reorderPoint: Number(itemForm.reorderPoint || 0) };
-              await api.post('/api/inventory/items', payload);
+              await api.post('/inventory/items', payload);
               setSuccess('Inventory item saved');
               await refreshLists();
             } catch (e) {
@@ -744,7 +744,7 @@ export default function Inventory() {
         <Stack direction="row" spacing={2} sx={{ mt: 2 }}>
           <Button variant="contained" onClick={async () => {
             try {
-              await api.post('/api/inventory/movements', movementForm);
+              await api.post('/inventory/movements', movementForm);
               setSuccess('Movement recorded');
               await refreshLists();
             } catch (e) {

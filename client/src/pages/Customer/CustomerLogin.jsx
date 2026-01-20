@@ -73,7 +73,7 @@ const CustomerLogin = () => {
         client_id: clientId,
         callback: async (response) => {
           try {
-            const res = await api.post('/api/customers/google-login', { idToken: response.credential });
+            const res = await api.post('/customers/google-login', { idToken: response.credential });
             // If backend indicates new Google user, redirect to registration
             if (res.data?.requiresOtp) {
               const { email: em, firstName: fn, lastName: ln } = res.data;
@@ -127,7 +127,7 @@ const CustomerLogin = () => {
 
     setLoading(true);
     try {
-      const res = await api.post('/api/customers/login', form);
+      const res = await api.post('/customers/login', form);
       const { token } = res.data || {};
       if (!token) throw new Error('Missing token');
       

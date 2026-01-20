@@ -2,7 +2,12 @@ import axios from 'axios';
 
 // API Configuration
 // Use environment variable for production, fallback to localhost for development
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+let API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+// Ensure /api suffix is always present
+if (!API_BASE_URL.endsWith('/api')) {
+  API_BASE_URL = API_BASE_URL + '/api';
+}
 
 console.log('🔧 API_BASE_URL configured as:', API_BASE_URL);
 

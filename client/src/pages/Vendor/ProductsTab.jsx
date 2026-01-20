@@ -40,7 +40,7 @@ export default function ProductsTab() {
 
   const load = async () => {
     try {
-      const { data } = await api.get('/api/products', { params: { all: true } });
+      const { data } = await api.get('/products', { params: { all: true } });
       setProducts(data.products || []);
     } catch (e) {
       toast.error('Failed to load products');
@@ -70,7 +70,7 @@ export default function ProductsTab() {
   const uploadImage = async (file) => {
     const fd = new FormData();
     fd.append('image', file);
-    const { data } = await api.post('/api/products/upload', fd);
+    const { data } = await api.post('/products/upload', fd);
     // Return both relative and absolute forms
     return { url: data.url, absoluteUrl: data.absoluteUrl };
   };
@@ -88,7 +88,7 @@ export default function ProductsTab() {
         stockQty: Number(form.stockQty || 0),
         sizes: (form.sizes || '').split(',').map(s => s.trim()).filter(Boolean)
       };
-      const { data } = await api.post('/api/products', payload);
+      const { data } = await api.post('/products', payload);
       setProducts(prev => [data.product, ...prev]);
       setForm(emptyForm);
       toast.success('Product created');

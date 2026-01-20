@@ -32,7 +32,7 @@ export const AuthProvider = ({ children }) => {
       const token = localStorage.getItem('token');
       if (token) {
         try {
-          const response = await api.get('/api/auth/me');
+          const response = await api.get('/auth/me');
           setUser(response.data.user);
         } catch (error) {
           console.error('Auth check failed:', error);
@@ -50,7 +50,7 @@ export const AuthProvider = ({ children }) => {
   // Expose a refresh function for components to re-pull latest user (e.g., after profile image upload)
   const refreshUser = async () => {
     try {
-      const resp = await api.get('/api/auth/me');
+      const resp = await api.get('/auth/me');
       setUser(resp.data.user);
       return resp.data.user;
     } catch (e) {
@@ -70,8 +70,8 @@ export const AuthProvider = ({ children }) => {
       
       console.log('📤 Sending login request:', { email: payload.email, username: payload.username });
       console.log('🌐 API base URL:', api.defaults.baseURL);
-      console.log('🔗 Full URL will be:', `${api.defaults.baseURL}/api/auth/login`);
-      const response = await api.post('/api/auth/login', payload);
+      console.log('🔗 Full URL will be:', `${api.defaults.baseURL}/auth/login`);
+      const response = await api.post('/auth/login', payload);
       const { token, user } = response.data;
       
       console.log('✅ Login successful, received token:', token ? `${token.substring(0, 50)}...` : 'No token');
@@ -146,7 +146,7 @@ export const AuthProvider = ({ children }) => {
   // Exchange Firebase ID token for backend JWT and set user
   const loginWithGoogleIdToken = async (idToken) => {
     try {
-      const response = await api.post('/api/auth/google', { idToken });
+      const response = await api.post('/auth/google', { idToken });
       const { token, user } = response.data;
       localStorage.setItem('token', token);
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -164,7 +164,7 @@ export const AuthProvider = ({ children }) => {
   const register = async (userData) => {
     try {
       const isFormData = typeof FormData !== 'undefined' && userData instanceof FormData;
-      const response = await api.post('/api/auth/register', userData, {
+      const response = await api.post('/auth/register', userData, {
         headers: isFormData ? { 'Content-Type': 'multipart/form-data' } : undefined,
       });
 
@@ -208,7 +208,7 @@ export const AuthProvider = ({ children }) => {
 
   const updateProfile = async (profileData) => {
     try {
-      const response = await api.put('/api/auth/profile', profileData);
+      const response = await api.put('/auth/profile', profileData);
       setUser(response.data.user);
       toast.success('Profile updated successfully!');
       return { success: true };

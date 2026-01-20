@@ -135,7 +135,7 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
     setSelectedCategory(initialCategory || 'all');
     const load = async () => {
       try {
-        const { data } = await api.get('/api/products', { params: { all: true } });
+        const { data } = await api.get('/products', { params: { all: true } });
         // Helper to form a valid absolute URL for images regardless of API_BASE_URL shape
         const toAbsoluteImageUrl = (maybePath) => {
           if (!maybePath) return null;

@@ -63,7 +63,7 @@ const MealRecommendation = () => {
         return;
       }
 
-      const response = await api.post('/api/meal-recommendations/predict', {
+      const response = await api.post('/meal-recommendations/predict', {
         age: parseInt(formData.age),
         dietaryPreference: formData.dietaryPreference,
         hasAllergy: formData.hasAllergy

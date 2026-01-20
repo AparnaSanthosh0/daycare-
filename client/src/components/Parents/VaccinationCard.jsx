@@ -96,7 +96,7 @@ const VaccinationCard = ({ childId }) => {
         return;
       }
 
-      await api.post('/api/blockchain/vaccination', {
+      await api.post('/blockchain/vaccination', {
         childId,
         ...formData
       });

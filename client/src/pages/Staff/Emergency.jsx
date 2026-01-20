@@ -12,7 +12,7 @@ export default function Emergency() {
     try {
       setError('');
       setMessage('');
-      await api.post('/api/staff-ops/alerts', { level: 'info', message: msg || 'Test alert' });
+      await api.post('/staff-ops/alerts', { level: 'info', message: msg || 'Test alert' });
       setMessage('Alert sent');
     } catch (e) {
       setError(e?.response?.data?.message || 'Failed to send alert');

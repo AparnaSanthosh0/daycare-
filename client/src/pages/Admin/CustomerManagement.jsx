@@ -82,7 +82,7 @@ const CustomerManagement = () => {
   const loadCustomers = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/customers');
+      const response = await api.get('/customers');
       const customersData = response.data;
       setCustomers(customersData);
       

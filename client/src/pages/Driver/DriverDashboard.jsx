@@ -77,7 +77,7 @@ const DriverDashboard = () => {
   // Fetch routes
   const fetchRoutes = async () => {
     try {
-      const response = await api.get('/api/driver/routes');
+      const response = await api.get('/driver/routes');
       setRoutes(response.data);
     } catch (error) {
       console.error('Error fetching routes:', error);
@@ -88,7 +88,7 @@ const DriverDashboard = () => {
   // Fetch today's trips
   const fetchTodayTrips = async () => {
     try {
-      const response = await api.get('/api/driver/trips/today');
+      const response = await api.get('/driver/trips/today');
       setTodayTrips(response.data);
     } catch (error) {
       console.error('Error fetching today trips:', error);
@@ -101,7 +101,7 @@ const DriverDashboard = () => {
   // Fetch vehicle logs
   const fetchVehicleLogs = async () => {
     try {
-      const response = await api.get('/api/driver/vehicle-logs');
+      const response = await api.get('/driver/vehicle-logs');
       setVehicleLogs(response.data);
     } catch (error) {
       console.error('Error fetching vehicle logs:', error);
@@ -111,7 +111,7 @@ const DriverDashboard = () => {
   // Fetch compliance report
   const fetchComplianceReport = async () => {
     try {
-      const response = await api.get('/api/driver/compliance-report');
+      const response = await api.get('/driver/compliance-report');
       setComplianceReport(response.data);
     } catch (error) {
       console.error('Error fetching compliance report:', error);
@@ -121,7 +121,7 @@ const DriverDashboard = () => {
   // Fetch incidents
   const fetchIncidents = async () => {
     try {
-      const response = await api.get('/api/driver/incidents');
+      const response = await api.get('/driver/incidents');
       setIncidents(response.data || []);
     } catch (error) {
       console.error('Error fetching incidents:', error);
@@ -234,7 +234,7 @@ const DriverDashboard = () => {
   // Add vehicle log
   const handleAddVehicleLog = async () => {
     try {
-      await api.post('/api/driver/vehicle-log', {
+      await api.post('/driver/vehicle-log', {
         ...vehicleLogForm,
         maintenanceIssues: vehicleLogForm.maintenanceIssues.split(',').map(s => s.trim()).filter(s => s)
       });

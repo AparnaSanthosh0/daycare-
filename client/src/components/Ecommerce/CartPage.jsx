@@ -67,7 +67,7 @@ export default function CartPage() {
           zipCode: user.address?.zipCode || ''
         };
 
-        const response = await api.post('/api/orders', {
+        const response = await api.post('/orders', {
           items: orderItems,
           shippingAddress,
           billingAddress: shippingAddress,
@@ -81,7 +81,7 @@ export default function CartPage() {
 
       } else {
         // For online payment, create payment order first
-        const paymentResponse = await api.post('/api/payments/create-order', {
+        const paymentResponse = await api.post('/payments/create-order', {
           amount: total,
           currency: 'INR',
           receipt: `order_${Date.now()}`
@@ -149,7 +149,7 @@ export default function CartPage() {
               };
 
               // Verify payment with order data
-              const verifyResponse = await api.post('/api/payments/verify-payment', {
+              const verifyResponse = await api.post('/payments/verify-payment', {
                 razorpay_order_id: response.razorpay_order_id,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_signature: response.razorpay_signature,

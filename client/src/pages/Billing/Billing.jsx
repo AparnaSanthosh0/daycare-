@@ -93,12 +93,12 @@ const Billing = () => {
     try {
       setLoading(true);
       const [statsRes, invoicesRes, paymentsRes, parentsRes, childrenRes, tuitionRes] = await Promise.all([
-        api.get('/api/billing/stats').catch(() => ({ data: { totalRevenue: 0, paidInvoices: 0, pendingPayments: 0, overdueAmount: 0 } })),
-        api.get('/api/billing/invoices').catch(() => ({ data: [] })),
-        api.get('/api/billing/payments').catch(() => ({ data: [] })),
-        api.get('/api/admin/parents').catch(() => ({ data: [] })),
-        api.get('/api/children').catch(() => ({ data: [] })),
-        api.get('/api/billing/tuition-rates').catch(() => ({ data: [] }))
+        api.get('/billing/stats').catch(() => ({ data: { totalRevenue: 0, paidInvoices: 0, pendingPayments: 0, overdueAmount: 0 } })),
+        api.get('/billing/invoices').catch(() => ({ data: [] })),
+        api.get('/billing/payments').catch(() => ({ data: [] })),
+        api.get('/admin/parents').catch(() => ({ data: [] })),
+        api.get('/children').catch(() => ({ data: [] })),
+        api.get('/billing/tuition-rates').catch(() => ({ data: [] }))
       ]);
       
       setBillingStats(statsRes.data || { totalRevenue: 0, paidInvoices: 0, pendingPayments: 0, overdueAmount: 0 });
@@ -123,7 +123,7 @@ const Billing = () => {
 
   const generateInvoice = async () => {
     try {
-      const response = await api.post('/api/billing/invoices', invoiceForm);
+      const response = await api.post('/billing/invoices', invoiceForm);
       setInvoices(prevInvoices => [...(Array.isArray(prevInvoices) ? prevInvoices : []), response.data]);
       setInvoiceDialog({ open: false });
       setInvoiceForm({
@@ -143,7 +143,7 @@ const Billing = () => {
 
   const recordPayment = async () => {
     try {
-      const response = await api.post('/api/billing/payments', paymentForm);
+      const response = await api.post('/billing/payments', paymentForm);
       setPayments([...payments, response.data]);
       setPaymentDialog({ open: false });
       setPaymentForm({
@@ -163,7 +163,7 @@ const Billing = () => {
 
   const calculateLateFees = async () => {
     try {
-      await api.post('/api/billing/calculate-late-fees');
+      await api.post('/billing/calculate-late-fees');
       fetchBillingData();
       setSuccess('Late fees calculated successfully');
     } catch (error) {
@@ -174,7 +174,7 @@ const Billing = () => {
 
   const generateFinancialReport = async () => {
     try {
-      const response = await api.get('/api/billing/reports/financial');
+      const response = await api.get('/billing/reports/financial');
       console.log('Financial report:', response.data);
       setSuccess('Financial report generated successfully');
     } catch (error) {

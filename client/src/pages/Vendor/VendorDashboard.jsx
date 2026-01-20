@@ -100,7 +100,7 @@ const VendorDashboard = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const { data } = await api.get('/api/vendor'); // returns approved vendor
+        const { data } = await api.get('/vendor'); // returns approved vendor
         setVendor(data.vendor || null);
       } catch (e) {
         // Keep UI usable with modules even if vendor not loaded
@@ -268,7 +268,7 @@ const VendorDashboard = () => {
                           if (!file) return;
                           const form = new FormData();
                           form.append('image', file);
-                          await api.post('/api/auth/profile/image', form);
+                          await api.post('/auth/profile/image', form);
                           await refreshUser?.();
                           toast.success('Profile image updated');
                         };

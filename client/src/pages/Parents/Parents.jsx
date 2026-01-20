@@ -23,7 +23,7 @@ const Parents = () => {
   const loadParents = async () => {
     try {
       setLoading(true); setError('');
-      const res = await api.get('/api/admin/parents');
+      const res = await api.get('/admin/parents');
       setParents(res.data || []);
     } catch (e) {
       console.error('Load parents error:', e);

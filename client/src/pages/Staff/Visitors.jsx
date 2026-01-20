@@ -12,7 +12,7 @@ export default function Visitors() {
     try {
       setError('');
       setMessage('');
-      await api.post('/api/staff-ops/visitors', visitor);
+      await api.post('/staff-ops/visitors', visitor);
       setMessage('Visitor logged');
     } catch (e) {
       setError(e?.response?.data?.message || 'Failed to log visitor');

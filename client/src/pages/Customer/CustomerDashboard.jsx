@@ -116,7 +116,7 @@ const CustomerDashboard = () => {
 
   const loadCategories = async () => {
     try {
-      const res = await api.get('/api/products/categories/list');
+      const res = await api.get('/products/categories/list');
       setCategories(res.data?.categories || []);
     } catch (e) {
       // Non-fatal
@@ -144,7 +144,7 @@ const CustomerDashboard = () => {
     setLoading(true);
     setError('');
     try {
-      const res = await api.get('/api/products', { params: buildParams() });
+      const res = await api.get('/products', { params: buildParams() });
       setProducts(res.data?.products || []);
       setTotal(res.data?.total || 0);
       // Adjust slider max price dynamically (optional)

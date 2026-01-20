@@ -98,7 +98,7 @@ const DoctorDashboard = () => {
   const fetchChildren = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/doctor/children');
+      const response = await api.get('/doctor/children');
       setChildren(response.data || []);
     } catch (error) {
       console.error('Error fetching children:', error);
@@ -112,8 +112,8 @@ const DoctorDashboard = () => {
   const fetchStatistics = useCallback(async () => {
     try {
       const [doctorStats, appointmentStats] = await Promise.all([
-        api.get('/api/doctor/statistics'),
-        api.get('/api/appointments/stats/doctor')
+        api.get('/doctor/statistics'),
+        api.get('/appointments/stats/doctor')
       ]);
       
       setStatistics({
@@ -130,7 +130,7 @@ const DoctorDashboard = () => {
   // Fetch appointments
   const fetchAppointments = async (status = 'all') => {
     try {
-      const response = await api.get('/api/appointments/doctor', {
+      const response = await api.get('/appointments/doctor', {
         params: { status }
       });
       setAppointments(response.data || []);
@@ -144,7 +144,7 @@ const DoctorDashboard = () => {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        const response = await api.get('/api/doctor/profile');
+        const response = await api.get('/doctor/profile');
         setDoctorProfile(response.data || null);
       } catch (err) {
         console.error('Error fetching doctor profile:', err);

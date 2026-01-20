@@ -68,9 +68,9 @@ const StaffChildAssignment = () => {
       setError('');
       
       const [staffRes, childrenRes, assignmentsRes] = await Promise.all([
-        api.get('/api/admin/staff'),
-        api.get('/api/children'),
-        api.get('/api/children/assignments/staff')
+        api.get('/admin/staff'),
+        api.get('/children'),
+        api.get('/children/assignments/staff')
       ]);
 
       setStaff(staffRes.data || []);

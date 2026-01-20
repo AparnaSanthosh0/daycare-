@@ -38,7 +38,7 @@ const VendorRegister = () => {
   useEffect(() => {
     const load = async () => {
       try {
-        const { data } = await api.get('/api/vendor');
+        const { data } = await api.get('/vendor');
         if (data.vendor) {
           setStatus(data.vendor.status);
         }
@@ -102,7 +102,7 @@ const VendorRegister = () => {
       fd.append('password', form.password);
       fd.append('license', licenseFile);
 
-      const { data } = await api.post('/api/vendor', fd, {
+      const { data } = await api.post('/vendor', fd, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       setSuccess(data.message || 'Registration submitted');

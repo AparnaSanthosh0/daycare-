@@ -18,7 +18,7 @@ const ParentAdmissions = ({ onSubmitted }) => {
 
   const loadAdmissions = async () => {
     try {
-      const res = await api.get('/api/parents/me/admissions');
+      const res = await api.get('/parents/me/admissions');
       setAdmissions(res.data || []);
     } catch (e) {
       console.error('Load admissions error:', e);
@@ -31,7 +31,7 @@ const ParentAdmissions = ({ onSubmitted }) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      await api.post('/api/parents/me/admissions', form);
+      await api.post('/parents/me/admissions', form);
       await loadAdmissions();
       if (onSubmitted) onSubmitted();
       setForm({ childName: '', childDob: '', childGender: 'male', program: 'preschool', medicalInfo: '', emergencyContactName: '', emergencyContactPhone: '' });

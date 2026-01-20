@@ -48,7 +48,7 @@ const PaymentDemo = () => {
       }
 
       // Create order on backend
-      const orderResponse = await api.post('/api/payments/create-order', {
+      const orderResponse = await api.post('/payments/create-order', {
         amount: total,
         currency: 'INR',
         receipt: `order_${Date.now()}`
@@ -103,7 +103,7 @@ const PaymentDemo = () => {
         handler: async function (response) {
           // Verify payment on backend with order data
           try {
-            const verifyResponse = await api.post('/api/payments/verify-payment', {
+            const verifyResponse = await api.post('/payments/verify-payment', {
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,

@@ -93,7 +93,7 @@ const Reports = () => {
   async function loadEnrollment() {
     setLoading(true);
     try {
-      const res = await api.get('/api/reports/enrollment');
+      const res = await api.get('/reports/enrollment');
       setEnrollment(res.data);
       setErrorMsg('');
     } catch (e) {
@@ -118,7 +118,7 @@ const Reports = () => {
   async function loadPerf() {
     setLoading(true);
     try {
-      const res = await api.get('/api/reports/staff-performance');
+      const res = await api.get('/reports/staff-performance');
       setPerf(res.data);
       setErrorMsg('');
     } catch (e) {
@@ -142,7 +142,7 @@ const Reports = () => {
       } else if (customType === 'staffPerformance') {
         if (keyword) filter.minRating = Number(keyword) || undefined;
       }
-      const res = await api.post('/api/reports/custom', { type: customType, filter });
+      const res = await api.post('/reports/custom', { type: customType, filter });
       setCustomData(res.data.data || []);
       setErrorMsg('');
     } catch (e) {
@@ -216,7 +216,7 @@ const Reports = () => {
           </Grid>
           <Grid item xs={12} md={'auto'}>
             <Button variant="text" onClick={async()=>{
-              try { setLoading(true); await api.post('/api/reports/seed-demo'); setErrorMsg(''); }
+              try { setLoading(true); await api.post('/reports/seed-demo'); setErrorMsg(''); }
               catch(e){ setErrorMsg(e?.response?.data?.message || 'Failed to seed demo data'); }
               finally { setLoading(false); }
               // Reload all sections

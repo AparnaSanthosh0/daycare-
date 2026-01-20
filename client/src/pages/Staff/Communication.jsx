@@ -12,7 +12,7 @@ export default function Communication() {
     try {
       setError('');
       setMessage('');
-      await api.post('/api/staff-ops/messages', msg);
+      await api.post('/staff-ops/messages', msg);
       setMessage('Message sent');
       setMsg({ to: 'parent', subject: '', body: '' });
     } catch (e) {

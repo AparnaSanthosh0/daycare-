@@ -123,7 +123,7 @@ export default function Staff() {
     if (!user || !user._id) return;
     try {
       setBillingLoading(true);
-      const response = await api.get('/api/staff/billing');
+      const response = await api.get('/staff/billing');
       setBillingData(response.data.billingData || []);
     } catch (error) {
       console.error('Error fetching billing data:', error);

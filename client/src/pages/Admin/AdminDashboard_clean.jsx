@@ -118,11 +118,11 @@ const AdminDashboard = () => {
     try {
       setLoading(true);
       const [statsRes, staffRes, parentsRes, vendorsRes, admissionsRes] = await Promise.all([
-        api.get('/api/admin/dashboard/stats'),
-        api.get('/api/admin/staff/pending'),
-        api.get('/api/admin/parents/pending'),
-        api.get('/api/admin/vendors/pending'),
-        api.get('/api/admin/admissions/pending')
+        api.get('/admin/dashboard/stats'),
+        api.get('/admin/staff/pending'),
+        api.get('/admin/parents/pending'),
+        api.get('/admin/vendors/pending'),
+        api.get('/admin/admissions/pending')
       ]);
       
       setStats(statsRes.data);
@@ -141,7 +141,7 @@ const AdminDashboard = () => {
   // Fetch staff assignments
   const fetchStaffAssignments = async () => {
     try {
-      const response = await api.get('/api/children/assignments/staff');
+      const response = await api.get('/children/assignments/staff');
       setStaffAssignments(response.data.staffAssignments || []);
     } catch (error) {
       console.error('Error fetching staff assignments:', error);
@@ -152,8 +152,8 @@ const AdminDashboard = () => {
   const fetchChildrenAndStaff = async () => {
     try {
       const [childrenRes, staffRes] = await Promise.all([
-        api.get('/api/children'),
-        api.get('/api/children/available-staff')
+        api.get('/children'),
+        api.get('/children/available-staff')
       ]);
       setAllChildren(childrenRes.data || []);
       setAllStaff(staffRes.data || []);

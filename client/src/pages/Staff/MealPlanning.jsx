@@ -73,7 +73,7 @@ export default function MealPlanning() {
 
   const loadMealPlans = async () => {
     try {
-      const { data } = await api.get('/api/meal-plans');
+      const { data } = await api.get('/meal-plans');
       setMealPlans(data || []);
     } catch (error) {
       console.error('Error loading meal plans:', error);
@@ -135,13 +135,13 @@ export default function MealPlanning() {
           notes: formData.notes,
           status: 'draft'
         };
-        await api.post('/api/meal-plans', dailyPlanData);
+        await api.post('/meal-plans', dailyPlanData);
       } else {
         if (!formData.title || !formData.weekOf) {
           setError('Title and week of are required');
           return;
         }
-        await api.post('/api/meal-plans', {
+        await api.post('/meal-plans', {
           ...formData,
           status: 'draft'
         });
@@ -188,7 +188,7 @@ export default function MealPlanning() {
             notes: formData.notes
           };
           console.log('Submitting daily meal plan:', JSON.stringify(dailyPlanData, null, 2));
-          const response = await api.post('/api/meal-plans', dailyPlanData);
+          const response = await api.post('/meal-plans', dailyPlanData);
           const newPlanId = response.data.mealPlan._id;
           await api.post(`/api/meal-plans/${newPlanId}/submit`);
         } else {
@@ -196,7 +196,7 @@ export default function MealPlanning() {
             setError('Title and week of are required');
             return;
           }
-          const response = await api.post('/api/meal-plans', formData);
+          const response = await api.post('/meal-plans', formData);
           const newPlanId = response.data.mealPlan._id;
           await api.post(`/api/meal-plans/${newPlanId}/submit`);
         }

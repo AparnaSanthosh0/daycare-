@@ -31,7 +31,7 @@ export default function Wishlist() {
   React.useEffect(() => {
     const load = async () => {
       try {
-        const { data } = await api.get('/api/products', { params: { all: true } });
+        const { data } = await api.get('/products', { params: { all: true } });
         const mapped = (data.products || []).map((p) => ({
           id: p._id,
           name: p.name,

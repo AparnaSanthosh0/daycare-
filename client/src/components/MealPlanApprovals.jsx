@@ -44,7 +44,7 @@ const MealPlanApprovals = () => {
   const loadPendingPlans = async () => {
     try {
       setLoading(true);
-      const { data } = await api.get('/api/meal-plans/pending');
+      const { data } = await api.get('/meal-plans/pending');
       setPendingPlans(data || []);
     } catch (error) {
       console.error('Error loading pending meal plans:', error);

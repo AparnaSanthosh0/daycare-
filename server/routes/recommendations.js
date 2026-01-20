@@ -586,7 +586,7 @@ router.get('/available-interests', async (req, res) => {
 router.get('/stats', auth, async (req, res) => {
   try {
     // Check if user is admin
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.userId);
     if (user.role !== 'admin') {
       return res.status(403).json({ message: 'Access denied. Admin role required.' });
     }

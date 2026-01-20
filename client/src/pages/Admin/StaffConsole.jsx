@@ -40,7 +40,7 @@ const StaffConsole = () => {
       setLoading(true);
       setError('');
       
-      const assignmentsRes = await api.get('/api/children/assignments/staff');
+      const assignmentsRes = await api.get('/children/assignments/staff');
       setAssignments(assignmentsRes.data?.staffAssignments || []);
     } catch (err) {
       console.error('Error fetching data:', err);

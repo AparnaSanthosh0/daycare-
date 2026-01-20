@@ -44,7 +44,7 @@ const ParentNotifications = () => {
     try {
       setLoading(true);
       setError('');
-      const response = await api.get('/api/recommendations/received');
+      const response = await api.get('/recommendations/received');
       setRecommendations(response.data || []);
     } catch (err) {
       console.error('Error fetching recommendations:', err);

@@ -35,14 +35,14 @@ const Families = () => {
       setLoading(true); setError('');
       if (user?.role === 'admin' || user?.role === 'staff') {
         const [pRes, cRes] = await Promise.all([
-          api.get('/api/admin/parents'),
-          api.get('/api/children')
+          api.get('/admin/parents'),
+          api.get('/children')
         ]);
         setParents(Array.isArray(pRes.data) ? pRes.data : (pRes.data || []));
         setChildren(Array.isArray(cRes.data) ? cRes.data : (cRes.data.children || []));
       } else if (user?.role === 'parent') {
         const [childrenRes] = await Promise.all([
-          api.get('/api/parents/me/children')
+          api.get('/parents/me/children')
         ]);
         setParents([user]);
         setChildren(Array.isArray(childrenRes.data) ? childrenRes.data : (childrenRes.data.children || []));
@@ -222,7 +222,7 @@ const Families = () => {
                 emergencyContactName: admissionForm.emergencyContactName,
                 emergencyContactPhone: admissionForm.emergencyContactPhone
               };
-              await api.post('/api/parents/me/admissions', payload);
+              await api.post('/parents/me/admissions', payload);
               setAdmissionMsg('Admission submitted for admin approval.');
               setAdmissionForm({ childName: '', childDob: '', childGender: 'male', program: 'preschool', medicalInfo: '', emergencyContactName: '', emergencyContactPhone: '' });
             } catch (e) {

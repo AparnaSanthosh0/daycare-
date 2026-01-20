@@ -41,7 +41,7 @@ const PurchasePrediction = () => {
     setPredictionResult(null);
 
     try {
-      const response = await api.post('/api/purchase-prediction/predict', {
+      const response = await api.post('/purchase-prediction/predict', {
         category: formData.category,
         price: parseFloat(formData.price),
         discount: parseFloat(formData.discount),

@@ -20,11 +20,9 @@ import {
 import {
   LocalShipping,
   DirectionsBike,
-  CheckCircle,
   MonetizationOn,
   Schedule,
   Place,
-  AccessTime,
   ErrorOutline,
   DoneAll,
   AccountCircle,
@@ -67,7 +65,11 @@ const DeliveryDashboard = () => {
     } catch (err) {
       console.error('❌ Error fetching available assignments:', err);
       console.error('❌ Error response:', err.response);
-      setError(err.response?.data?.message || 'Failed to load available assignments');
+      if (err.response?.status === 403) {
+        setError('Access denied. Please login as a delivery agent.');
+      } else {
+        setError(err.response?.data?.message || 'Failed to load available assignments');
+      }
     }
   }, []);
 

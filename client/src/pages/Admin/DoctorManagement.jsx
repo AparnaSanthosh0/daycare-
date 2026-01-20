@@ -83,7 +83,7 @@ const DoctorManagement = () => {
   const fetchDoctors = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/api/admin/doctors');
+      const response = await api.get('/admin/doctors');
       setDoctors(response.data || []);
     } catch (error) {
       console.error('Error fetching doctors:', error);
@@ -96,7 +96,7 @@ const DoctorManagement = () => {
   // Fetch children for assignment
   const fetchChildren = async () => {
     try {
-      const response = await api.get('/api/children');
+      const response = await api.get('/children');
       setAllChildren(response.data || []);
     } catch (error) {
       console.error('Error fetching children:', error);
@@ -659,7 +659,7 @@ const DoctorManagement = () => {
                     formData.append('username', doctorForm.username);
                   }
                   
-                  const response = await api.post('/api/admin/doctors', formData);
+                  const response = await api.post('/admin/doctors', formData);
                   setSuccess('Doctor created successfully. Credentials have been sent to the doctor\'s email.');
                   // Show username and password
                   if (response.data.username && response.data.tempPassword) {

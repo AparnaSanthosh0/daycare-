@@ -93,7 +93,7 @@ const EcommerceProfile = () => {
       setSaving(true);
       setError('');
       setMessage('');
-      await api.put('/api/auth/profile', form);
+      await api.put('/auth/profile', form);
       await refreshUser?.();
       setMessage('Profile updated successfully');
     } catch (e) {
@@ -211,7 +211,7 @@ const EcommerceProfile = () => {
         setMessage('');
 
         // Send review to backend (will be forwarded to vendor and admin)
-        await api.post('/api/reviews', {
+        await api.post('/reviews', {
           productId,
           rating,
           title,

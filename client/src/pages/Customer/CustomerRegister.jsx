@@ -44,7 +44,7 @@ const CustomerRegister = () => {
     if (!phone) return setError('Please enter your mobile number');
     setLoading(true);
     try {
-      const res = await api.post('/api/customers/otp/send', { email, phone });
+      const res = await api.post('/customers/otp/send', { email, phone });
       setPreviewUrl(res.data?.previewUrl || '');
       setStep('verify');
       setResendIn(30);
@@ -64,7 +64,7 @@ const CustomerRegister = () => {
     try {
       const [firstName, ...rest] = fullName.trim().split(/\s+/);
       const lastName = rest.join(' ');
-      const res = await api.post('/api/customers/otp/verify', { email, code: otp, phone, firstName, lastName });
+      const res = await api.post('/customers/otp/verify', { email, code: otp, phone, firstName, lastName });
       const { token } = res.data || {};
       if (!token) throw new Error('Missing token');
       localStorage.setItem('token', token);

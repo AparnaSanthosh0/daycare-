@@ -140,13 +140,13 @@ router.post('/:id/assign-manual', auth, async (req, res) => {
       return res.status(400).json({ message: 'Assignment already assigned or completed' });
     }
 
-    const agent = await User.findOne({ _id: agentId, 'staff.role': 'delivery_agent' });
+    const agent = await User.findOne({ _id: agentId, role: 'staff', 'staff.staffType': 'delivery' });
     if (!agent) {
       return res.status(404).json({ message: 'Delivery agent not found' });
     }
 
     // Check availability
-    if (!agent.staff.availability || agent.staff.availability !== 'available') {
+    if (!agent.availability || agent.availability !== 'available') {
       return res.status(400).json({ message: 'Agent is not available' });
     }
 
@@ -208,9 +208,9 @@ router.post('/:id/auto-assign', auth, async (req, res) => {
  */
 router.get('/available', auth, async (req, res) => {
   try {
-    const agent = await User.findById(req.user.id);
+    const agent = await User.findById(req.user.userId);
 
-    if (!agent || !agent.staff || agent.staff.role !== 'delivery_agent') {
+    if (!agent || agent.role !== 'staff' || agent.staff?.staffType !== 'delivery') {
       return res.status(403).json({ message: 'Access denied. Delivery agents only.' });
     }
 
@@ -222,10 +222,10 @@ router.get('/available', auth, async (req, res) => {
 
     // Filter by agent's delivery zones
     const availableAssignments = assignments.filter(assignment => {
-      if (!agent.staff.deliveryArea || agent.staff.deliveryArea.length === 0) {
+      if (!agent.deliveryArea || agent.deliveryArea.length === 0) {
         return true; // No zone restriction
       }
-      return agent.staff.deliveryArea.some(zone => 
+      return agent.deliveryArea.some(zone => 
         assignment.deliveryLocation.zone === zone
       );
     });
@@ -249,7 +249,7 @@ router.get('/my-assignments', auth, async (req, res) => {
   try {
     const { status } = req.query;
 
-    const query = { deliveryAgent: req.user.id };
+    const query = { deliveryAgent: req.user.userId };
     if (status) {
       query.status = status;
     } else {
@@ -283,7 +283,7 @@ router.put('/:id/accept', auth, async (req, res) => {
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
-    if (assignment.deliveryAgent?.toString() !== req.user.id) {
+    if (assignment.deliveryAgent?.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'This assignment is not assigned to you' });
     }
 
@@ -321,7 +321,7 @@ router.put('/:id/reject', auth, async (req, res) => {
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
-    if (assignment.deliveryAgent?.toString() !== req.user.id) {
+    if (assignment.deliveryAgent?.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'This assignment is not assigned to you' });
     }
 
@@ -352,7 +352,7 @@ router.put('/:id/pickup', auth, async (req, res) => {
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
-    if (assignment.deliveryAgent?.toString() !== req.user.id) {
+    if (assignment.deliveryAgent?.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
@@ -394,7 +394,7 @@ router.put('/:id/location', auth, async (req, res) => {
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
-    if (assignment.deliveryAgent?.toString() !== req.user.id) {
+    if (assignment.deliveryAgent?.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
@@ -428,7 +428,7 @@ router.put('/:id/deliver', auth, async (req, res) => {
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
-    if (assignment.deliveryAgent?.toString() !== req.user.id) {
+    if (assignment.deliveryAgent?.toString() !== req.user.userId) {
       return res.status(403).json({ message: 'Unauthorized' });
     }
 
@@ -460,12 +460,12 @@ router.put('/:id/deliver', auth, async (req, res) => {
     // Update agent rating
     const agent = await User.findById(assignment.deliveryAgent);
     if (agent && customerRating) {
-      const totalDeliveries = agent.staff.totalDeliveries || 1;
-      const currentRating = agent.staff.rating || 4.5;
+      const totalDeliveries = agent.totalDeliveries || 1;
+      const currentRating = agent.rating || 4.5;
       const newRating = ((currentRating * (totalDeliveries - 1)) + customerRating) / totalDeliveries;
       
       await User.findByIdAndUpdate(agent._id, {
-        'staff.rating': newRating
+        rating: newRating
       });
     }
 
@@ -496,7 +496,7 @@ router.get('/:id', auth, async (req, res) => {
 
     // Check permission
     const user = req.user;
-    const isAgent = assignment.deliveryAgent?._id.toString() === user.id;
+    const isAgent = assignment.deliveryAgent?._id.toString() === user.userId;
     const isVendor = assignment.vendor._id.toString() === user.vendorId;
     const isAdmin = user.role === 'admin';
 
