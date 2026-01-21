@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -51,6 +51,46 @@ import api from '../../config/api';
 import DaycareLocationMap from '../../components/Maps/DaycareLocationMap';
 import VoiceAssistant from '../../VoiceAssistant';
 
+const calculateAgeYears = (dob) => {
+  if (!dob) return null;
+  const diffMs = Date.now() - new Date(dob).getTime();
+  return Math.max(0, Math.floor(diffMs / (365.25 * 24 * 60 * 60 * 1000)));
+};
+
+const resolveChildId = (childEntity) => {
+  if (!childEntity) return null;
+  if (typeof childEntity === 'string') return childEntity;
+  if (childEntity._id) return childEntity._id;
+  if (childEntity.child) return resolveChildId(childEntity.child);
+  return null;
+};
+
+const resolveChildProfile = (childEntity) => {
+  if (!childEntity) return null;
+  if (childEntity.child) return childEntity.child;
+  return childEntity;
+};
+
+const getChildDisplayName = (childEntity) => {
+  const profile = resolveChildProfile(childEntity);
+  if (!profile) return 'Child';
+  if (profile.firstName || profile.lastName) {
+    return [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || 'Child';
+  }
+  return profile.name || 'Child';
+};
+
+const parseTimeStringToToday = (timeStr) => {
+  if (!timeStr || typeof timeStr !== 'string') return null;
+  const now = new Date();
+  const baseDate = now.toDateString();
+  const normalized = timeStr.includes('AM') || timeStr.includes('PM') || timeStr.includes('am') || timeStr.includes('pm')
+    ? `${baseDate} ${timeStr}`
+    : `${baseDate} ${timeStr}:00`;
+  const parsed = new Date(normalized);
+  return isNaN(parsed.getTime()) ? null : parsed;
+};
+
 const DriverDashboard = () => {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
@@ -83,10 +123,11 @@ const DriverDashboard = () => {
   const fetchRoutes = async () => {
     try {
       const response = await api.get('/driver/routes');
-      setRoutes(response.data);
+      setRoutes(response.data || []);
     } catch (error) {
       console.error('Error fetching routes:', error);
       setError('Failed to load routes');
+      setRoutes([]);
     }
   };
 
@@ -94,10 +135,11 @@ const DriverDashboard = () => {
   const fetchTodayTrips = async () => {
     try {
       const response = await api.get('/driver/trips/today');
-      setTodayTrips(response.data);
+      setTodayTrips(response.data || []);
     } catch (error) {
       console.error('Error fetching today trips:', error);
       setError('Failed to load today\'s trips');
+      setTodayTrips([]);
     } finally {
       setLoading(false);
     }
@@ -281,6 +323,35 @@ const DriverDashboard = () => {
   // Primary assignment (for dashboards with a single driver/route like Kottayam)
   const primaryRoute = routes[0] || null;
   const primaryChild = primaryRoute?.assignedChildren?.[0] || null;
+  const primaryChildAge = primaryChild?.child
+    ? (calculateAgeYears(primaryChild.child.dateOfBirth) ?? primaryChild.child.age ?? '--')
+    : '--';
+  const primaryGuardians = primaryChild?.authorizedGuardians?.length
+    ? primaryChild.authorizedGuardians
+    : primaryChild?.child?.parent
+    ? [
+        {
+          name:
+            primaryChild.child.parent.name ||
+            [primaryChild.child.parent.firstName, primaryChild.child.parent.lastName]
+              .filter(Boolean)
+              .join(' '),
+          phone: primaryChild.child.parent.phone || primaryChild.child.parent.contactNumber,
+          relationship: primaryChild.child.parent.relationship || 'Parent'
+        }
+      ]
+    : [];
+  const primaryGuardian = primaryGuardians[0] || null;
+  const primaryChildPickupArea =
+    primaryChild?.pickupAddress?.street ||
+    primaryChild?.pickupAddress?.city ||
+    primaryChild?.child?.address?.street ||
+    primaryRoute?.region ||
+    'Pickup area TBD';
+  const primaryChildDropArea =
+    primaryChild?.dropoffAddress?.street ||
+    primaryChild?.dropoffAddress?.city ||
+    'Tiny Tots Daycare';
 
   // Simple pickup anomaly & context-aware alert helpers based on today's active trip
   const anomalyAlerts = [];
@@ -327,6 +398,22 @@ const DriverDashboard = () => {
       });
     }
   }
+
+  const primaryTripChild = activeTrip?.children?.find((childTrip) => {
+    const childId = childTrip.child?._id || childTrip.child;
+    return childId && primaryChild?.child?._id && childId.toString() === primaryChild.child._id.toString();
+  });
+  const primaryChildOtpStatus = primaryTripChild
+    ? primaryTripChild.boardingStatus === 'otp-verified'
+      ? 'OTP Verified'
+      : 'OTP Pending'
+    : 'Awaiting Trip';
+  const primaryOtpVisuals =
+    primaryChildOtpStatus === 'OTP Verified'
+      ? { bg: '#e8f5e9', color: '#2e7d32' }
+      : primaryChildOtpStatus === 'OTP Pending'
+      ? { bg: '#fff3e0', color: '#ef6c00' }
+      : { bg: '#e3f2fd', color: '#1976d2' };
 
   const handleVaOpen = () => setVaOpen(true);
   const handleVaClose = () => setVaOpen(false);
@@ -515,6 +602,174 @@ const DriverDashboard = () => {
               </Paper>
             </Grid>
           </Grid>
+
+          {primaryRoute && primaryChild && (
+            <Paper
+              sx={{
+                p: 3,
+                mb: 3,
+                borderRadius: 2,
+                boxShadow: '0 4px 20px rgba(20,184,166,0.1)',
+                border: '1px solid rgba(20,184,166,0.2)'
+              }}
+            >
+              <Grid container spacing={3} alignItems="stretch">
+                <Grid item xs={12} md={5}>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
+                    Assigned Route
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700, mb: 1 }}>
+                    {primaryRoute.routeName}
+                  </Typography>
+                  <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1.5 }}>
+                    <Chip
+                      label={primaryRoute.region || 'Route region'}
+                      size="small"
+                      sx={{ bgcolor: '#e0f2f1', color: '#00695c', fontWeight: 600 }}
+                    />
+                    {primaryRoute.pickupWindow && (
+                      <Chip
+                        label={`Pickup window • ${primaryRoute.pickupWindow}`}
+                        size="small"
+                        sx={{ bgcolor: '#f0fdfa', color: '#0d9488', fontWeight: 600 }}
+                      />
+                    )}
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    {primaryRoute.stops?.length || 0} stops • {primaryRoute.assignedChildren?.length || 0} child •{' '}
+                    {primaryRoute.vehicle?.vehicleType || 'Vehicle'} ({primaryRoute.vehicle?.vehicleNumber || 'N/A'})
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Route type: {primaryRoute.routeType?.replace(/-/g, ' ') || 'Pickup'}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={4}>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
+                    Assigned Child
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    {primaryChild.child?.firstName || 'Child'} {primaryChild.child?.lastName || ''}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    Age: {primaryChildAge === '--' ? '--' : `${primaryChildAge} yrs`}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Pickup: {primaryChildPickupArea}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Drop to: {primaryChildDropArea}
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={3}>
+                  <Typography variant="overline" color="text.secondary" sx={{ letterSpacing: 1 }}>
+                    Guardian & OTP
+                  </Typography>
+                  {primaryGuardian ? (
+                    <Stack spacing={0.5} sx={{ mb: 1.5 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                        {primaryGuardian.name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {primaryGuardian.relationship || 'Guardian'}
+                      </Typography>
+                      {primaryGuardian.phone && (
+                        <Stack direction="row" spacing={0.5} alignItems="center">
+                          <Phone sx={{ fontSize: 16, color: '#14B8A6' }} />
+                          <Typography variant="body2" sx={{ color: '#14B8A6' }}>
+                            {primaryGuardian.phone}
+                          </Typography>
+                        </Stack>
+                      )}
+                    </Stack>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                      Guardian info not available
+                    </Typography>
+                  )}
+                  <Chip
+                    label={primaryChildOtpStatus}
+                    size="small"
+                    sx={{
+                      bgcolor: primaryOtpVisuals.bg,
+                      color: primaryOtpVisuals.color,
+                      fontWeight: 700
+                    }}
+                  />
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
+
+          <Box sx={{ mb: 4 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+              Smart Pickup Intelligence Stack
+            </Typography>
+            <Grid container spacing={2.5}>
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 2.5, borderRadius: 2, bgcolor: '#fff8e1', height: '100%' }}>
+                  <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ mb: 1 }}>
+                    <Route sx={{ color: '#ef6c00' }} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#ef6c00' }}>
+                      Pickup Pattern Anomaly Detection
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    • Learns the normal pickup routine for this driver and route.
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    • Alerts the admin instantly if the route deviates or an unexpected stop occurs.
+                  </Typography>
+                  <Chip
+                    label="Unique for daycare • Easy rule + ML"
+                    size="small"
+                    sx={{ mt: 1.5, bgcolor: '#ffe0b2', color: '#bf360c', fontWeight: 600 }}
+                  />
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 2.5, borderRadius: 2, bgcolor: '#e3f2fd', height: '100%' }}>
+                  <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ mb: 1 }}>
+                    <QrCodeScanner sx={{ color: '#1976d2' }} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1976d2' }}>
+                      OTP-Based Smart Pickup
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    • Every pickup/drop-off is confirmed only via OTP for foolproof handovers.
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    • Drivers use Generate / Verify OTP actions to keep the flow simple yet highly secure.
+                  </Typography>
+                  <Chip
+                    label="Simple • Highly secure • Attractive"
+                    size="small"
+                    sx={{ mt: 1.5, bgcolor: '#bbdefb', color: '#0d47a1', fontWeight: 600 }}
+                  />
+                </Paper>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <Paper sx={{ p: 2.5, borderRadius: 2, bgcolor: '#e8f5e9', height: '100%' }}>
+                  <Stack direction="row" spacing={1.5} alignItems="flex-start" sx={{ mb: 1 }}>
+                    <Assessment sx={{ color: '#2e7d32' }} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#2e7d32' }}>
+                      Context-Aware Alerts
+                    </Typography>
+                  </Stack>
+                  <Typography variant="body2" color="text.secondary">
+                    • Alerts are enriched with live traffic, weather and time-of-day cues.
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    • Keeps the dashboard looking intelligent while staying easy to reason about.
+                  </Typography>
+                  <Chip
+                    label="Looks intelligent • Easy logic"
+                    size="small"
+                    sx={{ mt: 1.5, bgcolor: '#c8e6c9', color: '#1b5e20', fontWeight: 600 }}
+                  />
+                </Paper>
+              </Grid>
+            </Grid>
+          </Box>
 
           {/* Today's Schedule */}
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}>
@@ -853,9 +1108,10 @@ const DriverDashboard = () => {
                   <TableBody>
                     {routes.map((route) =>
                       route.assignedChildren?.map((child) => {
-                        const childAge = child.child?.dateOfBirth 
-                          ? Math.floor((new Date() - new Date(child.child.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000))
-                          : child.child?.age || '--';
+                        const calculatedAge = child.child?.dateOfBirth
+                          ? calculateAgeYears(child.child.dateOfBirth)
+                          : null;
+                        const childAge = calculatedAge ?? child.child?.age ?? '--';
                         const parentName = child.child?.parent?.firstName && child.child?.parent?.lastName
                           ? `${child.child.parent.firstName} ${child.child.parent.lastName}`
                           : child.child?.parent?.name || 'N/A';
@@ -867,7 +1123,7 @@ const DriverDashboard = () => {
                             <TableCell sx={{ fontWeight: 500 }}>
                               {child.child?.firstName || 'Unknown'} {child.child?.lastName || ''}
                             </TableCell>
-                            <TableCell>{childAge} yrs</TableCell>
+                            <TableCell>{childAge === '--' ? '--' : `${childAge} yrs`}</TableCell>
                             <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                               {childAddress}
                             </TableCell>

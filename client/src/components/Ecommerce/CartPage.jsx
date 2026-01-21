@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Container,
@@ -36,9 +36,59 @@ export default function CartPage() {
   const [placingOrder, setPlacingOrder] = useState(false);
   const [orderMessage, setOrderMessage] = useState('');
   const [orderNumber, setOrderNumber] = useState('');
+  const [productStocks, setProductStocks] = useState({}); // { productId: stockQty }
+  const [stockErrors, setStockErrors] = useState({}); // { itemKey: errorMessage }
 
   const tax = cartSubtotal * 0.08;
   const total = cartSubtotal + tax;
+
+  // Fetch fresh stock data for all products in cart
+  useEffect(() => {
+    const fetchStockData = async () => {
+      if (cartItems.length === 0) return;
+      
+      try {
+        const productIds = cartItems.map(item => item.id).filter(Boolean);
+        if (productIds.length === 0) return;
+
+        // Fetch all products to get current stock
+        const { data } = await api.get('/products', { params: { all: true } });
+        const products = data?.products || [];
+        
+        const stocks = {};
+        const errors = {};
+        
+        products.forEach(product => {
+          if (productIds.includes(product._id)) {
+            stocks[product._id] = product.stockQty ?? 0;
+          }
+        });
+
+        // Validate cart items against fresh stock
+        cartItems.forEach(item => {
+          const currentStock = stocks[item.id] ?? 0;
+          if (item.quantity > currentStock) {
+            errors[item.key] = `Only ${currentStock} available in stock. Please reduce quantity.`;
+            // Auto-correct quantity to available stock
+            if (currentStock > 0) {
+              updateQuantity(item.key, currentStock);
+            } else {
+              // Remove item if out of stock
+              removeFromCart(item.key);
+            }
+          }
+        });
+
+        setProductStocks(stocks);
+        setStockErrors(errors);
+      } catch (error) {
+        console.error('Failed to fetch stock data:', error);
+      }
+    };
+
+        fetchStockData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartItems.length]); // Re-fetch when cart items change
 
   const handlePlaceOrder = async () => {
     if (!user) {
@@ -254,10 +304,69 @@ export default function CartPage() {
                         <Chip size="small" label={`Size: ${item.variant}`} sx={{ mt: 0.5 }} />
                       )}
                       <Typography variant="body2" color="text.secondary">₹{item.price.toFixed(2)}</Typography>
+                      
+                      {/* Stock information */}
+                      {(() => {
+                        const currentStock = productStocks[item.id] ?? item.stockQty ?? 0;
+                        const isOutOfStock = currentStock <= 0;
+                        const exceedsStock = item.quantity > currentStock;
+                        
+                        if (isOutOfStock) {
+                          return (
+                            <Alert severity="error" sx={{ mt: 1, py: 0.5 }}>
+                              <Typography variant="caption" fontWeight={600}>
+                                Out of Stock - This item will be removed
+                              </Typography>
+                            </Alert>
+                          );
+                        }
+                        
+                        if (exceedsStock) {
+                          return (
+                            <Alert severity="warning" sx={{ mt: 1, py: 0.5 }}>
+                              <Typography variant="caption" fontWeight={600}>
+                                Only {currentStock} available in stock. Quantity adjusted.
+                              </Typography>
+                            </Alert>
+                          );
+                        }
+                        
+                        if (currentStock <= 5) {
+                          return (
+                            <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 0.5 }}>
+                              Only {currentStock} left in stock
+                            </Typography>
+                          );
+                        }
+                        
+                        return null;
+                      })()}
+                      
+                      {stockErrors[item.key] && (
+                        <Alert severity="error" sx={{ mt: 1, py: 0.5 }}>
+                          <Typography variant="caption">{stockErrors[item.key]}</Typography>
+                        </Alert>
+                      )}
+                      
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
                         <Button size="small" variant="outlined" onClick={() => updateQuantity(item.key, Math.max(1, item.quantity - 1))}>-</Button>
                         <Typography>{item.quantity}</Typography>
-                        <Button size="small" variant="outlined" onClick={() => updateQuantity(item.key, item.quantity + 1)}>+</Button>
+                        <Button 
+                          size="small" 
+                          variant="outlined" 
+                          onClick={() => {
+                            const currentStock = productStocks[item.id] ?? item.stockQty ?? 0;
+                            if (item.quantity + 1 <= currentStock) {
+                              updateQuantity(item.key, item.quantity + 1);
+                            }
+                          }}
+                          disabled={(() => {
+                            const currentStock = productStocks[item.id] ?? item.stockQty ?? 0;
+                            return item.quantity >= currentStock || currentStock <= 0;
+                          })()}
+                        >
+                          +
+                        </Button>
                       </Box>
                     </Box>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -327,13 +436,36 @@ export default function CartPage() {
                     </FormControl>
                   </Box>
 
+                  {/* Check for out of stock items before allowing checkout */}
+                  {(() => {
+                    const hasOutOfStock = cartItems.some(item => {
+                      const currentStock = productStocks[item.id] ?? item.stockQty ?? 0;
+                      return currentStock <= 0 || item.quantity > currentStock;
+                    });
+                    
+                    if (hasOutOfStock) {
+                      return (
+                        <Alert severity="error" sx={{ mb: 2 }}>
+                          <Typography variant="body2">
+                            Some items in your cart are out of stock or exceed available quantity. Please review your cart.
+                          </Typography>
+                        </Alert>
+                      );
+                    }
+                    
+                    return null;
+                  })()}
+                  
                   {user ? (
                     <Button
                       fullWidth
                       variant="contained"
                       color="success"
                       onClick={handlePlaceOrder}
-                      disabled={placingOrder}
+                      disabled={placingOrder || cartItems.some(item => {
+                        const currentStock = productStocks[item.id] ?? item.stockQty ?? 0;
+                        return currentStock <= 0 || item.quantity > currentStock;
+                      })}
                       sx={{ py: 1.5 }}
                     >
                       {placingOrder ? 'Placing Order...' : 'Place Order'}

@@ -108,8 +108,16 @@ router.post('/verify-payment', async (req, res) => {
               continue;
             }
 
-            if (!product.inStock) {
+            // Check stock quantity
+            const availableStock = product.stockQty ?? 0;
+            if (availableStock <= 0 || !product.inStock) {
               console.warn(`❌ Product ${product.name} is out of stock, skipping`);
+              continue;
+            }
+
+            // Check if requested quantity exceeds available stock
+            if (item.quantity > availableStock) {
+              console.warn(`❌ Insufficient stock for ${product.name}. Only ${availableStock} available, but ${item.quantity} requested.`);
               continue;
             }
 
@@ -190,6 +198,28 @@ router.post('/verify-payment', async (req, res) => {
 
             createdOrder = await order.save();
             console.log(`✅ Order created successfully: ${createdOrder.orderNumber} (${createdOrder._id})`);
+
+            // Decrement stock for each product in the order
+            for (const item of orderData.items) {
+              const product = await Product.findById(item.product);
+              if (product) {
+                const newStockQty = Math.max(0, (product.stockQty ?? 0) - item.quantity);
+                product.stockQty = newStockQty;
+                product.inStock = newStockQty > 0;
+                
+                // Add stock update to history
+                product.vendorStockUpdates.push({
+                  updatedAt: new Date(),
+                  previousStock: product.stockQty + item.quantity,
+                  newStock: newStockQty,
+                  updatedBy: product.vendor || null,
+                  reason: `Order ${createdOrder.orderNumber || createdOrder._id} - Sold ${item.quantity} units`
+                });
+                
+                await product.save();
+                console.log(`✅ Stock updated for ${product.name}: ${product.stockQty + item.quantity} → ${newStockQty}`);
+              }
+            }
 
             // Initialize vendor confirmations for vendor dashboard visibility
             if (Array.from(vendors).length > 0) {

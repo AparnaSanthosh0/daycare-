@@ -32,8 +32,17 @@ router.post('/', auth, async (req, res) => {
         return res.status(400).json({ message: `Product ${item.product} not found` });
       }
 
-      if (!product.inStock) {
+      // Check stock quantity
+      const availableStock = product.stockQty ?? 0;
+      if (availableStock <= 0 || !product.inStock) {
         return res.status(400).json({ message: `Product ${product.name} is out of stock` });
+      }
+
+      // Check if requested quantity exceeds available stock
+      if (item.quantity > availableStock) {
+        return res.status(400).json({ 
+          message: `Insufficient stock for ${product.name}. Only ${availableStock} available, but ${item.quantity} requested.` 
+        });
       }
 
       const itemTotal = product.price * item.quantity;
@@ -111,6 +120,27 @@ router.post('/', auth, async (req, res) => {
     });
 
     await order.save();
+
+    // Decrement stock for each product in the order
+    for (const item of items) {
+      const product = await Product.findById(item.product);
+      if (product) {
+        const newStockQty = Math.max(0, (product.stockQty ?? 0) - item.quantity);
+        product.stockQty = newStockQty;
+        product.inStock = newStockQty > 0;
+        
+        // Add stock update to history
+        product.vendorStockUpdates.push({
+          updatedAt: new Date(),
+          previousStock: product.stockQty + item.quantity,
+          newStock: newStockQty,
+          updatedBy: product.vendor || null,
+          reason: `Order ${order.orderNumber || order._id} - Sold ${item.quantity} units`
+        });
+        
+        await product.save();
+      }
+    }
 
     // Update customer stats
     await Customer.findByIdAndUpdate(customerId, {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -55,6 +55,54 @@ import api from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
 import VoiceAssistant from '../../VoiceAssistant';
 
+const asArray = (value) => (Array.isArray(value) ? value : []);
+const safeTrim = (value) => (typeof value === 'string' ? value.trim() : '');
+const KNOWN_MEDICATION_TOKENS = [
+  // pain/fever
+  'paracetamol',
+  'acetaminophen',
+  'ibuprofen',
+  // antibiotics
+  'amoxicillin',
+  'azithromycin',
+  'cefixime',
+  'ceftriaxone',
+  'cephalexin',
+  'augmentin',
+  // allergy/cold
+  'cetirizine',
+  'loratadine',
+  'diphenhydramine',
+  // respiratory
+  'salbutamol',
+  'albuterol',
+  'budesonide',
+  // GI
+  'ors',
+  'oral rehydration',
+  'ondansetron',
+  // common “class” words that your backend demo logic understands
+  'antibiotic',
+  'antihistamine'
+];
+
+const KNOWN_SYMPTOM_KEYWORDS = [
+  // fever
+  'fever', 'temperature', 'hot', 'burning', 'pyrexia',
+  // respiratory
+  'cough', 'coughing', 'wheeze', 'wheezing', 'breathing', 'shortness', 'sneezing', 'sneeze',
+  'runny nose', 'congestion', 'nasal', 'asthma', 'respiratory',
+  // GI
+  'stomach', 'vomit', 'vomiting', 'nausea', 'diarrhea', 'diarrhoea', 'constipation', 'abdominal', 'belly',
+  // skin
+  'rash', 'rashy', 'itching', 'itchy', 'red', 'swelling', 'swollen', 'hives', 'bumps',
+  // general
+  'pain', 'ache', 'aching', 'headache', 'sore', 'throat', 'ear', 'tired', 'fatigue', 'lethargy',
+  'irritability', 'fussy', 'cranky', 'refusing', 'not eating', 'poor appetite', 'loss of appetite',
+  // infection indicators
+  'infection', 'infected', 'discharge', 'pus', 'pus-like', 'green', 'yellow', 'phlegm'
+];
+
 const DoctorDashboard = () => {
   const navigate = useNavigate();
   const { logout } = useAuth();
@@ -62,6 +110,7 @@ const DoctorDashboard = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [children, setChildren] = useState([]);
+  const [allChildren, setAllChildren] = useState([]);
   const [doctorProfile, setDoctorProfile] = useState(null);
   const [statistics, setStatistics] = useState({
     totalChildren: 0,
@@ -71,6 +120,7 @@ const DoctorDashboard = () => {
   });
   const [activeTab, setActiveTab] = useState(0);
   const [selectedChild, setSelectedChild] = useState(null);
+  const [selectedChildId, setSelectedChildId] = useState('');
   const [childDialog, setChildDialog] = useState({ open: false, child: null });
   const [medicalRecordDialog, setMedicalRecordDialog] = useState({ open: false, child: null });
   const [medicalForm, setMedicalForm] = useState({
@@ -79,6 +129,8 @@ const DoctorDashboard = () => {
     notes: ''
   });
   const [recordForm, setRecordForm] = useState({
+    childId: '',
+    childName: '',
     date: new Date().toISOString().split('T')[0],
     type: 'checkup',
     description: '',
@@ -98,7 +150,6 @@ const DoctorDashboard = () => {
   const [vaOpen, setVaOpen] = useState(false);
   const [aiHealthSummary, setAiHealthSummary] = useState(null);
   const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
-  const [selectedChildForSummary, setSelectedChildForSummary] = useState(null);
   const [healthAlerts, setHealthAlerts] = useState([]);
   const [alertsLoading, setAlertsLoading] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
@@ -115,16 +166,62 @@ const DoctorDashboard = () => {
   const [reportForm, setReportForm] = useState({ reportType: 'summary', dateRange: { start: '', end: '' } });
   const [healthPatterns, setHealthPatterns] = useState(null);
   const [patternsLoading, setPatternsLoading] = useState(false);
+  const [aiFieldErrors, setAiFieldErrors] = useState({
+    symptom: {},
+    growth: {},
+    medication: {},
+    report: {}
+  });
+
+  const [prescriptionLog, setPrescriptionLog] = useState([]);
+  const [emergencies, setEmergencies] = useState([]);
+  const [emergenciesLoading, setEmergenciesLoading] = useState(false);
+  const [emergencyDialog, setEmergencyDialog] = useState({ open: false });
+  const [emergencyForm, setEmergencyForm] = useState({
+    childId: '',
+    reason: '',
+    appointmentType: 'onsite',
+    severity: 'medium',
+    description: ''
+  });
+  const [aiInsightsLog, setAiInsightsLog] = useState(() => {
+    try {
+      const raw = localStorage.getItem('tinytots_doctor_ai_insights_v1');
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  });
+  const [editInsightDialog, setEditInsightDialog] = useState({ open: false, insight: null });
+  const [editInsightNotes, setEditInsightNotes] = useState('');
 
   // Fetch assigned children
   const fetchChildren = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/doctor/children');
-      setChildren(response.data || []);
+      const assignedRes = await api.get('/doctor/children');
+      const assignedList = Array.isArray(assignedRes.data) ? assignedRes.data : assignedRes.data?.children || [];
+      setChildren(assignedList);
+
+      try {
+        const allRes = await api.get('/doctor/children/all');
+        const allList = Array.isArray(allRes.data) ? allRes.data : allRes.data?.children || [];
+        setAllChildren(allList);
+      } catch (errorAll) {
+        if (errorAll.response?.status === 403) {
+          console.warn('Doctor account not authorized to view all children. Falling back to assigned list.');
+          setAllChildren(assignedList);
+        } else {
+          console.error('Error fetching all children:', errorAll);
+          setAllChildren(assignedList);
+        }
+      }
     } catch (error) {
       console.error('Error fetching children:', error);
-      setError('Failed to load assigned children');
+      setError('Failed to load children');
+      setChildren([]);
+      setAllChildren([]);
     } finally {
       setLoading(false);
     }
@@ -180,6 +277,263 @@ const DoctorDashboard = () => {
     fetchStatistics();
   }, [fetchStatistics]);
 
+  // Persist prescriptions recorded in dashboard (medical records etc.)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('tinytots_doctor_prescription_log_v1');
+      const parsed = raw ? JSON.parse(raw) : [];
+      setPrescriptionLog(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Persist AI insights to localStorage (state is initialized from localStorage)
+  useEffect(() => {
+    try {
+      localStorage.setItem('tinytots_doctor_ai_insights_v1', JSON.stringify(aiInsightsLog));
+    } catch {
+      // ignore
+    }
+  }, [aiInsightsLog]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('tinytots_doctor_prescription_log_v1', JSON.stringify(prescriptionLog));
+    } catch {
+      // ignore
+    }
+  }, [prescriptionLog]);
+
+  const selectableChildren = useMemo(() => {
+    const all = asArray(allChildren);
+    const assigned = asArray(children);
+    return all.length > 0 ? all : assigned;
+  }, [allChildren, children]);
+  const selectedChildForTools = useMemo(() => selectableChildren.find(child => child._id === selectedChildId) || null, [selectableChildren, selectedChildId]);
+  const prescriptionRows = useMemo(() => {
+    const rows = [];
+
+    // Persisted appointment prescriptions
+    asArray(appointments)
+      .filter((a) => safeTrim(a?.prescription))
+      .forEach((a) => {
+        rows.push({
+          id: `appointment:${a._id}`,
+          source: 'appointment',
+          appointmentId: a._id,
+          childId: a.child?._id || a.child,
+          childName: a.child ? `${a.child.firstName || ''} ${a.child.lastName || ''}`.trim() : '',
+          date: a.completedAt || a.appointmentDate || a.createdAt,
+          diagnosis: a.diagnosis || '',
+          prescription: a.prescription,
+          status: a.status || ''
+        });
+      });
+
+    // Locally stored prescriptions (medical records, etc.)
+    asArray(prescriptionLog).forEach((p) => {
+      if (!safeTrim(p?.prescription)) return;
+      rows.push({
+        id: p.id || `log:${p.source || 'unknown'}:${p.appointmentId || p.childId || ''}:${p.date || ''}`,
+        source: p.source || 'log',
+        appointmentId: p.appointmentId,
+        childId: p.childId,
+        childName: p.childName || '',
+        date: p.date,
+        diagnosis: p.diagnosis || '',
+        prescription: p.prescription,
+        status: p.status || ''
+      });
+    });
+
+    // de-dupe by id
+    const byId = new Map();
+    rows.forEach((r) => {
+      if (!byId.has(r.id)) byId.set(r.id, r);
+    });
+
+    return Array.from(byId.values()).sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+  }, [appointments, prescriptionLog]);
+
+  const addPrescriptionLogEntry = useCallback((entry) => {
+    if (!entry) return;
+    const id = entry.id || `${entry.source || 'unknown'}:${entry.appointmentId || entry.childId || 'unknown'}:${entry.date || Date.now()}`;
+    setPrescriptionLog((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      const next = [{ ...entry, id }, ...list.filter((p) => p?.id !== id)];
+      return next.slice(0, 200); // keep recent 200
+    });
+  }, []);
+
+  const addAiInsight = useCallback((insight) => {
+    if (!insight) return;
+    const id = insight.id || `${insight.type || 'unknown'}:${insight.childId || 'unknown'}:${insight.timestamp || Date.now()}`;
+    setAiInsightsLog((prev) => {
+      const list = Array.isArray(prev) ? prev : [];
+      const next = [{ ...insight, id, timestamp: insight.timestamp || new Date().toISOString() }, ...list.filter((i) => i?.id !== id)];
+      return next.slice(0, 100); // keep recent 100
+    });
+  }, []);
+
+  const validateSymptomInputs = useCallback(() => {
+    const errors = {};
+    if (!selectedChildForTools?._id) errors.childId = 'Please select a child';
+    const sym = safeTrim(symptomForm.symptoms);
+    if (!sym) {
+      errors.symptoms = 'Symptoms are required';
+    } else if (sym.length < 3) {
+      errors.symptoms = 'Please enter at least 3 characters';
+    } else {
+      // Check for valid symptom keywords
+      const symLower = sym.toLowerCase();
+      const hasValidSymptom = KNOWN_SYMPTOM_KEYWORDS.some((keyword) => symLower.includes(keyword));
+      if (!hasValidSymptom) {
+        // Block invalid inputs (like "bjjbod") - require real symptom keywords
+        errors.symptoms = 'Please enter valid symptoms (e.g., fever, cough, rash, stomach pain, headache). Invalid text like "bjjbod" will not produce results.';
+      }
+    }
+    const duration = symptomForm.duration === '' ? null : Number(symptomForm.duration);
+    if (duration != null && (!Number.isFinite(duration) || duration <= 0)) errors.duration = 'Duration must be a positive number';
+    if (duration != null && duration > 60) errors.duration = 'Duration looks too high (max 60 days)';
+    setAiFieldErrors((prev) => ({ ...prev, symptom: errors }));
+    if (Object.keys(errors).length > 0) {
+      // Hide any old results if inputs become invalid
+      setSymptomAnalysis(null);
+    }
+    return Object.keys(errors).length === 0;
+  }, [selectedChildForTools, symptomForm.duration, symptomForm.symptoms]);
+
+  const validateGrowthInputs = useCallback(() => {
+    const errors = {};
+    if (!selectedChildForTools?._id) errors.childId = 'Please select a child';
+    const height = Number(growthForm.height);
+    const weight = Number(growthForm.weight);
+    const head = growthForm.headCircumference === '' ? null : Number(growthForm.headCircumference);
+    if (!Number.isFinite(height) || height <= 0) errors.height = 'Height must be a positive number';
+    if (!Number.isFinite(weight) || weight <= 0) errors.weight = 'Weight must be a positive number';
+    if (head != null && (!Number.isFinite(head) || head <= 0)) errors.headCircumference = 'Head circumference must be a positive number';
+    if (Number.isFinite(height) && (height < 30 || height > 220)) errors.height = 'Height should be between 30 and 220 cm';
+    if (Number.isFinite(weight) && (weight < 1 || weight > 200)) errors.weight = 'Weight should be between 1 and 200 kg';
+    if (head != null && Number.isFinite(head) && (head < 20 || head > 70)) errors.headCircumference = 'Head circumference should be between 20 and 70 cm';
+    setAiFieldErrors((prev) => ({ ...prev, growth: errors }));
+    if (Object.keys(errors).length > 0) {
+      setGrowthPrediction(null);
+    }
+    return Object.keys(errors).length === 0;
+  }, [selectedChildForTools, growthForm.height, growthForm.weight, growthForm.headCircumference]);
+
+  const validateMedicationInputs = useCallback(() => {
+    const errors = {};
+    if (!selectedChildForTools?._id) errors.childId = 'Please select a child';
+    const meds = medicationForm.medications
+      .split(',')
+      .map((m) => m.trim())
+      .filter(Boolean);
+    if (meds.length === 0) errors.medications = 'Enter at least one medication';
+    const normalized = meds.map((m) => m.toLowerCase());
+    const unknown = normalized
+      .filter((m) => m.replace(/[^a-z]/g, '').length < 3)
+      .map((m) => m);
+    if (unknown.length > 0) {
+      errors.medications = 'Medication names must contain letters (min 3 chars)';
+    } else if (normalized.length > 0) {
+      const notRecognized = normalized.filter(
+        (m) => !KNOWN_MEDICATION_TOKENS.some((t) => m.includes(t))
+      );
+      if (notRecognized.length > 0) {
+        errors.medications = `Unknown medication(s): ${notRecognized.join(', ')}. Use real medicine names (e.g., Paracetamol, Ibuprofen, Amoxicillin).`;
+      }
+    }
+    setAiFieldErrors((prev) => ({ ...prev, medication: errors }));
+    if (Object.keys(errors).length > 0) {
+      // hide old result if user typed something invalid/unknown
+      setMedicationCheck(null);
+    }
+    return { ok: Object.keys(errors).length === 0, meds };
+  }, [selectedChildForTools, medicationForm.medications]);
+
+  // Clear old AI results when inputs change (prevents stale "success" showing for new/invalid input)
+  useEffect(() => {
+    setSymptomAnalysis(null);
+  }, [selectedChildId, symptomForm.symptoms, symptomForm.duration, symptomForm.severity]);
+
+  useEffect(() => {
+    setGrowthPrediction(null);
+  }, [selectedChildId, growthForm.height, growthForm.weight, growthForm.headCircumference]);
+
+  useEffect(() => {
+    setMedicationCheck(null);
+  }, [selectedChildId, medicationForm.medications]);
+
+  useEffect(() => {
+    setRiskScore(null);
+  }, [selectedChildId]);
+
+  useEffect(() => {
+    setMedicalReport(null);
+  }, [selectedChildId, reportForm.reportType, reportForm.dateRange?.start, reportForm.dateRange?.end]);
+
+  const fetchEmergencies = async (status = 'all') => {
+    try {
+      setEmergenciesLoading(true);
+      const response = await api.get('/doctor/emergencies', { params: { status } });
+      setEmergencies(response.data || []);
+    } catch (error) {
+      console.error('Error fetching emergencies:', error);
+      if (error.response?.status === 404) {
+        // Route might not exist yet (server needs restart) - show empty list with hint
+        setEmergencies([]);
+        // Don't show error toast - just log
+      } else {
+        setError('Failed to load emergencies. Please ensure the server has been restarted.');
+        setEmergencies([]);
+      }
+    } finally {
+      setEmergenciesLoading(false);
+    }
+  };
+
+  const handleSubmitEmergency = async () => {
+    const childId = emergencyForm.childId || selectedChildId || '';
+    const reason = safeTrim(emergencyForm.reason);
+    if (!childId || !reason) {
+      setError('Please select a child and enter an emergency reason');
+      return;
+    }
+
+    try {
+      const payload = {
+        childId,
+        reason,
+        appointmentType: emergencyForm.appointmentType || 'onsite',
+        severity: emergencyForm.severity || 'medium',
+        description: safeTrim(emergencyForm.description)
+      };
+      await api.post('/doctor/emergencies', payload);
+      setSuccess('Emergency reported successfully');
+      setEmergencyDialog({ open: false });
+      setEmergencyForm({ childId: '', reason: '', appointmentType: 'onsite', severity: 'medium', description: '' });
+      fetchEmergencies('all');
+      fetchAppointments('all');
+      fetchStatistics();
+    } catch (error) {
+      setError(error.response?.data?.message || 'Failed to report emergency');
+    }
+  };
+
+  const handleUpdateEmergencyStatus = async (appointmentId, status) => {
+    try {
+      await api.patch(`/doctor/emergencies/${appointmentId}/status`, { status });
+      setSuccess('Emergency updated successfully');
+      fetchEmergencies('all');
+      fetchAppointments('all');
+      fetchStatistics();
+    } catch (error) {
+      setError(error.response?.data?.message || 'Failed to update emergency');
+    }
+  };
+
   // View child details
   const handleViewChild = async (childId) => {
     try {
@@ -211,11 +565,40 @@ const DoctorDashboard = () => {
 
   // Add medical record
   const handleAddMedicalRecord = async () => {
+    const childIdForRecord = recordForm.childId || selectedChild?._id;
+    if (!childIdForRecord) {
+      setError('Select a child before saving the medical record');
+      return;
+    }
+
     try {
-      await api.post(`/doctor/children/${recordForm.childId || selectedChild?._id}/medical-records`, recordForm);
+      const payload = {
+        date: recordForm.date,
+        type: recordForm.type,
+        description: recordForm.description,
+        prescription: recordForm.prescription,
+        followUpDate: recordForm.followUpDate
+      };
+      const res = await api.post(`/doctor/children/${childIdForRecord}/medical-records`, payload);
+      const record = res.data?.record;
+      if (payload.prescription && safeTrim(payload.prescription)) {
+        addPrescriptionLogEntry({
+          source: 'medical-record',
+          childId: childIdForRecord,
+          childName:
+            recordForm.childName ||
+            (selectedChild ? `${selectedChild.firstName || ''} ${selectedChild.lastName || ''}`.trim() : ''),
+          date: payload.date || new Date().toISOString(),
+          diagnosis: payload.type || '',
+          prescription: payload.prescription,
+          notes: payload.description || ''
+        });
+      }
       setSuccess('Medical record added successfully');
       setMedicalRecordDialog({ open: false, child: null });
       setRecordForm({
+        childId: '',
+        childName: '',
         date: new Date().toISOString().split('T')[0],
         type: 'checkup',
         description: '',
@@ -226,7 +609,7 @@ const DoctorDashboard = () => {
         handleViewChild(selectedChild._id);
       }
     } catch (error) {
-      setError('Failed to add medical record');
+      setError(error.response?.data?.message || 'Failed to add medical record');
     }
   };
 
@@ -300,8 +683,25 @@ const DoctorDashboard = () => {
   const handleSaveConsultation = async () => {
     try {
       if (!selectedAppointment) return;
-      
-      await api.patch(`/api/appointments/${selectedAppointment._id}/consultation`, consultationForm);
+
+      const res = await api.patch(`/api/appointments/${selectedAppointment._id}/consultation`, consultationForm);
+      const updatedAppointment = res.data?.appointment || res.data;
+      if (updatedAppointment?.prescription && safeTrim(updatedAppointment.prescription)) {
+        addPrescriptionLogEntry({
+          source: 'appointment',
+          appointmentId: updatedAppointment._id,
+          childId: updatedAppointment.child?._id || updatedAppointment.child,
+          childName: updatedAppointment.child
+            ? `${updatedAppointment.child.firstName || ''} ${updatedAppointment.child.lastName || ''}`.trim()
+            : selectedAppointment.child
+            ? `${selectedAppointment.child.firstName || ''} ${selectedAppointment.child.lastName || ''}`.trim()
+            : '',
+          date: updatedAppointment.completedAt || updatedAppointment.appointmentDate || new Date().toISOString(),
+          diagnosis: updatedAppointment.diagnosis || consultationForm.diagnosis || '',
+          prescription: updatedAppointment.prescription,
+          notes: updatedAppointment.notes || consultationForm.notes || ''
+        });
+      }
       setSuccess('Consultation details saved successfully');
       setConsultationDialog({ open: false, appointment: null });
       fetchAppointments(appointmentFilter);
@@ -316,6 +716,16 @@ const DoctorDashboard = () => {
       fetchAppointments(appointmentFilter);
     }
   }, [activeTab, appointmentFilter]);
+
+  useEffect(() => {
+    if (activeTab === 4) {
+      // Prescriptions tab needs full appointment history to list prescriptions
+      fetchAppointments('all');
+    }
+    if (activeTab === 5) {
+      fetchEmergencies('all');
+    }
+  }, [activeTab]);
 
   const handleVaOpen = () => setVaOpen(true);
   const handleVaClose = () => setVaOpen(false);
@@ -379,7 +789,14 @@ const DoctorDashboard = () => {
             variant="contained"
             color="error"
             startIcon={<WarningAmber />}
-            onClick={() => setError('Emergency reporting endpoint not connected yet')}
+            onClick={() => {
+              setEmergencyForm((prev) => ({
+                ...prev,
+                childId: prev.childId || selectedChildId || ''
+              }));
+              setEmergencyDialog({ open: true });
+              setActiveTab(5);
+            }}
           >
             Report Emergency
           </Button>
@@ -979,11 +1396,11 @@ const DoctorDashboard = () => {
               <FormControl size="small" sx={{ minWidth: 200 }}>
                 <InputLabel>Select Child</InputLabel>
                 <Select
-                  value={selectedChildForSummary || ''}
-                  onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                  value={selectedChildId}
+                  onChange={(e) => setSelectedChildId(e.target.value)}
                   label="Select Child"
                 >
-                  {children.map((child) => (
+                  {selectableChildren.map((child) => (
                     <MenuItem key={child._id} value={child._id}>
                       {child.firstName} {child.lastName}
                     </MenuItem>
@@ -992,7 +1409,7 @@ const DoctorDashboard = () => {
               </FormControl>
             </Box>
 
-            {selectedChildForSummary && (
+            {selectedChildId && (
               <Box sx={{ mb: 3 }}>
                 <Button
                   variant="contained"
@@ -1000,7 +1417,7 @@ const DoctorDashboard = () => {
                   onClick={async () => {
                     try {
                       setAiSummaryLoading(true);
-                      const response = await api.post(`/doctor/ai/health-summary/${selectedChildForSummary}`, {});
+                      const response = await api.post(`/doctor/ai/health-summary/${selectedChildId}`, {});
                       setAiHealthSummary(response.data);
                       setSuccess('Health summary generated successfully');
                     } catch (error) {
@@ -1051,7 +1468,7 @@ const DoctorDashboard = () => {
                     <Typography variant="subtitle1" fontWeight={600} gutterBottom>
                       Recent Visit Notes
                     </Typography>
-                    {aiHealthSummary.visitNotes.map((note, idx) => (
+                    {asArray(aiHealthSummary.visitNotes).map((note, idx) => (
                       <Box key={idx} sx={{ mb: 2, p: 2, bgcolor: '#f9f9f9', borderRadius: 1 }}>
                         <Typography variant="caption" color="text.secondary">
                           {note.date} • {note.status}
@@ -1104,7 +1521,7 @@ const DoctorDashboard = () => {
                       <Typography variant="subtitle1" fontWeight={600} gutterBottom>
                         AI Recommendations
                       </Typography>
-                      {aiHealthSummary.recommendations.map((rec, idx) => (
+                      {asArray(aiHealthSummary.recommendations).map((rec, idx) => (
                         <Box key={idx} sx={{ mb: 2, p: 2, bgcolor: '#f0f7ff', borderRadius: 1 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                             <Chip 
@@ -1166,7 +1583,7 @@ const DoctorDashboard = () => {
                       <Typography variant="h6" gutterBottom>
                         {childAlert.childName}
                       </Typography>
-                      {childAlert.alerts.map((alert, idx) => (
+                      {asArray(childAlert.alerts).map((alert, idx) => (
                         <Alert 
                           key={idx}
                           severity={alert.severity === 'high' ? 'error' : alert.severity === 'medium' ? 'warning' : 'info'}
@@ -1249,7 +1666,7 @@ const DoctorDashboard = () => {
                         Factors Considered
                       </Typography>
                       <List>
-                        {alertExplanation.explanation.factors.map((factor, idx) => (
+                        {asArray(alertExplanation?.explanation?.factors).map((factor, idx) => (
                           <ListItem key={idx}>
                             <ListItemText primary={factor} />
                           </ListItem>
@@ -1291,8 +1708,175 @@ const DoctorDashboard = () => {
               </Button>
             </DialogActions>
           </Dialog>
+
+          {/* AI Insights Log - Saved AI Analysis Results */}
+          <Paper sx={{ p: 3, mt: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Typography variant="h6">Saved AI Insights</Typography>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => {
+                  try {
+                    const blob = new Blob([JSON.stringify(aiInsightsLog, null, 2)], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `doctor-ai-insights-${Date.now()}.json`;
+                    a.click();
+                  } catch {
+                    setError('Failed to export AI insights');
+                  }
+                }}
+              >
+                Export
+              </Button>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              All AI analysis results (symptom analysis, growth predictions, medication checks, health summaries, risk scores) are automatically saved here.
+            </Typography>
+            {aiInsightsLog.length === 0 ? (
+              <Alert severity="info">No AI insights saved yet. Run any AI tool to see results here.</Alert>
+            ) : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                {aiInsightsLog.slice(0, 20).map((insight) => (
+                  <Card key={insight.id} variant="outlined" sx={{ p: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                      <Box>
+                        <Chip
+                          size="small"
+                          label={insight.type?.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown'}
+                          color="primary"
+                          sx={{ mb: 1 }}
+                        />
+                        <Typography variant="subtitle2" fontWeight={600}>
+                          {insight.childName || 'Unknown Child'}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {insight.timestamp ? new Date(insight.timestamp).toLocaleString() : 'Unknown date'}
+                        </Typography>
+                      </Box>
+                      <Tooltip title="Edit">
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            setEditInsightDialog({ open: true, insight });
+                            setEditInsightNotes(insight.notes || '');
+                          }}
+                        >
+                          <Edit fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                    {insight.notes && (
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontStyle: 'italic' }}>
+                        <strong>Notes:</strong> {insight.notes}
+                      </Typography>
+                    )}
+                    {insight.type === 'symptom-analysis' && insight.result && (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="body2">
+                          <strong>Input:</strong> {insight.input?.symptoms || 'N/A'} (Duration: {insight.input?.duration || 0} days, Severity: {insight.input?.severity || 'N/A'})
+                        </Typography>
+                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                          <strong>Urgency:</strong> {insight.result.urgency || 'N/A'} • <strong>Confidence:</strong> {insight.result.aiConfidence || 'N/A'}
+                        </Typography>
+                        {insight.result.possibleConditions && insight.result.possibleConditions.length > 0 && (
+                          <Typography variant="body2" sx={{ mt: 0.5 }}>
+                            <strong>Possible Conditions:</strong> {insight.result.possibleConditions.slice(0, 3).map((c) => c.condition || c).join(', ')}
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
+                    {insight.type === 'growth-prediction' && insight.result && (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="body2">
+                          <strong>Current:</strong> H: {insight.input?.height || 'N/A'}cm, W: {insight.input?.weight || 'N/A'}kg
+                        </Typography>
+                        {insight.result.percentiles && (
+                          <Typography variant="body2" sx={{ mt: 0.5 }}>
+                            <strong>Percentiles:</strong> Height {insight.result.percentiles.height?.toFixed(0) || 'N/A'}th, Weight {insight.result.percentiles.weight?.toFixed(0) || 'N/A'}th
+                          </Typography>
+                        )}
+                      </Box>
+                    )}
+                    {insight.type === 'medication-check' && insight.result && (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="body2">
+                          <strong>Medications:</strong> {Array.isArray(insight.input?.medications) ? insight.input.medications.join(', ') : 'N/A'}
+                        </Typography>
+                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                          <strong>Status:</strong> {insight.result.safeToPrescribe ? '✅ Safe to prescribe' : '⚠️ Interactions detected'}
+                        </Typography>
+                      </Box>
+                    )}
+                    {insight.type === 'risk-score' && insight.result && (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="body2">
+                          <strong>Risk Score:</strong> {insight.result.overallRiskScore || 'N/A'} ({insight.result.riskLevel || 'N/A'} risk)
+                        </Typography>
+                      </Box>
+                    )}
+                    {insight.type === 'health-summary' && insight.result && (
+                      <Box sx={{ mt: 1 }}>
+                        <Typography variant="body2">
+                          <strong>Overall Health:</strong> {insight.result.overallHealth || 'N/A'}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Card>
+                ))}
+                {aiInsightsLog.length > 20 && (
+                  <Typography variant="caption" color="text.secondary" sx={{ textAlign: 'center', mt: 1 }}>
+                    Showing 20 most recent. Total: {aiInsightsLog.length}
+                  </Typography>
+                )}
+              </Box>
+            )}
+          </Paper>
         </Box>
       )}
+
+      {/* Edit AI Insight Dialog */}
+      <Dialog
+        open={editInsightDialog.open}
+        onClose={() => setEditInsightDialog({ open: false, insight: null })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Edit AI Insight</DialogTitle>
+        <DialogContent>
+          {editInsightDialog.insight && (
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Doctor's notes"
+              value={editInsightNotes}
+              onChange={(e) => setEditInsightNotes(e.target.value)}
+              placeholder="Add or edit notes for this insight..."
+              sx={{ mt: 1 }}
+            />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditInsightDialog({ open: false, insight: null })}>Cancel</Button>
+          <Button
+            variant="contained"
+            onClick={() => {
+              const id = editInsightDialog.insight?.id;
+              if (id) {
+                setAiInsightsLog((prev) =>
+                  prev.map((i) => (i.id === id ? { ...i, notes: editInsightNotes } : i))
+                );
+              }
+              setEditInsightDialog({ open: false, insight: null });
+            }}
+          >
+            Save
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Consultation Dialog */}
       <Dialog
@@ -1564,8 +2148,8 @@ const DoctorDashboard = () => {
         </DialogActions>
       </Dialog>
 
-      {/* AI Tools Tab */}
-      {activeTab === 4 && (
+      {/* AI Tools (AI/ML) */}
+      {activeTab === 3 && (
         <Box>
           <Grid container spacing={3}>
             {/* AI Symptom Analyzer */}
@@ -1577,11 +2161,14 @@ const DoctorDashboard = () => {
                 <FormControl fullWidth sx={{ mb: 2 }}>
                   <InputLabel>Select Child</InputLabel>
                   <Select
-                    value={selectedChildForSummary || ''}
-                    onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                    value={selectedChildId}
+                    onChange={(e) => {
+                      setSelectedChildId(e.target.value);
+                      setAiFieldErrors((prev) => ({ ...prev, symptom: { ...prev.symptom, childId: undefined } }));
+                    }}
                     label="Select Child"
                   >
-                    {children.map((child) => (
+                    {selectableChildren.map((child) => (
                       <MenuItem key={child._id} value={child._id}>
                         {child.firstName} {child.lastName}
                       </MenuItem>
@@ -1594,8 +2181,13 @@ const DoctorDashboard = () => {
                   rows={3}
                   label="Symptoms"
                   value={symptomForm.symptoms}
-                  onChange={(e) => setSymptomForm({ ...symptomForm, symptoms: e.target.value })}
+                  onChange={(e) => {
+                    setSymptomForm({ ...symptomForm, symptoms: e.target.value });
+                    setAiFieldErrors((prev) => ({ ...prev, symptom: { ...prev.symptom, symptoms: undefined } }));
+                  }}
                   placeholder="Describe symptoms (e.g., fever, cough, rash)..."
+                  error={!!aiFieldErrors.symptom.symptoms}
+                  helperText={aiFieldErrors.symptom.symptoms || ''}
                   sx={{ mb: 2 }}
                 />
                 <Grid container spacing={2} sx={{ mb: 2 }}>
@@ -1605,7 +2197,12 @@ const DoctorDashboard = () => {
                       type="number"
                       label="Duration (days)"
                       value={symptomForm.duration}
-                      onChange={(e) => setSymptomForm({ ...symptomForm, duration: e.target.value })}
+                      onChange={(e) => {
+                        setSymptomForm({ ...symptomForm, duration: e.target.value });
+                        setAiFieldErrors((prev) => ({ ...prev, symptom: { ...prev.symptom, duration: undefined } }));
+                      }}
+                      error={!!aiFieldErrors.symptom.duration}
+                      helperText={aiFieldErrors.symptom.duration || ''}
                     />
                   </Grid>
                   <Grid item xs={6}>
@@ -1627,21 +2224,40 @@ const DoctorDashboard = () => {
                   variant="contained"
                   fullWidth
                   onClick={async () => {
-                    if (!selectedChildForSummary || !symptomForm.symptoms) {
-                      setError('Please select a child and enter symptoms');
+                    const ok = validateSymptomInputs();
+                    if (!ok) {
+                      setError('Please fix the highlighted fields');
                       return;
                     }
                     try {
-                      const child = children.find(c => c._id === selectedChildForSummary);
-                      const age = Math.floor((new Date() - new Date(child.dateOfBirth)) / (365.25 * 24 * 60 * 60 * 1000));
+                      const dobMs = selectedChildForTools?.dateOfBirth ? new Date(selectedChildForTools.dateOfBirth).getTime() : NaN;
+                      const computedAge = Number.isFinite(dobMs)
+                        ? Math.max(0, Math.floor((Date.now() - dobMs) / (365.25 * 24 * 60 * 60 * 1000)))
+                        : Number.isFinite(Number(selectedChildForTools?.age))
+                        ? Number(selectedChildForTools.age)
+                        : 0;
+                      const durationDays = symptomForm.duration === '' ? 1 : Math.max(1, parseInt(symptomForm.duration, 10) || 1);
                       const response = await api.post('/doctor/ai/symptom-analyzer', {
-                        childId: selectedChildForSummary,
+                        childId: selectedChildForTools._id,
                         symptoms: symptomForm.symptoms,
-                        age,
-                        duration: parseInt(symptomForm.duration) || 1,
+                        age: computedAge,
+                        duration: durationDays,
                         severity: symptomForm.severity
                       });
                       setSymptomAnalysis(response.data);
+                      // Save AI insight
+                      addAiInsight({
+                        type: 'symptom-analysis',
+                        childId: selectedChildForTools._id,
+                        childName: `${selectedChildForTools.firstName || ''} ${selectedChildForTools.lastName || ''}`.trim(),
+                        input: {
+                          symptoms: symptomForm.symptoms,
+                          duration: durationDays,
+                          severity: symptomForm.severity
+                        },
+                        result: response.data,
+                        timestamp: new Date().toISOString()
+                      });
                     } catch (error) {
                       setError('Failed to analyze symptoms');
                     }
@@ -1656,20 +2272,20 @@ const DoctorDashboard = () => {
                       <Typography variant="caption">AI Confidence: {symptomAnalysis.aiConfidence}</Typography>
                     </Alert>
                     <Typography variant="subtitle2" gutterBottom>Possible Conditions:</Typography>
-                    {symptomAnalysis.possibleConditions.map((cond, idx) => (
+                    {asArray(symptomAnalysis.possibleConditions).map((cond, idx) => (
                       <Chip key={idx} label={`${cond.condition} (${(cond.probability * 100).toFixed(0)}%)`} sx={{ m: 0.5 }} />
                     ))}
-                    {symptomAnalysis.recommendedTests.length > 0 && (
+                    {asArray(symptomAnalysis.recommendedTests).length > 0 && (
                       <Box sx={{ mt: 2 }}>
                         <Typography variant="subtitle2" gutterBottom>Recommended Tests:</Typography>
-                        {symptomAnalysis.recommendedTests.map((test, idx) => (
+                        {asArray(symptomAnalysis.recommendedTests).map((test, idx) => (
                           <Chip key={idx} label={test} color="primary" sx={{ m: 0.5 }} />
                         ))}
                       </Box>
                     )}
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="subtitle2" gutterBottom>Recommendations:</Typography>
-                      {symptomAnalysis.recommendations.map((rec, idx) => (
+                      {asArray(symptomAnalysis.recommendations).map((rec, idx) => (
                         <Typography key={idx} variant="body2" sx={{ mt: 0.5 }}>• {rec}</Typography>
                       ))}
                     </Box>
@@ -1687,11 +2303,14 @@ const DoctorDashboard = () => {
                 <FormControl fullWidth sx={{ mb: 2 }}>
                   <InputLabel>Select Child</InputLabel>
                   <Select
-                    value={selectedChildForSummary || ''}
-                    onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                    value={selectedChildId}
+                    onChange={(e) => {
+                      setSelectedChildId(e.target.value);
+                      setAiFieldErrors((prev) => ({ ...prev, growth: { ...prev.growth, childId: undefined } }));
+                    }}
                     label="Select Child"
                   >
-                    {children.map((child) => (
+                    {selectableChildren.map((child) => (
                       <MenuItem key={child._id} value={child._id}>
                         {child.firstName} {child.lastName}
                       </MenuItem>
@@ -1705,7 +2324,12 @@ const DoctorDashboard = () => {
                       type="number"
                       label="Height (cm)"
                       value={growthForm.height}
-                      onChange={(e) => setGrowthForm({ ...growthForm, height: e.target.value })}
+                      onChange={(e) => {
+                        setGrowthForm({ ...growthForm, height: e.target.value });
+                        setAiFieldErrors((prev) => ({ ...prev, growth: { ...prev.growth, height: undefined } }));
+                      }}
+                      error={!!aiFieldErrors.growth.height}
+                      helperText={aiFieldErrors.growth.height || ''}
                     />
                   </Grid>
                   <Grid item xs={4}>
@@ -1714,7 +2338,12 @@ const DoctorDashboard = () => {
                       type="number"
                       label="Weight (kg)"
                       value={growthForm.weight}
-                      onChange={(e) => setGrowthForm({ ...growthForm, weight: e.target.value })}
+                      onChange={(e) => {
+                        setGrowthForm({ ...growthForm, weight: e.target.value });
+                        setAiFieldErrors((prev) => ({ ...prev, growth: { ...prev.growth, weight: undefined } }));
+                      }}
+                      error={!!aiFieldErrors.growth.weight}
+                      helperText={aiFieldErrors.growth.weight || ''}
                     />
                   </Grid>
                   <Grid item xs={4}>
@@ -1723,7 +2352,12 @@ const DoctorDashboard = () => {
                       type="number"
                       label="Head (cm)"
                       value={growthForm.headCircumference}
-                      onChange={(e) => setGrowthForm({ ...growthForm, headCircumference: e.target.value })}
+                      onChange={(e) => {
+                        setGrowthForm({ ...growthForm, headCircumference: e.target.value });
+                        setAiFieldErrors((prev) => ({ ...prev, growth: { ...prev.growth, headCircumference: undefined } }));
+                      }}
+                      error={!!aiFieldErrors.growth.headCircumference}
+                      helperText={aiFieldErrors.growth.headCircumference || ''}
                     />
                   </Grid>
                 </Grid>
@@ -1731,17 +2365,30 @@ const DoctorDashboard = () => {
                   variant="contained"
                   fullWidth
                   onClick={async () => {
-                    if (!selectedChildForSummary || !growthForm.height || !growthForm.weight) {
-                      setError('Please select a child and enter measurements');
+                    const ok = validateGrowthInputs();
+                    if (!ok) {
+                      setError('Please fix the highlighted fields');
                       return;
                     }
                     try {
-                      const response = await api.post(`/doctor/ai/growth-prediction/${selectedChildForSummary}`, {
+                      const response = await api.post(`/doctor/ai/growth-prediction/${selectedChildForTools._id}`, {
                         height: parseFloat(growthForm.height),
                         weight: parseFloat(growthForm.weight),
                         headCircumference: parseFloat(growthForm.headCircumference) || null
                       });
                       setGrowthPrediction(response.data);
+                      addAiInsight({
+                        type: 'growth-prediction',
+                        childId: selectedChildForTools._id,
+                        childName: `${selectedChildForTools.firstName || ''} ${selectedChildForTools.lastName || ''}`.trim(),
+                        input: {
+                          height: growthForm.height,
+                          weight: growthForm.weight,
+                          headCircumference: growthForm.headCircumference
+                        },
+                        result: response.data,
+                        timestamp: new Date().toISOString()
+                      });
                     } catch (error) {
                       setError('Failed to predict growth');
                     }
@@ -1757,16 +2404,16 @@ const DoctorDashboard = () => {
                       <Chip label={`Weight: ${growthPrediction.percentiles.weight.toFixed(0)}th percentile`} />
                     </Box>
                     <Typography variant="subtitle2" gutterBottom>6-Month Predictions:</Typography>
-                    {growthPrediction.predictions.map((pred, idx) => (
+                    {asArray(growthPrediction.predictions).map((pred, idx) => (
                       <Box key={idx} sx={{ p: 1, bgcolor: '#f5f5f5', borderRadius: 1, mb: 1 }}>
                         <Typography variant="caption">
                           Age {pred.age} years: Height {pred.predictedHeight}cm, Weight {pred.predictedWeight}kg
                         </Typography>
                       </Box>
                     ))}
-                    {growthPrediction.alerts.length > 0 && (
+                    {asArray(growthPrediction.alerts).length > 0 && (
                       <Box sx={{ mt: 2 }}>
-                        {growthPrediction.alerts.map((alert, idx) => (
+                        {asArray(growthPrediction.alerts).map((alert, idx) => (
                           <Alert key={idx} severity="warning" sx={{ mt: 1 }}>
                             {alert.message}
                           </Alert>
@@ -1787,11 +2434,14 @@ const DoctorDashboard = () => {
                 <FormControl fullWidth sx={{ mb: 2 }}>
                   <InputLabel>Select Child</InputLabel>
                   <Select
-                    value={selectedChildForSummary || ''}
-                    onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                    value={selectedChildId}
+                    onChange={(e) => {
+                      setSelectedChildId(e.target.value);
+                      setAiFieldErrors((prev) => ({ ...prev, medication: { ...prev.medication, childId: undefined } }));
+                    }}
                     label="Select Child"
                   >
-                    {children.map((child) => (
+                    {selectableChildren.map((child) => (
                       <MenuItem key={child._id} value={child._id}>
                         {child.firstName} {child.lastName}
                       </MenuItem>
@@ -1804,25 +2454,42 @@ const DoctorDashboard = () => {
                   rows={3}
                   label="New Medications"
                   value={medicationForm.medications}
-                  onChange={(e) => setMedicationForm({ ...medicationForm, medications: e.target.value })}
+                  onChange={(e) => {
+                    setMedicationForm({ ...medicationForm, medications: e.target.value });
+                    setAiFieldErrors((prev) => ({ ...prev, medication: { ...prev.medication, medications: undefined } }));
+                  }}
                   placeholder="Enter medications separated by commas (e.g., Ibuprofen, Amoxicillin)..."
+                  error={!!aiFieldErrors.medication.medications}
+                  helperText={aiFieldErrors.medication.medications || ''}
                   sx={{ mb: 2 }}
                 />
                 <Button
                   variant="contained"
                   fullWidth
                   onClick={async () => {
-                    if (!selectedChildForSummary || !medicationForm.medications) {
-                      setError('Please select a child and enter medications');
+                    const { ok, meds } = validateMedicationInputs();
+                    if (!ok) {
+                      setError('Please fix the highlighted fields');
                       return;
                     }
                     try {
-                      const meds = medicationForm.medications.split(',').map(m => m.trim()).filter(m => m);
+                      // clear any previous result immediately
+                      setMedicationCheck(null);
                       const response = await api.post('/doctor/ai/medication-checker', {
-                        childId: selectedChildForSummary,
+                        childId: selectedChildForTools._id,
                         newMedications: meds
                       });
                       setMedicationCheck(response.data);
+                      addAiInsight({
+                        type: 'medication-check',
+                        childId: selectedChildForTools._id,
+                        childName: `${selectedChildForTools.firstName || ''} ${selectedChildForTools.lastName || ''}`.trim(),
+                        input: {
+                          medications: meds
+                        },
+                        result: response.data,
+                        timestamp: new Date().toISOString()
+                      });
                     } catch (error) {
                       setError('Failed to check medications');
                     }
@@ -1835,30 +2502,36 @@ const DoctorDashboard = () => {
                     <Alert severity={medicationCheck.safeToPrescribe ? 'success' : 'error'} sx={{ mb: 2 }}>
                       {medicationCheck.safeToPrescribe ? '✅ Safe to prescribe' : '⚠️ Interactions detected'}
                     </Alert>
-                    {medicationCheck.interactions.length > 0 && (
+                    {asArray(medicationCheck.interactions).length > 0 && (
                       <Box sx={{ mb: 2 }}>
                         <Typography variant="subtitle2" gutterBottom>Drug Interactions:</Typography>
-                        {medicationCheck.interactions.map((interaction, idx) => (
+                        {asArray(medicationCheck.interactions).map((interaction, idx) => (
                           <Alert key={idx} severity="error" sx={{ mt: 1 }}>
                             {interaction.message}
                           </Alert>
                         ))}
                       </Box>
                     )}
-                    {medicationCheck.allergyChecks.length > 0 && (
+                    {(
+                      asArray(medicationCheck.allergyChecks).length > 0 ||
+                      asArray(medicationCheck.allergies).length > 0
+                    ) && (
                       <Box sx={{ mb: 2 }}>
                         <Typography variant="subtitle2" gutterBottom>Allergy Warnings:</Typography>
-                        {medicationCheck.allergyChecks.map((check, idx) => (
+                        {(asArray(medicationCheck.allergyChecks).length > 0
+                          ? asArray(medicationCheck.allergyChecks)
+                          : asArray(medicationCheck.allergies)
+                        ).map((check, idx) => (
                           <Alert key={idx} severity="error" sx={{ mt: 1 }}>
                             {check.message}
                           </Alert>
                         ))}
                       </Box>
                     )}
-                    {medicationCheck.recommendations.length > 0 && (
+                    {asArray(medicationCheck.recommendations).length > 0 && (
                       <Box>
                         <Typography variant="subtitle2" gutterBottom>Recommendations:</Typography>
-                        {medicationCheck.recommendations.map((rec, idx) => (
+                        {asArray(medicationCheck.recommendations).map((rec, idx) => (
                           <Typography key={idx} variant="body2" sx={{ mt: 0.5 }}>• {rec}</Typography>
                         ))}
                       </Box>
@@ -1877,11 +2550,11 @@ const DoctorDashboard = () => {
                 <FormControl fullWidth sx={{ mb: 2 }}>
                   <InputLabel>Select Child</InputLabel>
                   <Select
-                    value={selectedChildForSummary || ''}
-                    onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                    value={selectedChildId}
+                    onChange={(e) => setSelectedChildId(e.target.value)}
                     label="Select Child"
                   >
-                    {children.map((child) => (
+                    {selectableChildren.map((child) => (
                       <MenuItem key={child._id} value={child._id}>
                         {child.firstName} {child.lastName}
                       </MenuItem>
@@ -1892,14 +2565,22 @@ const DoctorDashboard = () => {
                   variant="contained"
                   fullWidth
                   onClick={async () => {
-                    if (!selectedChildForSummary) {
+                    if (!selectedChildForTools) {
                       setError('Please select a child');
                       return;
                     }
                     try {
                       setRiskScoreLoading(true);
-                      const response = await api.get(`/doctor/ai/risk-score/${selectedChildForSummary}`);
+                      const response = await api.get(`/doctor/ai/risk-score/${selectedChildForTools._id}`);
                       setRiskScore(response.data);
+                      addAiInsight({
+                        type: 'risk-score',
+                        childId: selectedChildForTools._id,
+                        childName: `${selectedChildForTools.firstName || ''} ${selectedChildForTools.lastName || ''}`.trim(),
+                        input: {},
+                        result: response.data,
+                        timestamp: new Date().toISOString()
+                      });
                     } catch (error) {
                       setError('Failed to calculate risk score');
                     } finally {
@@ -1950,11 +2631,11 @@ const DoctorDashboard = () => {
                 <FormControl fullWidth sx={{ mb: 2 }}>
                   <InputLabel>Select Child</InputLabel>
                   <Select
-                    value={selectedChildForSummary || ''}
-                    onChange={(e) => setSelectedChildForSummary(e.target.value)}
+                    value={selectedChildId}
+                    onChange={(e) => setSelectedChildId(e.target.value)}
                     label="Select Child"
                   >
-                    {children.map((child) => (
+                    {selectableChildren.map((child) => (
                       <MenuItem key={child._id} value={child._id}>
                         {child.firstName} {child.lastName}
                       </MenuItem>
@@ -1977,12 +2658,12 @@ const DoctorDashboard = () => {
                   variant="contained"
                   fullWidth
                   onClick={async () => {
-                    if (!selectedChildForSummary) {
+                    if (!selectedChildForTools) {
                       setError('Please select a child');
                       return;
                     }
                     try {
-                      const response = await api.post(`/doctor/ai/generate-report/${selectedChildForSummary}`, {
+                      const response = await api.post(`/doctor/ai/generate-report/${selectedChildForTools._id}`, {
                         reportType: reportForm.reportType,
                         dateRange: reportForm.dateRange
                       });
@@ -2046,12 +2727,12 @@ const DoctorDashboard = () => {
                 </Box>
                 {healthPatterns && (
                   <Grid container spacing={2}>
-                    {healthPatterns.seasonalPatterns.length > 0 && (
+                    {asArray(healthPatterns.seasonalPatterns).length > 0 && (
                       <Grid item xs={12} md={6}>
                         <Card>
                           <CardContent>
                             <Typography variant="subtitle1" gutterBottom>Seasonal Patterns</Typography>
-                            {healthPatterns.seasonalPatterns.map((pattern, idx) => (
+                            {asArray(healthPatterns.seasonalPatterns).map((pattern, idx) => (
                               <Box key={idx} sx={{ p: 1, bgcolor: '#f5f5f5', borderRadius: 1, mb: 1 }}>
                                 <Typography variant="body2">
                                   <strong>{pattern.month}:</strong> {pattern.visits} visits
@@ -2063,12 +2744,12 @@ const DoctorDashboard = () => {
                         </Card>
                       </Grid>
                     )}
-                    {healthPatterns.symptomClusters.length > 0 && (
+                    {asArray(healthPatterns.symptomClusters).length > 0 && (
                       <Grid item xs={12} md={6}>
                         <Card>
                           <CardContent>
                             <Typography variant="subtitle1" gutterBottom>Symptom Clusters</Typography>
-                            {healthPatterns.symptomClusters.map((cluster, idx) => (
+                            {asArray(healthPatterns.symptomClusters).map((cluster, idx) => (
                               <Box key={idx} sx={{ p: 1, bgcolor: '#f5f5f5', borderRadius: 1, mb: 1 }}>
                                 <Typography variant="body2">
                                   <strong>{cluster.symptom}:</strong> {cluster.frequency} occurrences
@@ -2080,10 +2761,10 @@ const DoctorDashboard = () => {
                         </Card>
                       </Grid>
                     )}
-                    {healthPatterns.insights.length > 0 && (
+                    {asArray(healthPatterns.insights).length > 0 && (
                       <Grid item xs={12}>
                         <Alert severity="info">
-                          {healthPatterns.insights.map((insight, idx) => (
+                          {asArray(healthPatterns.insights).map((insight, idx) => (
                             <Typography key={idx} variant="body2">{insight}</Typography>
                           ))}
                         </Alert>
@@ -2096,6 +2777,309 @@ const DoctorDashboard = () => {
           </Grid>
         </Box>
       )}
+
+      {/* Prescriptions Tab */}
+      {activeTab === 4 && (
+        <Box>
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Typography variant="h6">Prescriptions</Typography>
+              <Stack direction="row" spacing={1}>
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    try {
+                      const payload = {
+                        exportedAt: new Date().toISOString(),
+                        prescriptions: prescriptionRows,
+                        count: prescriptionRows.length
+                      };
+                      const str = JSON.stringify(payload, null, 2);
+                      const blob = new Blob([str], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `doctor-prescriptions-${Date.now()}.json`;
+                      document.body.appendChild(a);
+                      a.click();
+                      setTimeout(() => {
+                        if (a.parentNode) document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }, 100);
+                    } catch {
+                      setError('Failed to export prescriptions');
+                    }
+                  }}
+                >
+                  Export (JSON)
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={() => {
+                    try {
+                      const exportedAt = new Date().toISOString();
+                      let txt = `TinyTots - Prescription Export\nExported: ${exportedAt}\n\n`;
+                      if (prescriptionRows.length === 0) {
+                        txt += 'No prescriptions recorded.\n';
+                      } else {
+                        prescriptionRows.forEach((p, i) => {
+                          txt += `${'='.repeat(40)}\nPrescription ${i + 1} of ${prescriptionRows.length}\n${'='.repeat(40)}\n`;
+                          txt += `Date: ${p.date ? new Date(p.date).toLocaleString() : '—'}\n`;
+                          txt += `Child: ${p.childName || '—'}\n`;
+                          txt += `Source: ${p.source === 'medical-record' ? 'Medical record' : p.source || '—'}\n`;
+                          txt += `Diagnosis: ${p.diagnosis || '—'}\n`;
+                          txt += `Prescription:\n${p.prescription || '—'}\n\n`;
+                        });
+                      }
+                      const blob = new Blob([txt], { type: 'text/plain;charset=utf-8' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `doctor-prescriptions-${Date.now()}.txt`;
+                      document.body.appendChild(a);
+                      a.click();
+                      setTimeout(() => {
+                        if (a.parentNode) document.body.removeChild(a);
+                        URL.revokeObjectURL(url);
+                      }, 100);
+                    } catch {
+                      setError('Failed to export prescriptions');
+                    }
+                  }}
+                >
+                  Export (TXT)
+                </Button>
+              </Stack>
+            </Box>
+            <Typography variant="body2" color="text.secondary">
+              Prescriptions saved from completed consultations and medical record entries.
+            </Typography>
+          </Paper>
+
+          <Paper sx={{ p: 2, borderRadius: 2 }}>
+            {prescriptionRows.length === 0 ? (
+              <Alert severity="info">No prescriptions recorded yet.</Alert>
+            ) : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Child</TableCell>
+                      <TableCell>Source</TableCell>
+                      <TableCell>Diagnosis / Type</TableCell>
+                      <TableCell>Prescription</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {prescriptionRows.slice(0, 50).map((p) => (
+                      <TableRow key={p.id}>
+                        <TableCell>
+                          {p.date ? new Date(p.date).toLocaleDateString() : '—'}
+                        </TableCell>
+                        <TableCell>{p.childName || '—'}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={p.source === 'medical-record' ? 'Medical record' : 'Appointment'}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>{p.diagnosis || '—'}</TableCell>
+                        <TableCell sx={{ whiteSpace: 'pre-wrap' }}>{p.prescription}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        </Box>
+      )}
+
+      {/* Emergencies Tab */}
+      {activeTab === 5 && (
+        <Box>
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Typography variant="h6">Emergencies</Typography>
+              <Button
+                variant="contained"
+                color="error"
+                startIcon={<WarningAmber />}
+                onClick={() => setEmergencyDialog({ open: true })}
+              >
+                Report Emergency
+              </Button>
+            </Box>
+          </Paper>
+
+          <Paper sx={{ p: 2, borderRadius: 2 }}>
+            {emergenciesLoading ? (
+              <Typography color="text.secondary" sx={{ p: 2 }}>Loading emergencies...</Typography>
+            ) : emergencies.length === 0 ? (
+              <Alert severity="info">No emergency cases found.</Alert>
+            ) : (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Child</TableCell>
+                      <TableCell>Reason</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Actions</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {emergencies.map((e) => (
+                      <TableRow key={e._id}>
+                        <TableCell>
+                          {e.appointmentDate ? new Date(e.appointmentDate).toLocaleString() : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {e.child ? `${e.child.firstName || ''} ${e.child.lastName || ''}`.trim() : '—'}
+                        </TableCell>
+                        <TableCell>{e.reason || '—'}</TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={(e.status || 'pending').toUpperCase()}
+                            color={e.status === 'completed' ? 'success' : e.status === 'cancelled' ? 'error' : 'warning'}
+                            variant="outlined"
+                          />
+                        </TableCell>
+                        <TableCell>
+                          <Stack direction="row" spacing={1}>
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              onClick={() => handleOpenConsultation(e)}
+                            >
+                              Add Prescription
+                            </Button>
+                            <Button
+                              size="small"
+                              color="success"
+                              variant="contained"
+                              onClick={() => handleUpdateEmergencyStatus(e._id, 'completed')}
+                              disabled={e.status === 'completed'}
+                            >
+                              Resolve
+                            </Button>
+                            <Button
+                              size="small"
+                              color="error"
+                              variant="outlined"
+                              onClick={async () => {
+                                const reason = prompt('Reason for cancellation:');
+                                if (!reason) return;
+                                try {
+                                  await api.patch(`/doctor/emergencies/${e._id}/status`, { status: 'cancelled', cancelReason: reason });
+                                  setSuccess('Emergency cancelled');
+                                  fetchEmergencies('all');
+                                } catch (err) {
+                                  setError(err.response?.data?.message || 'Failed to cancel emergency');
+                                }
+                              }}
+                              disabled={e.status === 'cancelled'}
+                            >
+                              Cancel
+                            </Button>
+                          </Stack>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        </Box>
+      )}
+
+      {/* Report Emergency Dialog */}
+      <Dialog
+        open={emergencyDialog.open}
+        onClose={() => setEmergencyDialog({ open: false })}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle>Report Emergency</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 2 }}>
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Select Child</InputLabel>
+              <Select
+                value={emergencyForm.childId || selectedChildId}
+                onChange={(e) => setEmergencyForm((prev) => ({ ...prev, childId: e.target.value }))}
+                label="Select Child"
+              >
+                {selectableChildren.map((child) => (
+                  <MenuItem key={child._id} value={child._id}>
+                    {child.firstName} {child.lastName}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <TextField
+              fullWidth
+              label="Emergency reason"
+              value={emergencyForm.reason}
+              onChange={(e) => setEmergencyForm((prev) => ({ ...prev, reason: e.target.value }))}
+              sx={{ mb: 2 }}
+              required
+            />
+
+            <Grid container spacing={2} sx={{ mb: 2 }}>
+              <Grid item xs={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Severity</InputLabel>
+                  <Select
+                    value={emergencyForm.severity}
+                    onChange={(e) => setEmergencyForm((prev) => ({ ...prev, severity: e.target.value }))}
+                    label="Severity"
+                  >
+                    <MenuItem value="low">Low</MenuItem>
+                    <MenuItem value="medium">Medium</MenuItem>
+                    <MenuItem value="high">High</MenuItem>
+                    <MenuItem value="critical">Critical</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Type</InputLabel>
+                  <Select
+                    value={emergencyForm.appointmentType}
+                    onChange={(e) => setEmergencyForm((prev) => ({ ...prev, appointmentType: e.target.value }))}
+                    label="Type"
+                  >
+                    <MenuItem value="onsite">On-site</MenuItem>
+                    <MenuItem value="online">Online</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+
+            <TextField
+              fullWidth
+              multiline
+              rows={4}
+              label="Description (optional)"
+              value={emergencyForm.description}
+              onChange={(e) => setEmergencyForm((prev) => ({ ...prev, description: e.target.value }))}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEmergencyDialog({ open: false })}>Cancel</Button>
+          <Button variant="contained" color="error" onClick={handleSubmitEmergency}>
+            Submit
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Voice Assistant Dialog */}
       <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>

@@ -10,7 +10,7 @@ import { Box, Container, Grid, Card, CardContent, Typography, Chip } from '@mui/
 const DEFAULT_BOUTIQUES = [
   {
     title: 'Navyriti',
-    tag: 'Diwali Carnival',
+    tag: 'Special Collection',
     image: 'https://images.unsplash.com/photo-1600703130635-3fe3fa5365d0?q=80&w=1400&auto=format&fit=crop'
   },
   {

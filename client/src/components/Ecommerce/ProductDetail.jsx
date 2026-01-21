@@ -88,7 +88,8 @@ export default function ProductDetail() {
             category: p.category || 'General',
             rating: p.rating || 4.5,
             reviews: p.reviews || 0,
-            inStock: p.inStock !== false,
+            stockQty: p.stockQty ?? 0,
+            inStock: (p.stockQty ?? 0) > 0 && (p.inStock !== false),
             description: p.description || '',
           };
           setProduct(normalized);
@@ -150,7 +151,7 @@ export default function ProductDetail() {
 
   const [activeImage, setActiveImage] = React.useState(0);
 
-  const canAdd = product?.inStock && ((sizeOptions.length === 0) || !!selectedSize);
+  const canAdd = product && product.stockQty > 0 && ((sizeOptions.length === 0) || !!selectedSize);
   const similarProducts = React.useMemo(() => {
     if (!product || !allProducts?.length) return [];
     const recs = recommendForProduct(product, allProducts, { k: 10 });
@@ -210,8 +211,11 @@ export default function ProductDetail() {
                 <Rating value={product.rating} precision={0.1} readOnly size="small" />
                 <Typography variant="body2" color="text.secondary">({product.reviews})</Typography>
               </Box>
-              {!product.inStock && (
+              {product.stockQty <= 0 && (
                 <Chip label="Out of Stock" color="error" size="small" sx={{ mb: 2 }} />
+              )}
+              {product.stockQty > 0 && product.stockQty <= 5 && (
+                <Chip label={`Only ${product.stockQty} left`} color="warning" size="small" sx={{ mb: 2 }} />
               )}
               <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 2, mb: 2 }}>
                 <Typography variant="h4" color="success.main" fontWeight={800}>₹{product.price}</Typography>
@@ -276,7 +280,7 @@ export default function ProductDetail() {
                           )}
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
-                          <Button size="small" variant="contained" color="success" disabled={!p.inStock} onClick={() => { addToCart(p, null, 1); setSnack('Added to cart'); }}>Add</Button>
+                          <Button size="small" variant="contained" color="success" disabled={!p.stockQty || p.stockQty <= 0} onClick={() => { addToCart(p, null, 1); setSnack('Added to cart'); }}>Add</Button>
                           <IconButton size="small" onClick={() => toggleWishlist(p.id)}>
                             {wishlist.has(p.id) ? <Favorite color="error" fontSize="small" /> : <FavoriteBorder fontSize="small" />}
                           </IconButton>
@@ -304,7 +308,7 @@ export default function ProductDetail() {
                           )}
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
-                          <Button size="small" variant="contained" color="success" disabled={!p.inStock} onClick={() => { addToCart(p, null, 1); setSnack('Added to cart'); }}>Add</Button>
+                          <Button size="small" variant="contained" color="success" disabled={!p.stockQty || p.stockQty <= 0} onClick={() => { addToCart(p, null, 1); setSnack('Added to cart'); }}>Add</Button>
                           <IconButton size="small" onClick={() => toggleWishlist(p.id)}>
                             {wishlist.has(p.id) ? <Favorite color="error" fontSize="small" /> : <FavoriteBorder fontSize="small" />}
                           </IconButton>

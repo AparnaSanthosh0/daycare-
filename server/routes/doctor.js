@@ -8,18 +8,32 @@ const Child = require('../models/Child');
 const Appointment = require('../models/Appointment');
 const Attendance = require('../models/Attendance');
 
-// Middleware to check if user is a doctor
+const ENFORCE_DOCTOR_ASSIGNMENTS = false; // Set to true if doctors should be restricted to assigned children only
+
+const canAccessChild = (user, childId) => {
+  if (!user) return false;
+  if (user.role !== 'doctor' || !ENFORCE_DOCTOR_ASSIGNMENTS) {
+    return true;
+  }
+
+  const assignedIds = Array.isArray(user.doctor?.assignedChildren) ? user.doctor.assignedChildren : [];
+  if (assignedIds.length === 0) return true;
+  return assignedIds.some((id) => id.toString() === childId.toString());
+};
+
+// Middleware to allow doctors (and optionally admin/staff for diagnostics)
 const doctorOnly = [
   auth,
   async (req, res, next) => {
     try {
       const user = await User.findById(req.user.userId);
-      if (!user || user.role !== 'doctor') {
-        return res.status(403).json({ message: 'Access denied. Doctor access required.' });
+      if (!user || !['doctor', 'admin', 'staff'].includes(user.role)) {
+        return res.status(403).json({ message: 'Access denied. Doctor or admin/staff access required.' });
       }
-      req.doctor = user;
+      req.doctorUser = user;
       next();
     } catch (error) {
+      console.error('Doctor auth middleware error:', error);
       res.status(500).json({ message: 'Server error verifying doctor access' });
     }
   }
@@ -28,17 +42,13 @@ const doctorOnly = [
 // Get doctor's assigned children
 router.get('/children', doctorOnly, async (req, res) => {
   try {
-    const doctor = await User.findById(req.user.userId)
-      .populate('doctor.assignedChildren', 'firstName lastName dateOfBirth gender program profileImage');
-    
-    if (!doctor || !doctor.doctor) {
-      return res.json([]);
-    }
+    const user = req.doctorUser;
+    const assignedIds = Array.isArray(user.doctor?.assignedChildren) ? user.doctor.assignedChildren : [];
+    const limitToAssignments = ENFORCE_DOCTOR_ASSIGNMENTS && user.role === 'doctor' && assignedIds.length > 0;
 
-    const children = await Child.find({
-      _id: { $in: doctor.doctor.assignedChildren || [] },
-      isActive: true
-    })
+    const query = limitToAssignments ? { _id: { $in: assignedIds }, isActive: true } : { isActive: true };
+
+    const children = await Child.find(query)
       .populate('parents', 'firstName lastName email phone')
       .select('firstName lastName dateOfBirth gender program allergies medicalConditions emergencyContacts authorizedPickup notes profileImage enrollmentDate')
       .sort({ firstName: 1 });
@@ -50,18 +60,28 @@ router.get('/children', doctorOnly, async (req, res) => {
   }
 });
 
+// Get all active children for doctor tools (read-only)
+router.get('/children/all', doctorOnly, async (_req, res) => {
+  try {
+    const children = await Child.find({ isActive: true })
+      .populate('parents', 'firstName lastName phone email')
+      .select('firstName lastName dateOfBirth gender program allergies medicalConditions notes profileImage')
+      .sort({ firstName: 1 });
+
+    res.json(children);
+  } catch (error) {
+    console.error('Get all children (doctor) error:', error);
+    res.status(500).json({ message: 'Server error fetching children' });
+  }
+});
+
 // Get child medical details
 router.get('/children/:childId', doctorOnly, async (req, res) => {
   try {
-    const doctor = await User.findById(req.user.userId);
-    if (!doctor || !doctor.doctor) {
-      return res.status(403).json({ message: 'Doctor not found' });
-    }
-
-    // Check if child is assigned to this doctor
-    const isAssigned = doctor.doctor.assignedChildren.some(
-      childId => childId.toString() === req.params.childId
-    );
+    const user = req.doctorUser;
+    const assignedIds = Array.isArray(user.doctor?.assignedChildren) ? user.doctor.assignedChildren : [];
+    const enforceAssignment = user.role === 'doctor' && assignedIds.length > 0;
+    const isAssigned = !enforceAssignment || assignedIds.some(childId => childId.toString() === req.params.childId);
 
     if (!isAssigned) {
       return res.status(403).json({ message: 'Child not assigned to this doctor' });
@@ -95,15 +115,10 @@ router.put('/children/:childId/medical', doctorOnly, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const doctor = await User.findById(req.user.userId);
-    if (!doctor || !doctor.doctor) {
-      return res.status(403).json({ message: 'Doctor not found' });
-    }
-
-    // Check if child is assigned to this doctor
-    const isAssigned = doctor.doctor.assignedChildren.some(
-      childId => childId.toString() === req.params.childId
-    );
+    const user = req.doctorUser;
+    const assignedIds = Array.isArray(user.doctor?.assignedChildren) ? user.doctor.assignedChildren : [];
+    const enforceAssignment = user.role === 'doctor' && assignedIds.length > 0;
+    const isAssigned = !enforceAssignment || assignedIds.some(childId => childId.toString() === req.params.childId);
 
     if (!isAssigned) {
       return res.status(403).json({ message: 'Child not assigned to this doctor' });
@@ -155,15 +170,10 @@ router.post('/children/:childId/medical-records', doctorOnly, [
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const doctor = await User.findById(req.user.userId);
-    if (!doctor || !doctor.doctor) {
-      return res.status(403).json({ message: 'Doctor not found' });
-    }
-
-    // Check if child is assigned to this doctor
-    const isAssigned = doctor.doctor.assignedChildren.some(
-      childId => childId.toString() === req.params.childId
-    );
+    const user = req.doctorUser;
+    const assignedIds = Array.isArray(user.doctor?.assignedChildren) ? user.doctor.assignedChildren : [];
+    const enforceAssignment = user.role === 'doctor' && assignedIds.length > 0;
+    const isAssigned = !enforceAssignment || assignedIds.some(childId => childId.toString() === req.params.childId);
 
     if (!isAssigned) {
       return res.status(403).json({ message: 'Child not assigned to this doctor' });
@@ -178,7 +188,7 @@ router.post('/children/:childId/medical-records', doctorOnly, [
 
     // Add medical record to child's notes or create a medicalRecords field
     // For now, we'll append to notes with structured format
-    const recordText = `\n\n[Medical Record - ${new Date(date).toLocaleDateString()}]\nType: ${type}\nDescription: ${description}${prescription ? `\nPrescription: ${prescription}` : ''}${followUpDate ? `\nFollow-up: ${new Date(followUpDate).toLocaleDateString()}` : ''}\nRecorded by: Dr. ${doctor.firstName} ${doctor.lastName}`;
+    const recordText = `\n\n[Medical Record - ${new Date(date).toLocaleDateString()}]\nType: ${type}\nDescription: ${description}${prescription ? `\nPrescription: ${prescription}` : ''}${followUpDate ? `\nFollow-up: ${new Date(followUpDate).toLocaleDateString()}` : ''}\nRecorded by: ${user.role === 'doctor' ? `Dr. ${user.firstName} ${user.lastName}` : `${user.firstName} ${user.lastName}`}`;
     
     child.notes = (child.notes || '') + recordText;
     await child.save();
@@ -192,8 +202,10 @@ router.post('/children/:childId/medical-records', doctorOnly, [
         prescription,
         followUpDate,
         recordedBy: {
-          id: doctor._id,
-          name: `Dr. ${doctor.firstName} ${doctor.lastName}`
+          id: user._id,
+          name: user.role === 'doctor'
+            ? `Dr. ${user.firstName} ${user.lastName}`
+            : `${user.firstName} ${user.lastName}`
         }
       }
     });
@@ -249,6 +261,150 @@ router.get('/statistics', doctorOnly, async (req, res) => {
   }
 });
 
+// =========================
+// Emergencies (Doctor dashboard)
+// Implemented as emergency appointments (Appointment.isEmergency === true)
+// =========================
+
+router.get('/emergencies', doctorOnly, async (req, res) => {
+  try {
+    const { status } = req.query;
+    const filter = {
+      isEmergency: true,
+      doctor: req.doctorUser.role === 'doctor' ? req.doctorUser._id : { $exists: true }
+    };
+
+    if (status && status !== 'all') {
+      filter.status = status;
+    }
+
+    const emergencies = await Appointment.find(filter)
+      .populate('child parent doctor')
+      .sort({ status: 1, appointmentDate: -1, createdAt: -1 });
+
+    res.json(emergencies);
+  } catch (error) {
+    console.error('Get emergencies error:', error);
+    res.status(500).json({ message: 'Server error fetching emergencies' });
+  }
+});
+
+router.post('/emergencies', doctorOnly, [
+  body('childId').isMongoId().withMessage('Valid childId required'),
+  body('reason').trim().notEmpty().withMessage('Reason is required'),
+  body('appointmentType').optional().isIn(['online', 'onsite']).withMessage('appointmentType must be online or onsite'),
+  body('severity').optional().isIn(['low', 'medium', 'high', 'critical']).withMessage('Valid severity required'),
+  body('description').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const { childId, reason, appointmentType, severity, description } = req.body;
+    if (!canAccessChild(req.doctorUser, childId)) {
+      return res.status(403).json({ message: 'Child not assigned to this doctor' });
+    }
+
+    const child = await Child.findById(childId).select('parents');
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found' });
+    }
+    const parentId = Array.isArray(child.parents) && child.parents.length > 0 ? child.parents[0] : null;
+    if (!parentId) {
+      return res.status(400).json({ message: 'Child has no parent linked. Cannot create emergency appointment.' });
+    }
+
+    // If an admin/staff is using the doctor dashboard routes, attach a doctor if possible.
+    const doctorUser =
+      req.doctorUser.role === 'doctor'
+        ? req.doctorUser
+        : await User.findOne({ role: 'doctor', isActive: true });
+
+    if (!doctorUser) {
+      return res.status(404).json({ message: 'No doctor available to assign this emergency' });
+    }
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    const emergencyNotesParts = [
+      `[EMERGENCY${severity ? ` • ${severity.toUpperCase()}` : ''}]`,
+      description ? description.trim() : null,
+      `Reported by: ${req.doctorUser.role === 'doctor' ? `Dr. ${req.doctorUser.firstName} ${req.doctorUser.lastName}` : `${req.doctorUser.firstName} ${req.doctorUser.lastName}`}`
+    ].filter(Boolean);
+
+    const appointment = new Appointment({
+      child: childId,
+      parent: parentId,
+      doctor: doctorUser._id,
+      appointmentDate: now,
+      appointmentTime: timeStr,
+      reason,
+      appointmentType: appointmentType || 'onsite',
+      isEmergency: true,
+      status: 'confirmed',
+      notes: emergencyNotesParts.join('\n'),
+      // Appointment enum doesn't include "doctor" today; use "staff" for doctor-created emergencies.
+      requestedBy: req.doctorUser.role === 'doctor' ? 'staff' : req.doctorUser.role
+    });
+
+    await appointment.save();
+    await appointment.populate('child parent doctor');
+
+    res.status(201).json({ message: 'Emergency reported successfully', appointment });
+  } catch (error) {
+    console.error('Report emergency error:', error);
+    res.status(500).json({ message: 'Server error reporting emergency' });
+  }
+});
+
+router.patch('/emergencies/:id/status', doctorOnly, [
+  body('status')
+    .isIn(['pending', 'confirmed', 'completed', 'cancelled', 'rescheduled'])
+    .withMessage('Valid status required'),
+  body('cancelReason').optional().trim()
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const appointment = await Appointment.findById(req.params.id);
+    if (!appointment) {
+      return res.status(404).json({ message: 'Emergency appointment not found' });
+    }
+
+    if (!appointment.isEmergency) {
+      return res.status(400).json({ message: 'This appointment is not marked as an emergency' });
+    }
+
+    // Doctors can only update their own emergencies
+    if (req.doctorUser.role === 'doctor' && appointment.doctor?.toString() !== req.doctorUser._id.toString()) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const { status, cancelReason } = req.body;
+    appointment.status = status;
+    if (status === 'cancelled') {
+      appointment.cancelledAt = new Date();
+      appointment.cancelReason = cancelReason || appointment.cancelReason;
+    }
+    if (status === 'completed') {
+      appointment.completedAt = new Date();
+    }
+
+    await appointment.save();
+    await appointment.populate('child parent doctor');
+
+    res.json({ message: 'Emergency updated successfully', appointment });
+  } catch (error) {
+    console.error('Update emergency status error:', error);
+    res.status(500).json({ message: 'Server error updating emergency' });
+  }
+});
+
 // ========== AI ROUTES TEST ==========
 router.get('/ai/test', doctorOnly, async (req, res) => {
   res.json({ message: 'AI routes are working', timestamp: new Date().toISOString() });
@@ -259,15 +415,7 @@ router.get('/ai/test', doctorOnly, async (req, res) => {
 router.post('/ai/health-summary/:childId', doctorOnly, async (req, res) => {
   console.log('AI Health Summary endpoint called for child:', req.params.childId);
   try {
-    const doctor = await User.findById(req.user.userId);
-    if (!doctor || !doctor.doctor) {
-      return res.status(403).json({ message: 'Doctor not found' });
-    }
-
-    const isAssigned = doctor.doctor.assignedChildren.some(
-      childId => childId.toString() === req.params.childId
-    );
-    if (!isAssigned) {
+    if (!canAccessChild(req.doctorUser, req.params.childId)) {
       return res.status(403).json({ message: 'Child not assigned to this doctor' });
     }
 
@@ -729,12 +877,9 @@ router.post('/ai/symptom-analyzer', doctorOnly, async (req, res) => {
 // ========== ML GROWTH CHART PREDICTIONS ==========
 router.post('/ai/growth-prediction/:childId', doctorOnly, async (req, res) => {
   try {
-    const doctor = await User.findById(req.user.userId);
-    const isAssigned = doctor.doctor.assignedChildren.some(
-      childId => childId.toString() === req.params.childId
-    );
-    if (!isAssigned) {
-      return res.status(403).json({ message: 'Child not assigned' });
+    const user = req.doctorUser;
+    if (!canAccessChild(user, req.params.childId)) {
+      return res.status(403).json({ message: 'Child not assigned to this doctor' });
     }
 
     const child = await Child.findById(req.params.childId);
@@ -768,6 +913,10 @@ router.post('/ai/medication-checker', doctorOnly, async (req, res) => {
   try {
     const { childId, newMedications } = req.body;
     
+    if (!canAccessChild(req.doctorUser, childId)) {
+      return res.status(403).json({ message: 'Child not assigned to this doctor' });
+    }
+
     const child = await Child.findById(childId);
     if (!child) {
       return res.status(404).json({ message: 'Child not found' });
@@ -800,12 +949,8 @@ router.post('/ai/medication-checker', doctorOnly, async (req, res) => {
 // ========== HEALTH RISK SCORING ==========
 router.get('/ai/risk-score/:childId', doctorOnly, async (req, res) => {
   try {
-    const doctor = await User.findById(req.user.userId);
-    const isAssigned = doctor.doctor.assignedChildren.some(
-      childId => childId.toString() === req.params.childId
-    );
-    if (!isAssigned) {
-      return res.status(403).json({ message: 'Child not assigned' });
+    if (!canAccessChild(req.doctorUser, req.params.childId)) {
+      return res.status(403).json({ message: 'Child not assigned to this doctor' });
     }
 
     const child = await Child.findById(req.params.childId);
@@ -833,12 +978,8 @@ router.get('/ai/risk-score/:childId', doctorOnly, async (req, res) => {
 // ========== AUTOMATED REPORT GENERATION ==========
 router.post('/ai/generate-report/:childId', doctorOnly, async (req, res) => {
   try {
-    const doctor = await User.findById(req.user.userId);
-    const isAssigned = doctor.doctor.assignedChildren.some(
-      childId => childId.toString() === req.params.childId
-    );
-    if (!isAssigned) {
-      return res.status(403).json({ message: 'Child not assigned' });
+    if (!canAccessChild(req.doctorUser, req.params.childId)) {
+      return res.status(403).json({ message: 'Child not assigned to this doctor' });
     }
 
     const { reportType, dateRange } = req.body;
@@ -851,7 +992,9 @@ router.post('/ai/generate-report/:childId', doctorOnly, async (req, res) => {
       summary: report.summary,
       recommendations: report.recommendations,
       generatedAt: new Date().toISOString(),
-      generatedBy: `Dr. ${doctor.firstName} ${doctor.lastName}`
+      generatedBy: req.doctorUser.role === 'doctor'
+        ? `Dr. ${req.doctorUser.firstName} ${req.doctorUser.lastName}`
+        : `${req.doctorUser.firstName} ${req.doctorUser.lastName}`
     });
   } catch (error) {
     console.error('Report Generation error:', error);

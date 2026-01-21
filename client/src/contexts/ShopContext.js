@@ -51,14 +51,36 @@ export const ShopProvider = ({ children }) => {
   }, [recentlyViewed]);
 
   const addToCart = useCallback((product, variant = null, qty = 1) => {
+    const stockQty = product.stockQty ?? (product.inStock ? Infinity : 0);
+    
+    // Check if product is out of stock
+    if (stockQty <= 0) {
+      console.warn(`Cannot add ${product.name} to cart: out of stock`);
+      return false; // Return false to indicate failure
+    }
+
     setCartItems((prev) => {
       const key = `${product.id}${variant ? `::${variant}` : ''}`;
       const idx = prev.findIndex((i) => i.key === key);
+      
       if (idx !== -1) {
         const next = [...prev];
-        next[idx] = { ...next[idx], quantity: next[idx].quantity + qty };
+        const newQuantity = next[idx].quantity + qty;
+        // Check if new quantity exceeds available stock
+        if (newQuantity > (next[idx].stockQty ?? stockQty)) {
+          console.warn(`Cannot add ${qty} more of ${product.name}: insufficient stock`);
+          return prev; // Don't update if stock insufficient
+        }
+        next[idx] = { ...next[idx], quantity: newQuantity, stockQty: next[idx].stockQty ?? stockQty };
         return next;
       }
+      
+      // Check if requested quantity exceeds available stock
+      if (qty > stockQty) {
+        console.warn(`Cannot add ${qty} of ${product.name}: only ${stockQty} available`);
+        return prev;
+      }
+      
       return [
         ...prev,
         {
@@ -69,6 +91,7 @@ export const ShopProvider = ({ children }) => {
           image: product.image,
           quantity: qty,
           variant,
+          stockQty: stockQty, // Store stock quantity for later checks
         },
       ];
     });
@@ -79,6 +102,7 @@ export const ShopProvider = ({ children }) => {
       next[product.id] = { ...entry, add: entry.add + 1 };
       return next;
     });
+    return true; // Return true to indicate success
   }, []);
 
   const removeFromCart = useCallback((key) => {
@@ -86,7 +110,20 @@ export const ShopProvider = ({ children }) => {
   }, []);
 
   const updateQuantity = useCallback((key, quantity) => {
-    setCartItems((prev) => prev.map((i) => (i.key === key ? { ...i, quantity: Math.max(0, quantity) } : i)).filter((i) => i.quantity > 0));
+    setCartItems((prev) => {
+      return prev.map((i) => {
+        if (i.key === key) {
+          const newQty = Math.max(0, quantity);
+          // Check if new quantity exceeds available stock
+          if (i.stockQty !== undefined && newQty > i.stockQty) {
+            // Limit to available stock
+            return { ...i, quantity: i.stockQty };
+          }
+          return { ...i, quantity: newQty };
+        }
+        return i;
+      }).filter((i) => i.quantity > 0);
+    });
   }, []);
 
   const clearCart = useCallback(() => setCartItems([]), []);

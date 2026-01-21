@@ -184,7 +184,8 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
             category: p.category || 'General',
             rating: p.rating || 4.5,
             reviews: p.reviews || 0,
-            inStock: p.inStock !== false,
+            stockQty: p.stockQty ?? 0,
+            inStock: p.stockQty > 0 && (p.inStock !== false),
             isNew: !!p.isNew,
             isBestseller: !!p.isBestseller,
             description: p.description || '',
@@ -583,7 +584,7 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
             backgroundSize: 'cover',
             imageFilter: 'none', // keep image crisp
             noBaseGradient: true, // remove dark left gradient so subject isn't obscured
-            title: 'Diwali Carnival',
+            title: 'Kids Paradise',
             subtitle: 'Biggest Range, Fastest Delivery',
             // Removed Shop Offers CTA per request
             overlay: undefined
@@ -659,9 +660,9 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                       fullWidth
                       startIcon={<Add />}
                       onClick={() => handleAddToCart(product)}
-                      disabled={!product.inStock}
+                      disabled={product.stockQty <= 0}
                     >
-                      {product.inStock ? 'Add to Cart' : 'Out of Stock'}
+                      {product.stockQty <= 0 ? 'Out of Stock' : 'Add to Cart'}
                     </AddToCartButton>
                   </CardActions>
                 </StyledCard>
@@ -814,8 +815,11 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                     {product.isBestseller && (
                       <Chip label="Bestseller" color="warning" size="small" sx={{ fontWeight: 600 }} />
                     )}
-                    {!product.inStock && (
+                    {product.stockQty <= 0 && (
                       <Chip label="Out of Stock" color="error" size="small" sx={{ fontWeight: 600 }} />
+                    )}
+                    {product.stockQty > 0 && product.stockQty <= 5 && (
+                      <Chip label={`Only ${product.stockQty} left`} color="warning" size="small" sx={{ fontWeight: 600 }} />
                     )}
                   </Box>
                   
@@ -943,9 +947,9 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                       fullWidth
                       startIcon={<Add />}
                       onClick={() => handleAddToCart(product)}
-                      disabled={!product.inStock}
+                      disabled={product.stockQty <= 0}
                     >
-                      {product.inStock ? 'Add to Cart' : 'Out of Stock'}
+                      {product.stockQty <= 0 ? 'Out of Stock' : 'Add to Cart'}
                     </AddToCartButton>
                   </CardActions>
                 </StyledCard>
