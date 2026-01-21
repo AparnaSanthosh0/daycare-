@@ -111,8 +111,17 @@ app.use(express.urlencoded({ extended: true }));
 const requireDb = (req, res, next) => {
   // 0=disconnected, 1=connected, 2=connecting, 3=disconnecting
   const state = mongoose.connection.readyState;
-  if (state !== 1) {
-    return res.status(503).json({ message: 'Database not connected' });
+  // Allow requests while connecting (mongoose will buffer queries by default),
+  // but block when fully disconnected or disconnecting.
+  if (state === 0 || state === 3) {
+    return res.status(503).json({
+      message: 'Database not connected',
+      code: 'DB_NOT_CONNECTED',
+      details: {
+        readyState: state,
+        hint: 'Check MONGODB_URI and ensure MongoDB/Atlas is reachable'
+      }
+    });
   }
   next();
 };

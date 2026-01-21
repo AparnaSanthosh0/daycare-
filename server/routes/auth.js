@@ -5,6 +5,7 @@ const { body, validationResult } = require('express-validator');
 const path = require('path');
 const fs = require('fs');
 const multer = require('multer');
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const Vendor = require('../models/Vendor');
 const auth = require('../middleware/auth');
@@ -301,6 +302,16 @@ router.post('/login', [
   body('password').notEmpty().withMessage('Password is required')
 ], async (req, res) => {
   try {
+    // If DB is down, fail with a clear error (frontend often reports this as "login failed")
+    const state = mongoose.connection.readyState; // 0=disconnected,1=connected,2=connecting,3=disconnecting
+    if (state === 0 || state === 3) {
+      return res.status(503).json({
+        message: 'Database not connected. Please start MongoDB or fix MONGODB_URI, then retry login.',
+        code: 'DB_NOT_CONNECTED',
+        details: { readyState: state }
+      });
+    }
+
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ errors: errors.array() });

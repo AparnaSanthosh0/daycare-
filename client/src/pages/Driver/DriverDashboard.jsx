@@ -27,7 +27,9 @@ import {
   Select,
   MenuItem,
   Stack,
-  Divider
+  Divider,
+  IconButton,
+  Tooltip
 } from '@mui/material';
 import {
   DirectionsCar,
@@ -41,7 +43,8 @@ import {
   Phone,
   Logout,
   GpsFixed,
-  ShoppingCart
+  ShoppingCart,
+  KeyboardVoice
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
@@ -275,6 +278,56 @@ const DriverDashboard = () => {
   
   const vehicleNumber = user?.staff?.vehicleNumber || user?.vehicleNumber || '#2';
 
+  // Primary assignment (for dashboards with a single driver/route like Kottayam)
+  const primaryRoute = routes[0] || null;
+  const primaryChild = primaryRoute?.assignedChildren?.[0] || null;
+
+  // Simple pickup anomaly & context-aware alert helpers based on today's active trip
+  const anomalyAlerts = [];
+  if (activeTrip) {
+    if (activeTrip.routeDeviationAlert) {
+      anomalyAlerts.push({
+        type: 'Route deviation detected',
+        description: activeTrip.routeDeviationAlert
+      });
+    }
+    if (activeTrip.unexpectedStops && activeTrip.unexpectedStops.length > 0) {
+      anomalyAlerts.push({
+        type: 'Unexpected stop',
+        description: `${activeTrip.unexpectedStops.length} unplanned stop(s) detected on this route.`
+      });
+    }
+    const delayMinutes = activeTrip.delayMinutes || activeTrip.estimatedDelayMinutes;
+    if (typeof delayMinutes === 'number' && delayMinutes > 10) {
+      anomalyAlerts.push({
+        type: 'Running late',
+        description: `Pickup is running approximately ${delayMinutes} minutes behind schedule.`
+      });
+    }
+  }
+
+  const contextAlerts = [];
+  if (activeTrip) {
+    if (activeTrip.trafficStatus) {
+      contextAlerts.push({
+        type: 'Traffic',
+        description: activeTrip.trafficStatus
+      });
+    }
+    if (activeTrip.weatherStatus) {
+      contextAlerts.push({
+        type: 'Weather',
+        description: activeTrip.weatherStatus
+      });
+    }
+    if (activeTrip.timeWindow) {
+      contextAlerts.push({
+        type: 'Time window',
+        description: `Pickup window: ${activeTrip.timeWindow}`
+      });
+    }
+  }
+
   const handleVaOpen = () => setVaOpen(true);
   const handleVaClose = () => setVaOpen(false);
 
@@ -302,7 +355,19 @@ const DriverDashboard = () => {
               {driverName} - Bus {vehicleNumber}
             </Typography>
           </Box>
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <Tooltip title="Voice Assistant">
+              <IconButton
+                onClick={handleVaOpen}
+                sx={{
+                  bgcolor: '#e0f2f1',
+                  '&:hover': { bgcolor: '#b2dfdb' },
+                  color: '#14B8A6'
+                }}
+              >
+                <KeyboardVoice />
+              </IconButton>
+            </Tooltip>
             <Button
               variant="contained"
               startIcon={<ShoppingCart />}
@@ -636,6 +701,79 @@ const DriverDashboard = () => {
                   </Paper>
                 </Box>
               )}
+
+              {/* AI Pickup Safety & Smart Alerts */}
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                  AI Pickup Safety & Smart Alerts
+                </Typography>
+                <Grid container spacing={2.5}>
+                  <Grid item xs={12} md={4}>
+                    <Paper sx={{ p: 2.5, borderRadius: 2, bgcolor: '#fff3e0' }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#ef6c00', mb: 1 }}>
+                        Pickup Pattern Anomaly Detection
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Learns the normal pickup pattern for this route and flags route deviations or unexpected stops.
+                      </Typography>
+                      {anomalyAlerts.length > 0 ? (
+                        <Stack spacing={1}>
+                          {anomalyAlerts.map((a, idx) => (
+                            <Alert key={idx} severity="warning" sx={{ borderRadius: 1 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{a.type}</Typography>
+                              <Typography variant="body2">{a.description}</Typography>
+                            </Alert>
+                          ))}
+                        </Stack>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          No anomalies detected for today&apos;s pickup pattern.
+                        </Typography>
+                      )}
+                    </Paper>
+                  </Grid>
+
+                  <Grid item xs={12} md={4}>
+                    <Paper sx={{ p: 2.5, borderRadius: 2, bgcolor: '#e3f2fd' }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1976d2', mb: 1 }}>
+                        OTP-Based Smart Pickup
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Child pickup and drop-off are confirmed only via OTP, ensuring secure handover to guardians.
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        Use the <strong>Generate OTP</strong> and <strong>Verify OTP</strong> actions in the trip
+                        children list to complete smart pickup for each child.
+                      </Typography>
+                    </Paper>
+                  </Grid>
+
+                  <Grid item xs={12} md={4}>
+                    <Paper sx={{ p: 2.5, borderRadius: 2, bgcolor: '#e8f5e9' }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#388e3c', mb: 1 }}>
+                        Context-Aware Alerts
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                        Alerts are generated based on traffic, weather and time-of-day context for smarter routing.
+                      </Typography>
+                      {contextAlerts.length > 0 ? (
+                        <Stack spacing={1}>
+                          {contextAlerts.map((c, idx) => (
+                            <Alert key={idx} severity="info" sx={{ borderRadius: 1 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{c.type}</Typography>
+                              <Typography variant="body2">{c.description}</Typography>
+                            </Alert>
+                          ))}
+                        </Stack>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary">
+                          Live traffic, weather and time windows are monitored. Alerts will appear here when needed.
+                        </Typography>
+                      )}
+                    </Paper>
+                  </Grid>
+                </Grid>
+              </Box>
             </>
           ) : (
             <Paper sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}>
@@ -667,6 +805,36 @@ const DriverDashboard = () => {
               }} 
             />
           </Box>
+
+          {/* Current Assignment Summary (for single driver & primary route like Kottayam) */}
+          {primaryRoute && primaryChild && (
+            <Paper sx={{ mb: 3, p: 2.5, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', bgcolor: '#f1f8e9' }}>
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Current Route
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    {primaryRoute.routeName || primaryRoute.name || 'Assigned Route'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {primaryRoute.stops?.length || 0} stops • {primaryRoute.assignedChildren?.length || 0} child
+                  </Typography>
+                </Grid>
+                <Grid item xs={12} md={6}>
+                  <Typography variant="subtitle2" color="text.secondary">
+                    Assigned Child
+                  </Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    {primaryChild.child?.firstName || 'Child'} {primaryChild.child?.lastName || ''}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Pickup area: {primaryChild.child?.address?.street || primaryChild.child?.address || 'Kottayam route'}
+                  </Typography>
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
 
           {routes.length > 0 && routes.some(r => r.assignedChildren?.length > 0) ? (
             <Paper sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.08)' }}>
@@ -1393,17 +1561,12 @@ const DriverDashboard = () => {
         </Paper>
       )}
 
-      {/* Voice Assistant Button and Dialog */}
-      <Box sx={{ position: 'fixed', top: 24, right: 24, zIndex: 9999 }}>
-        <Button variant="contained" color="success" onClick={handleVaOpen} sx={{ borderRadius: '50%', minWidth: 56, minHeight: 56, boxShadow: 3 }}>
-          <span role="img" aria-label="mic">🎤</span>
-        </Button>
-        <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
-          <Box sx={{ p: 2, bgcolor: '#f6f8fa' }}>
-            <VoiceAssistant />
-          </Box>
-        </Dialog>
-      </Box>
+      {/* Voice Assistant Dialog */}
+      <Dialog open={vaOpen} onClose={handleVaClose} maxWidth="xs" fullWidth>
+        <Box sx={{ p: 2, bgcolor: '#f6f8fa' }}>
+          <VoiceAssistant />
+        </Box>
+      </Dialog>
     </Box>
   );
 };

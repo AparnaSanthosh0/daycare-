@@ -183,7 +183,7 @@ const DoctorDashboard = () => {
   // View child details
   const handleViewChild = async (childId) => {
     try {
-      const response = await api.get(`/api/doctor/children/${childId}`);
+      const response = await api.get(`/doctor/children/${childId}`);
       setSelectedChild(response.data);
       setMedicalForm({
         allergies: response.data.allergies || [],
@@ -199,7 +199,7 @@ const DoctorDashboard = () => {
   // Update medical information
   const handleUpdateMedical = async () => {
     try {
-      await api.put(`/api/doctor/children/${selectedChild._id}/medical`, medicalForm);
+      await api.put(`/doctor/children/${selectedChild._id}/medical`, medicalForm);
       setSuccess('Medical information updated successfully');
       setChildDialog({ open: false, child: null });
       fetchChildren();
@@ -212,7 +212,7 @@ const DoctorDashboard = () => {
   // Add medical record
   const handleAddMedicalRecord = async () => {
     try {
-      await api.post(`/api/doctor/children/${recordForm.childId || selectedChild?._id}/medical-records`, recordForm);
+      await api.post(`/doctor/children/${recordForm.childId || selectedChild?._id}/medical-records`, recordForm);
       setSuccess('Medical record added successfully');
       setMedicalRecordDialog({ open: false, child: null });
       setRecordForm({
