@@ -5,6 +5,7 @@
 
 const User = require('../models/User');
 const DeliveryAssignment = require('../models/DeliveryAssignment');
+const mongoose = require('mongoose');
 const PlatformSettings = require('../models/PlatformSettings');
 
 /**
@@ -66,7 +67,62 @@ async function autoAssignDeliveryAgent(deliveryAssignment) {
       return null;
     }
 
-    // STEP 1: Determine zones
+    // STEP 1: Check total number of delivery agents
+    const allAgents = await User.find({
+      role: 'staff',
+      'staff.staffType': 'delivery',
+      isActive: true
+    });
+
+    console.log(`📊 Total delivery agents: ${allAgents.length}`);
+
+    // STEP 2: If only one agent exists, assign directly
+    if (allAgents.length === 1) {
+      const singleAgent = allAgents[0];
+      console.log(`✅ Only one delivery agent found - assigning directly to ${singleAgent.firstName} ${singleAgent.lastName}`);
+      
+      // Ensure ObjectId conversion
+      const agentObjectId = mongoose.Types.ObjectId.isValid(singleAgent._id) 
+        ? new mongoose.Types.ObjectId(singleAgent._id)
+        : singleAgent._id;
+      
+      deliveryAssignment.deliveryAgent = agentObjectId;
+      deliveryAssignment.status = 'assigned';
+      deliveryAssignment.assignedAt = new Date();
+      deliveryAssignment.assignmentType = 'auto';
+      deliveryAssignment.assignmentReason = 'Single agent system - direct assignment';
+      
+      // Determine zones if possible
+      const pickupZone = determineZone(
+        deliveryAssignment.pickupLocation,
+        settings.zones
+      );
+      const deliveryZone = determineZone(
+        deliveryAssignment.deliveryLocation,
+        settings.zones
+      );
+      deliveryAssignment.pickupLocation.zone = pickupZone;
+      deliveryAssignment.deliveryLocation.zone = deliveryZone;
+      
+      await deliveryAssignment.save();
+      
+      // Reload to verify it was saved correctly
+      const savedAssignment = await DeliveryAssignment.findById(deliveryAssignment._id)
+        .populate('deliveryAgent', 'firstName lastName email phone');
+      console.log(`💾 Saved assignment: status=${savedAssignment.status}, agent=${savedAssignment.deliveryAgent?._id || savedAssignment.deliveryAgent}`);
+      console.log(`   Agent name: ${savedAssignment.deliveryAgent?.firstName || 'N/A'} ${savedAssignment.deliveryAgent?.lastName || ''}`);
+
+      // Update agent status
+      await User.findByIdAndUpdate(singleAgent._id, {
+        $inc: { 'staff.currentDeliveries': 1 }
+      });
+
+      console.log(`✅ Directly assigned to ${singleAgent.firstName} ${singleAgent.lastName} (ID: ${singleAgent._id})`);
+      return singleAgent;
+    }
+
+    // STEP 3: Multiple agents - use scoring system
+    // Determine zones
     const pickupZone = determineZone(
       deliveryAssignment.pickupLocation,
       settings.zones
@@ -82,7 +138,7 @@ async function autoAssignDeliveryAgent(deliveryAssignment) {
 
     console.log(`📍 Zones determined: Pickup=${pickupZone}, Delivery=${deliveryZone}`);
 
-    // STEP 2: Find available agents in zones
+    // STEP 4: Find available agents in zones
     const availableAgents = await User.find({
       role: 'staff',
       'staff.staffType': 'delivery',
@@ -91,18 +147,27 @@ async function autoAssignDeliveryAgent(deliveryAssignment) {
       isActive: true
     });
 
+    // If no agents in zones, try all agents
+    let agentsToConsider = availableAgents;
     if (availableAgents.length === 0) {
-      console.log(`⚠️ No agents available in zones: ${pickupZone}, ${deliveryZone}`);
+      console.log(`⚠️ No agents in zones ${pickupZone}, ${deliveryZone} - checking all agents`);
+      agentsToConsider = allAgents.filter(agent => 
+        agent.staff?.availability === 'available' || agent.staff?.availability === 'busy'
+      );
+    }
+
+    if (agentsToConsider.length === 0) {
+      console.log(`⚠️ No available agents found`);
       await handleNoAgentsAvailable(deliveryAssignment);
       return null;
     }
 
-    console.log(`✓ Found ${availableAgents.length} potential agents`);
+    console.log(`✓ Found ${agentsToConsider.length} potential agents`);
 
-    // STEP 3: Score each agent
+    // STEP 5: Score each agent
     const weights = settings.autoAssignment.weights;
     const scoredAgents = await Promise.all(
-      availableAgents.map(async (agent) => {
+      agentsToConsider.map(async (agent) => {
         // Factor 1: Current workload
         const activeDeliveries = await DeliveryAssignment.countDocuments({
           deliveryAgent: agent._id,
@@ -164,27 +229,39 @@ async function autoAssignDeliveryAgent(deliveryAssignment) {
       return null;
     }
 
-    // STEP 4: Sort by score (lowest/best first)
+    // STEP 6: Sort by score (lowest/best first)
     validAgents.sort((a, b) => a.score - b.score);
 
-    // STEP 5: Assign to best agent
+    // STEP 7: Assign to best agent
     const bestAgent = validAgents[0];
 
-    deliveryAssignment.deliveryAgent = bestAgent.agent._id;
+    // Ensure ObjectId conversion
+    const agentObjectId = mongoose.Types.ObjectId.isValid(bestAgent.agent._id) 
+      ? new mongoose.Types.ObjectId(bestAgent.agent._id)
+      : bestAgent.agent._id;
+    
+    deliveryAssignment.deliveryAgent = agentObjectId;
     deliveryAssignment.status = 'assigned';
     deliveryAssignment.assignedAt = new Date();
+    deliveryAssignment.assignmentType = 'auto';
     deliveryAssignment.assignmentScore = bestAgent.score;
     deliveryAssignment.assignmentReason = `Zone: ${pickupZone}, Load: ${bestAgent.breakdown.activeDeliveries}, Distance: ${bestAgent.breakdown.distance}km, Rating: ${bestAgent.breakdown.rating}`;
     deliveryAssignment.responseDeadline = new Date(Date.now() + settings.autoAssignment.assignmentTimeout * 1000);
 
     await deliveryAssignment.save();
+    
+    // Reload to verify it was saved correctly
+    const savedAssignment = await DeliveryAssignment.findById(deliveryAssignment._id)
+      .populate('deliveryAgent', 'firstName lastName email phone');
+    console.log(`💾 Saved assignment: status=${savedAssignment.status}, agent=${savedAssignment.deliveryAgent?._id || savedAssignment.deliveryAgent}`);
+    console.log(`   Agent name: ${savedAssignment.deliveryAgent?.firstName || 'N/A'} ${savedAssignment.deliveryAgent?.lastName || ''}`);
 
-    // STEP 6: Update agent status
+    // STEP 8: Update agent status
     await User.findByIdAndUpdate(bestAgent.agent._id, {
       $inc: { 'staff.currentDeliveries': 1 }
     });
 
-    console.log(`✅ Auto-assigned to ${bestAgent.agent.firstName} ${bestAgent.agent.lastName} (Score: ${bestAgent.score.toFixed(2)})`);
+    console.log(`✅ Auto-assigned to ${bestAgent.agent.firstName} ${bestAgent.agent.lastName} (ID: ${bestAgent.agent._id}, Score: ${bestAgent.score.toFixed(2)})`);
 
     return bestAgent.agent;
 

@@ -73,6 +73,7 @@ const transportSchema = new mongoose.Schema({
       required: true
     },
     scheduledTime: String,
+    actualStartTime: String,
     actualTime: String,
     status: {
       type: String,
@@ -121,10 +122,15 @@ const transportSchema = new mongoose.Schema({
       speed: Number,
       heading: Number
     }],
+    unexpectedStops: [{
+      at: { type: Date, default: Date.now },
+      reason: String
+    }],
+    routeDeviationAlert: { type: String, default: null },
     incidents: [{
       type: {
         type: String,
-        enum: ['delay', 'accident', 'breakdown', 'traffic', 'weather', 'other']
+        enum: ['delay', 'accident', 'breakdown', 'traffic', 'weather', 'emergency', 'other']
       },
       description: String,
       reportedAt: { type: Date, default: Date.now },

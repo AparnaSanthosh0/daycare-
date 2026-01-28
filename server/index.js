@@ -147,13 +147,21 @@ app.use('/api/inventory', requireDb, require('./routes/inventory'));
 app.use('/api/vendor', requireDb, require('./routes/vendors'));
 // Products (public list, vendor/admin manage)
 app.use('/api/products', requireDb, require('./routes/products'));
+app.use('/api/image-search', requireDb, require('./routes/imageSearch'));
 app.use('/api/customers', requireDb, require('./routes/customers'));
 // Purchase Orders (Admin-only)
 app.use('/api/purchase-orders', requireDb, require('./routes/purchaseOrders'));
 // Payments (Razorpay integration)
 app.use('/api/payments', requireDb, require('./routes/payments'));
 // Orders (customer → admin → vendor flow)
-app.use('/api/orders', requireDb, require('./routes/orders'));
+// Add request logging middleware for debugging
+app.use('/api/orders', requireDb, (req, res, next) => {
+  if (req.path.includes('create-delivery-assignments') || req.path.includes('repair-orders')) {
+    console.log(`🔍 [${new Date().toISOString()}] ${req.method} ${req.path}`);
+    console.log(`   Full URL: ${req.method} ${req.originalUrl}`);
+  }
+  next();
+}, require('./routes/orders'));
 // Invoices (auto-generated for paid orders)
 app.use('/api/invoices', requireDb, require('./routes/invoices'));
 // Reviews (customer feedback to vendors and admin)

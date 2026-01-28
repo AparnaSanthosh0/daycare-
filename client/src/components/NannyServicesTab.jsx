@@ -104,6 +104,16 @@ const NannyServicesTab = () => {
         alert('Please fill in all required fields: Child Name, Service Date, Start Time, and End Time');
         return;
       }
+
+      // Disallow past dates on the client as well
+      const selectedDate = new Date(bookingForm.serviceDate);
+      const today = new Date();
+      selectedDate.setHours(0, 0, 0, 0);
+      today.setHours(0, 0, 0, 0);
+      if (selectedDate < today) {
+        alert('You cannot book a nanny for a past date. Please choose today or a future date.');
+        return;
+      }
       
       if (!bookingForm.parentAddress) {
         alert('Please enter the service address where the nanny will come');

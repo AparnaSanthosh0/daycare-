@@ -28,7 +28,7 @@ const MealRecommendation = () => {
   const [formData, setFormData] = useState({
     age: '',
     dietaryPreference: 'vegetarian',
-    hasAllergy: false
+    hasAllergy: 'false'
   });
 
   const [result, setResult] = useState(null);
@@ -63,16 +63,27 @@ const MealRecommendation = () => {
         return;
       }
 
-      const response = await api.post('/meal-recommendations/predict', {
-        age: parseInt(formData.age),
-        dietaryPreference: formData.dietaryPreference,
-        hasAllergy: formData.hasAllergy
-      });
+      const response = await api.post(
+        '/meal-recommendations/predict',
+        {
+          age: parseInt(formData.age),
+          dietaryPreference: formData.dietaryPreference,
+          hasAllergy: formData.hasAllergy === 'true'
+        },
+        { timeout: 60000 }
+      );
 
       setResult(response.data);
     } catch (err) {
-      console.error('Meal recommendation error:', err);
-      setError('Error getting meal recommendation. Please try again.');
+      const isTimeout = err?.code === 'ECONNABORTED' || /timeout/i.test(err?.message || '');
+      if (isTimeout) {
+        setError('The recommendation is taking longer than usual (e.g. first-time model setup). Please try again in a moment.');
+      } else {
+        setError('Error getting meal recommendation. Please try again.');
+      }
+      if (process.env.NODE_ENV !== 'production') {
+        console.error('Meal recommendation error:', err);
+      }
     } finally {
       setLoading(false);
     }
@@ -138,11 +149,11 @@ const MealRecommendation = () => {
                     <InputLabel>Allergy Status</InputLabel>
                     <Select
                       value={formData.hasAllergy}
-                      onChange={(e) => handleInputChange('hasAllergy', e.target.value === 'true')}
+                      onChange={(e) => handleInputChange('hasAllergy', e.target.value)}
                       label="Allergy Status"
                     >
-                      <MenuItem value={false}>No Allergies</MenuItem>
-                      <MenuItem value={true}>Has Allergies</MenuItem>
+                      <MenuItem value="false">No Allergies</MenuItem>
+                      <MenuItem value="true">Has Allergies</MenuItem>
                     </Select>
                   </FormControl>
                 </Grid>

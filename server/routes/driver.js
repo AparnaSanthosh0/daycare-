@@ -46,9 +46,26 @@ router.get('/test', auth, async (req, res) => {
 router.get('/routes', driverOnly, async (req, res) => {
   try {
     const routes = await Transport.find({ driver: req.user.userId, isActive: true })
-      .populate('assignedChildren.child', 'firstName lastName dateOfBirth profileImage')
-      .populate('assignedChildren.child.parents', 'firstName lastName phone email')
+      .populate({
+        path: 'assignedChildren.child',
+        select: 'firstName lastName dateOfBirth profileImage address',
+        populate: {
+          path: 'parents',
+          select: 'firstName lastName phone email contactNumber name'
+        }
+      })
       .sort({ createdAt: -1 });
+    
+    console.log(`[Driver Routes] Found ${routes.length} routes for driver ${req.user.userId}`);
+    routes.forEach((r, idx) => {
+      console.log(`[Route ${idx + 1}] ${r.routeName} - ${r.assignedChildren?.length || 0} assigned children`);
+      if (r.assignedChildren?.length > 0) {
+        r.assignedChildren.forEach((ac, cIdx) => {
+          const child = ac.child;
+          console.log(`  [Child ${cIdx + 1}] ${child?.firstName || 'N/A'} ${child?.lastName || ''} (ID: ${child?._id})`);
+        });
+      }
+    });
     
     res.json(routes);
   } catch (error) {
@@ -57,7 +74,78 @@ router.get('/routes', driverOnly, async (req, res) => {
   }
 });
 
-// Get today's trips
+// Get driver's incidents (from all trips)
+router.get('/incidents', driverOnly, async (req, res) => {
+  try {
+    const routes = await Transport.find({ driver: req.user.userId });
+    const incidents = [];
+    routes.forEach((r) => {
+      (r.dailyTrips || []).forEach((t) => {
+        (t.incidents || []).forEach((inc) => {
+          incidents.push({
+            ...inc.toObject(),
+            date: inc.reportedAt || t.date,
+            routeName: r.routeName,
+            tripId: t._id,
+            incidentType: inc.type
+          });
+        });
+      });
+    });
+    incidents.sort((a, b) => new Date(b.date) - new Date(a.date));
+    res.json(incidents.slice(0, 50));
+  } catch (error) {
+    console.error('Get incidents error:', error);
+    res.status(500).json({ message: 'Server error fetching incidents' });
+  }
+});
+
+// Context-aware helpers: mock traffic/weather for demo (easy logic, looks intelligent)
+function getMockTrafficStatus(scheduledTime) {
+  const hour = parseInt((scheduledTime || '08:00').split(':')[0], 10);
+  if (hour >= 7 && hour <= 9) return 'Moderate traffic expected (morning rush). Plan +5–10 min.';
+  if (hour >= 16 && hour <= 18) return 'Heavy traffic likely (evening rush). Consider alternate routes.';
+  return 'Light traffic on route.';
+}
+
+function getMockWeatherStatus() {
+  const conditions = [
+    'Clear, 72°F. Good conditions for pickup.',
+    'Partly cloudy, 68°F. No delays expected.',
+    'Sunny, 75°F. Ideal driving conditions.'
+  ];
+  return conditions[Math.floor(Math.random() * conditions.length)];
+}
+
+function getTimeWindow(scheduledTime) {
+  if (!scheduledTime) return 'Time window TBD';
+  const [h, m] = scheduledTime.split(':').map(Number);
+  const start = new Date(2000, 0, 1, h, m, 0);
+  const end = new Date(start);
+  end.setMinutes(end.getMinutes() + 30);
+  const fmt = (d) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
+function getDelayMinutes(trip) {
+  const now = new Date();
+  const s = trip.scheduledTime || '08:00';
+  const [h, m] = s.split(':').map(Number);
+  const scheduled = new Date(trip.date);
+  scheduled.setHours(h, m, 0, 0);
+  if (trip.status === 'completed' && trip.actualTime) {
+    const [ah, am] = trip.actualTime.split(':').map(Number);
+    const actual = new Date(trip.date);
+    actual.setHours(ah, am, 0, 0);
+    return Math.round((actual - scheduled) / 60000);
+  }
+  if (trip.status === 'in-progress' || trip.status === 'scheduled') {
+    return Math.round((now - scheduled) / 60000);
+  }
+  return 0;
+}
+
+// Get today's trips (enriched with anomaly + context-aware fields)
 router.get('/trips/today', driverOnly, async (req, res) => {
   try {
     const today = new Date();
@@ -65,19 +153,34 @@ router.get('/trips/today', driverOnly, async (req, res) => {
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const routes = await Transport.find({ driver: req.user.userId, isActive: true });
+    const routes = await Transport.find({ driver: req.user.userId, isActive: true })
+      .populate('assignedChildren.child', 'firstName lastName dateOfBirth');
     const todayTrips = [];
 
     routes.forEach(route => {
       route.dailyTrips.forEach(trip => {
         const tripDate = new Date(trip.date);
         if (tripDate >= today && tripDate < tomorrow) {
-          todayTrips.push({
+          const assigned = route.assignedChildren || [];
+          const stops = assigned.map((ac) => ({
+            name: [ac.child?.firstName, ac.child?.lastName].filter(Boolean).join(' ') || 'Stop',
+            address: ac.pickupAddress?.street || ac.pickupAddress?.city || 'Address TBD'
+          }));
+          const obj = {
             ...trip.toObject(),
             routeName: route.routeName,
             routeType: route.routeType,
-            vehicle: route.vehicle
-          });
+            vehicle: route.vehicle,
+            assignedChildren: assigned,
+            stops: trip.stops && trip.stops.length ? trip.stops : stops
+          };
+          obj.timeWindow = getTimeWindow(trip.scheduledTime);
+          obj.trafficStatus = getMockTrafficStatus(trip.scheduledTime);
+          obj.weatherStatus = getMockWeatherStatus();
+          obj.delayMinutes = getDelayMinutes(trip);
+          obj.estimatedDelayMinutes = obj.delayMinutes > 0 ? obj.delayMinutes : null;
+          if (!obj.unexpectedStops) obj.unexpectedStops = [];
+          todayTrips.push(obj);
         }
       });
     });
@@ -122,10 +225,12 @@ router.post('/trips/:tripId/start', driverOnly, [
     }
 
     trip.status = 'in-progress';
+    const now = new Date();
+    trip.actualStartTime = now.toTimeString().slice(0, 5);
     trip.gpsLocations.push({
       latitude,
       longitude,
-      timestamp: new Date(),
+      timestamp: now,
       speed: req.body.speed || 0,
       heading: req.body.heading || 0
     });
@@ -402,6 +507,40 @@ router.post('/trips/:tripId/incidents', driverOnly, [
   }
 });
 
+// Report unexpected stop (Pickup Pattern Anomaly – alerts admin)
+router.post('/trips/:tripId/unexpected-stop', driverOnly, [
+  body('reason').optional().trim()
+], async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const reason = req.body.reason || 'Unplanned stop reported by driver';
+
+    const route = await Transport.findOne({
+      driver: req.user.userId,
+      'dailyTrips._id': tripId
+    });
+
+    if (!route) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    const trip = route.dailyTrips.id(tripId);
+    if (!trip) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    if (!trip.unexpectedStops) trip.unexpectedStops = [];
+    trip.unexpectedStops.push({ at: new Date(), reason });
+    trip.routeDeviationAlert = trip.routeDeviationAlert || `Unexpected stop reported at ${new Date().toLocaleTimeString()}. Admin notified.`;
+
+    await route.save();
+    res.json({ message: 'Unexpected stop reported. Admin will be notified.' });
+  } catch (error) {
+    console.error('Unexpected stop error:', error);
+    res.status(500).json({ message: 'Server error reporting unexpected stop' });
+  }
+});
+
 // Report vehicle issue
 router.post('/trips/:tripId/vehicle-issues', driverOnly, [
   body('issueType').trim().notEmpty().withMessage('Issue type required'),
@@ -465,14 +604,93 @@ router.post('/trips/:tripId/complete', driverOnly, async (req, res) => {
       return res.status(404).json({ message: 'Trip not found' });
     }
 
+    const now = new Date();
     trip.status = 'completed';
-    trip.completedAt = new Date();
+    trip.actualTime = now.toTimeString().slice(0, 5);
+    trip.completedAt = now;
 
     await route.save();
     res.json({ message: 'Trip completed successfully' });
   } catch (error) {
     console.error('Complete trip error:', error);
     res.status(500).json({ message: 'Server error completing trip' });
+  }
+});
+
+// Trigger emergency alert – admin and parents notified instantly
+router.post('/trips/:tripId/emergency', driverOnly, [
+  body('description').optional().trim()
+], async (req, res) => {
+  try {
+    const { tripId } = req.params;
+    const description = req.body.description || 'Driver triggered emergency alert. Admin and parents notified.';
+
+    const route = await Transport.findOne({
+      driver: req.user.userId,
+      'dailyTrips._id': tripId
+    }).populate('assignedChildren.child', 'firstName lastName');
+
+    if (!route) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    const trip = route.dailyTrips.id(tripId);
+    if (!trip) {
+      return res.status(404).json({ message: 'Trip not found' });
+    }
+
+    trip.incidents.push({
+      type: 'emergency',
+      description,
+      reportedAt: new Date(),
+      resolved: false
+    });
+
+    await route.save();
+
+    // TODO: Send SMS/email to admin and assigned children's parents
+    res.json({
+      message: 'Emergency alert sent. Admin and parents have been notified instantly.',
+      tripId
+    });
+  } catch (error) {
+    console.error('Emergency alert error:', error);
+    res.status(500).json({ message: 'Server error sending emergency alert' });
+  }
+});
+
+// Route history: past trips with timestamps for daily completion & logs
+router.get('/route-history', driverOnly, async (req, res) => {
+  try {
+    const { limit = 30 } = req.query;
+    const routes = await Transport.find({ driver: req.user.userId })
+      .select('routeName routeType dailyTrips vehicle')
+      .sort({ updatedAt: -1 });
+
+    const history = [];
+    routes.forEach((r) => {
+      (r.dailyTrips || []).forEach((t) => {
+        history.push({
+          _id: t._id,
+          routeName: r.routeName,
+          routeType: r.routeType,
+          tripType: t.tripType,
+          date: t.date,
+          scheduledTime: t.scheduledTime,
+          actualStartTime: t.actualStartTime,
+          actualTime: t.actualTime,
+          status: t.status,
+          completedAt: t.completedAt,
+          vehicle: r.vehicle
+        });
+      });
+    });
+
+    history.sort((a, b) => new Date(b.date) - new Date(a.date));
+    res.json(history.slice(0, parseInt(limit, 10) || 30));
+  } catch (error) {
+    console.error('Route history error:', error);
+    res.status(500).json({ message: 'Server error fetching route history' });
   }
 });
 

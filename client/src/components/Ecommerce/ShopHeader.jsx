@@ -17,6 +17,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useShop } from '../../contexts/ShopContext';
+import api from '../../config/api';
 
 export default function ShopHeader() {
   const navigate = useNavigate();
@@ -115,11 +116,48 @@ export default function ShopHeader() {
     }
   };
 
-  const handlePhotoSearch = () => {
-    if (uploadedImage) {
-      // Navigate to shop with image data
+  const [searching, setSearching] = React.useState(false);
+
+  const handlePhotoSearch = async () => {
+    if (!uploadedImage) return;
+    
+    setSearching(true);
+    try {
+      // Create FormData to send image to backend
+      const formData = new FormData();
+      formData.append('image', uploadedImage);
+
+      // Call AI photo search API
+      const response = await api.post('/image-search/search', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+
+      const data = response.data;
+      
+      if (data.success && data.matches && data.matches.length > 0) {
+        // Navigate to shop with image and search results
+        navigate('/shop', { 
+          state: { 
+            searchImage: imagePreview,
+            aiSearchResults: data.matches,
+            searchFeatures: data.features
+          } 
+        });
+        handlePhotoSearchClose();
+      } else {
+        // Fallback to basic image search if AI search returns no results
+        navigate('/shop', { state: { searchImage: imagePreview } });
+        handlePhotoSearchClose();
+      }
+    } catch (error) {
+      console.error('AI photo search error:', error);
+      // Fallback to basic image search
       navigate('/shop', { state: { searchImage: imagePreview } });
       handlePhotoSearchClose();
+    } finally {
+      setSearching(false);
     }
   };
 
@@ -381,10 +419,11 @@ export default function ShopHeader() {
                     variant="contained"
                     color="success"
                     onClick={handlePhotoSearch}
+                    disabled={searching}
                     startIcon={<Search />}
                     sx={{ textTransform: 'none', py: 1.5, fontWeight: 600 }}
                   >
-                    Search Products
+                    {searching ? 'Searching with AI...' : 'Search Products'}
                   </Button>
                 </Box>
               </Box>

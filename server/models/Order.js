@@ -16,7 +16,12 @@ const orderSchema = new mongoose.Schema({
     city: String,
     state: String,
     zipCode: String,
-    country: String
+    country: String,
+    phone: String, // Contact phone for delivery
+    recipientName: String, // Name of person receiving delivery
+    fullAddress: String, // Complete address string for delivery agent
+    latitude: Number, // GPS coordinates for delivery
+    longitude: Number
   },
   billingAddress: {
     street: String,
@@ -48,8 +53,9 @@ const orderSchema = new mongoose.Schema({
   assignedVendors: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' }], // Vendors assigned to fulfill this order
   vendorConfirmations: [{
     vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' },
-    status: { type: String, enum: ['pending', 'confirmed', 'rejected'] },
+    status: { type: String, enum: ['pending', 'confirmed', 'ready_for_pickup', 'rejected'] },
     confirmedAt: Date,
+    readyForPickupAt: Date,
     notes: String
   }],
 

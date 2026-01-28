@@ -7,10 +7,17 @@ const deliveryAssignmentSchema = new mongoose.Schema({
     ref: 'Order',
     required: true
   },
+  orderNumber: {
+    type: String,
+    required: true
+  },
   vendor: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Vendor',
     required: true
+  },
+  vendorName: {
+    type: String
   },
   deliveryAgent: {
     type: mongoose.Schema.Types.ObjectId,
@@ -19,6 +26,9 @@ const deliveryAssignmentSchema = new mongoose.Schema({
   customer: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Customer'
+  },
+  customerName: {
+    type: String
   },
 
   // Items in this delivery

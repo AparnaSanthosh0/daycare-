@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const DeliveryAssignment = require('../models/DeliveryAssignment');
 const Order = require('../models/Order');
 const User = require('../models/User');
@@ -152,12 +153,13 @@ router.post('/:id/assign-manual', auth, async (req, res) => {
 
     // Assign agent
     assignment.deliveryAgent = agent._id;
-    assignment.agentName = `${agent.firstName} ${agent.lastName}`;
-    assignment.agentPhone = agent.phone;
     assignment.assignmentType = 'manual';
     assignment.status = 'assigned';
     assignment.assignedAt = new Date();
     await assignment.save();
+    
+    console.log(`✅ Manually assigned to agent: ${agent.firstName} ${agent.lastName} (${agent._id})`);
+    console.log(`   Assignment ID: ${assignment._id}, Status: ${assignment.status}`);
 
     // Update agent
     await User.findByIdAndUpdate(agent._id, {
@@ -214,22 +216,273 @@ router.get('/available', auth, async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Delivery agents only.' });
     }
 
-    // Get assignments in agent's zones
-    const assignments = await DeliveryAssignment.find({
+    // Get assignments that are:
+    // 1. Pending (not yet assigned) - available for any agent
+    // 2. Assigned to this agent (auto-assigned) - ready for this agent to accept
+    // 3. Accepted by this agent but not yet picked up
+    
+    // Convert agentId to ObjectId for proper comparison
+    const agentId = mongoose.Types.ObjectId.isValid(req.user.userId) 
+      ? new mongoose.Types.ObjectId(req.user.userId)
+      : req.user.userId;
+    
+    console.log(`🔍 Looking for assignments for agent: ${req.user.userId} (ObjectId: ${agentId})`);
+    
+    // IMPORTANT: Only show assignments where vendor has confirmed
+    // This ensures delivery agents only see orders that are ready for pickup
+    
+    // First, get all pending assignments (unassigned) - we'll filter by vendor confirmation after
+    const pendingAssignments = await DeliveryAssignment.find({
       status: 'pending',
-      deliveryAgent: null
-    }).populate('order customer vendor').sort({ createdAt: -1 });
-
-    // Filter by agent's delivery zones
-    const availableAssignments = assignments.filter(assignment => {
-      if (!agent.deliveryArea || agent.deliveryArea.length === 0) {
-        return true; // No zone restriction
+      $or: [
+        { deliveryAgent: null },
+        { deliveryAgent: { $exists: false } }
+      ]
+    })
+    .populate({
+      path: 'order',
+      select: 'orderNumber status vendorConfirmations adminConfirmed',
+      populate: {
+        path: 'vendorConfirmations.vendor',
+        select: '_id'
       }
-      return agent.deliveryArea.some(zone => 
-        assignment.deliveryLocation.zone === zone
+    })
+    .populate('customer', 'firstName lastName email phone')
+    .populate('vendor', 'vendorName email phone warehouseLocation')
+    .populate('items.product', 'name image price')
+    .sort({ createdAt: -1 });
+    
+    console.log(`📋 Found ${pendingAssignments.length} total pending assignments before filtering`);
+    
+    // DEBUG: Check if any assignments exist at all
+    if (pendingAssignments.length === 0) {
+      const allAssignmentsCount = await DeliveryAssignment.countDocuments({});
+      console.log(`⚠️ No pending assignments found. Total assignments in DB: ${allAssignmentsCount}`);
+      if (allAssignmentsCount > 0) {
+        const sampleAssignments = await DeliveryAssignment.find({}).limit(3).select('_id status orderNumber vendor createdAt').lean();
+        console.log(`   Sample assignments:`, sampleAssignments);
+      }
+    }
+    
+    // Filter: Only include assignments where the vendor has confirmed
+    const vendorConfirmedPending = pendingAssignments.filter(assignment => {
+      // Debug: Log assignment details
+      const assignmentVendorId = assignment.vendor?._id?.toString() || assignment.vendor?.toString();
+      console.log(`   🔍 Checking assignment ${assignment._id}:`);
+      console.log(`      - Order: ${assignment.order?._id || 'null'}`);
+      console.log(`      - Order Number: ${assignment.order?.orderNumber || 'N/A'}`);
+      console.log(`      - Vendor ID: ${assignmentVendorId || 'null'}`);
+      console.log(`      - Admin Confirmed: ${assignment.order?.adminConfirmed || false}`);
+      console.log(`      - Vendor Confirmations: ${assignment.order?.vendorConfirmations?.length || 0}`);
+      
+      if (!assignment.order) {
+        console.log(`   ⚠️ Assignment ${assignment._id}: No order populated`);
+        return false;
+      }
+      
+      if (!assignment.order.vendorConfirmations || assignment.order.vendorConfirmations.length === 0) {
+        console.log(`   ⚠️ Assignment ${assignment._id}: No vendorConfirmations array`);
+        return false;
+      }
+      
+      // Get assignment vendor ID (handle both ObjectId and populated object)
+      if (!assignmentVendorId) {
+        console.log(`   ⚠️ Assignment ${assignment._id}: No vendor ID`);
+        return false;
+      }
+      
+      // Log all vendor confirmations for debugging
+      console.log(`      - Vendor Confirmations in order:`, assignment.order.vendorConfirmations.map(vc => ({
+        vendor: vc.vendor?._id?.toString() || vc.vendor?.toString() || 'null',
+        status: vc.status
+      })));
+      
+      // Check if this assignment's vendor has confirmed
+      const vendorConfirmation = assignment.order.vendorConfirmations.find(vc => {
+        if (!vc.vendor) return false;
+        // Handle both ObjectId and populated vendor
+        const vcVendorId = vc.vendor._id?.toString() || vc.vendor.toString();
+        const matches = vcVendorId === assignmentVendorId;
+        if (matches) {
+          console.log(`      ✅ Found matching vendor confirmation: status=${vc.status}`);
+        }
+        return matches;
+      });
+      
+      if (!vendorConfirmation) {
+        console.log(`   ⚠️ Assignment ${assignment._id}: No vendor confirmation found for vendor ${assignmentVendorId}`);
+        console.log(`      Available vendor IDs in confirmations: ${assignment.order.vendorConfirmations.map(vc => vc.vendor?._id?.toString() || vc.vendor?.toString() || 'null').join(', ')}`);
+        return false;
+      }
+      
+      const isConfirmed = vendorConfirmation.status === 'confirmed' || 
+                          vendorConfirmation.status === 'ready_for_pickup';
+      
+      if (!isConfirmed) {
+        console.log(`   ⚠️ Assignment ${assignment._id}: Vendor status is '${vendorConfirmation.status}', not confirmed`);
+      } else {
+        console.log(`   ✅ Assignment ${assignment._id}: Vendor confirmed - INCLUDING in results`);
+      }
+      
+      return isConfirmed;
+    });
+    
+    console.log(`📋 Found ${pendingAssignments.length} pending assignments, ${vendorConfirmedPending.length} with vendor confirmed`);
+    
+    // Then, get assignments assigned to this specific agent (also check vendor confirmation)
+    const assignedToMe = await DeliveryAssignment.find({
+      status: { $in: ['assigned', 'accepted'] },
+      deliveryAgent: agentId
+    })
+    .populate({
+      path: 'order',
+      select: 'orderNumber status vendorConfirmations',
+      populate: {
+        path: 'vendorConfirmations.vendor',
+        select: '_id'
+      }
+    })
+    .populate('customer', 'firstName lastName email phone')
+    .populate('vendor', 'vendorName email phone warehouseLocation')
+    .populate('deliveryAgent', 'firstName lastName email phone')
+    .populate('items.product', 'name image price')
+    .sort({ createdAt: -1 });
+    
+    // Filter assigned assignments by vendor confirmation
+    const vendorConfirmedAssigned = assignedToMe.filter(assignment => {
+      if (!assignment.order || !assignment.order.vendorConfirmations) {
+        console.log(`   ⚠️ Assignment ${assignment._id}: No order or vendorConfirmations (assigned)`);
+        return false;
+      }
+      
+      // Get assignment vendor ID
+      const assignmentVendorId = assignment.vendor?._id?.toString() || assignment.vendor?.toString();
+      if (!assignmentVendorId) {
+        console.log(`   ⚠️ Assignment ${assignment._id}: No vendor ID (assigned)`);
+        return false;
+      }
+      
+      const vendorConfirmation = assignment.order.vendorConfirmations.find(vc => {
+        if (!vc.vendor) return false;
+        const vcVendorId = vc.vendor._id?.toString() || vc.vendor.toString();
+        return vcVendorId === assignmentVendorId;
+      });
+      
+      if (!vendorConfirmation) {
+        console.log(`   ⚠️ Assignment ${assignment._id}: No vendor confirmation found for vendor ${assignmentVendorId} (assigned)`);
+        return false;
+      }
+      
+      const isConfirmed = vendorConfirmation.status === 'confirmed' || 
+                          vendorConfirmation.status === 'ready_for_pickup';
+      
+      if (!isConfirmed) {
+        console.log(`   ⚠️ Assignment ${assignment._id}: Vendor status is '${vendorConfirmation.status}', not confirmed (assigned)`);
+      }
+      
+      return isConfirmed;
+    });
+    
+    console.log(`✅ Found ${assignedToMe.length} assignments assigned to this agent, ${vendorConfirmedAssigned.length} with vendor confirmed`);
+    
+    // Combine both sets (remove duplicates by _id)
+    const assignmentMap = new Map();
+    [...vendorConfirmedPending, ...vendorConfirmedAssigned].forEach(a => {
+      assignmentMap.set(a._id.toString(), a);
+    });
+    const assignments = Array.from(assignmentMap.values());
+    
+    console.log(`🔍 Total unique assignments found (vendor confirmed): ${assignments.length}`);
+    assignments.forEach(a => {
+      const agentInfo = a.deliveryAgent ? 
+        `${a.deliveryAgent.firstName} ${a.deliveryAgent.lastName} (${a.deliveryAgent._id})` : 
+        'null';
+      // Get vendor confirmation status for this assignment
+      const vendorConf = a.order?.vendorConfirmations?.find(
+        vc => vc.vendor && (
+          vc.vendor._id?.toString() === a.vendor?._id?.toString() ||
+          vc.vendor.toString() === a.vendor?._id?.toString() ||
+          vc.vendor.toString() === a.vendor?.toString()
+        )
       );
+      const vendorStatus = vendorConf?.status || 'unknown';
+      console.log(`   - Assignment ${a._id}: status=${a.status}, agent=${agentInfo}, order=${a.order?.orderNumber || 'N/A'}, vendor_status=${vendorStatus}`);
     });
 
+    // Filter by agent's delivery zones (if zones are configured)
+    const availableAssignments = assignments.filter(assignment => {
+      // If agent has no zone restrictions, show all
+      const agentZones = agent.staff?.deliveryArea || agent.deliveryArea || [];
+      if (agentZones.length === 0) {
+        return true; // No zone restriction - show all assignments
+      }
+
+      // Check assignment's delivery zone
+      const deliveryZone = assignment.deliveryLocation?.zone;
+
+      // If the assignment has no zone or it's marked as "Unknown",
+      // do NOT hide it — show to all delivery agents so nothing disappears.
+      if (!deliveryZone || deliveryZone === 'Unknown') {
+        return true;
+      }
+
+      // Otherwise, require that the delivery zone matches one of the agent's zones
+      return agentZones.includes(deliveryZone);
+    });
+
+    console.log(`📊 Returning ${availableAssignments.length} assignments to agent dashboard`);
+    console.log(`   Agent zones: ${agent.staff?.deliveryArea || agent.deliveryArea || 'none'}`);
+    
+    // Also log ALL assignments in database for debugging
+    const totalAssignments = await DeliveryAssignment.countDocuments({});
+    const allAssignments = await DeliveryAssignment.find({})
+      .select('_id status deliveryAgent orderNumber vendor createdAt')
+      .populate('deliveryAgent', 'firstName lastName')
+      .populate({
+        path: 'order',
+        select: 'orderNumber vendorConfirmations',
+        populate: {
+          path: 'vendorConfirmations.vendor',
+          select: '_id'
+        }
+      })
+      .limit(10)
+      .lean();
+    console.log(`🔍 DEBUG: Total assignments in DB: ${totalAssignments}`);
+    console.log(`🔍 DEBUG: Sample assignments:`, allAssignments.map(a => {
+      const vendorConf = a.order?.vendorConfirmations?.find(
+        vc => vc.vendor && (
+          vc.vendor._id?.toString() === a.vendor?.toString() ||
+          vc.vendor.toString() === a.vendor?.toString()
+        )
+      );
+      return {
+        id: a._id,
+        status: a.status,
+        agent: a.deliveryAgent ? `${a.deliveryAgent.firstName} ${a.deliveryAgent.lastName} (${a.deliveryAgent._id})` : 'null',
+        agentId: a.deliveryAgent?._id || null,
+        orderNumber: a.orderNumber,
+        vendorConfirmed: vendorConf ? (vendorConf.status === 'confirmed' || vendorConf.status === 'ready_for_pickup') : false,
+        vendorStatus: vendorConf?.status || 'not_found'
+      };
+    }));
+    
+    // Final check: If no assignments found, provide helpful debug info
+    if (availableAssignments.length === 0) {
+      console.log(`\n⚠️⚠️⚠️ NO ASSIGNMENTS RETURNED TO AGENT ⚠️⚠️⚠️`);
+      console.log(`   Total assignments in DB: ${totalAssignments}`);
+      console.log(`   Pending assignments found: ${pendingAssignments.length}`);
+      console.log(`   Vendor confirmed pending: ${vendorConfirmedPending.length}`);
+      console.log(`   Assigned to agent: ${assignedToMe.length}`);
+      console.log(`   Vendor confirmed assigned: ${vendorConfirmedAssigned.length}`);
+      console.log(`   After zone filtering: ${availableAssignments.length}`);
+      console.log(`\n💡 TROUBLESHOOTING:`);
+      console.log(`   1. Check if admin confirmed the order`);
+      console.log(`   2. Check if vendor confirmed the order`);
+      console.log(`   3. Check server logs above for why assignments were filtered out`);
+      console.log(`   4. Verify vendor confirmation status matches assignment vendor ID\n`);
+    }
+    
     res.json({
       count: availableAssignments.length,
       assignments: availableAssignments
@@ -251,9 +504,11 @@ router.get('/my-assignments', auth, async (req, res) => {
 
     const query = { deliveryAgent: req.user.userId };
     if (status) {
+      // If a specific status is requested (e.g., delivered), use it as-is
       query.status = status;
     } else {
-      query.status = { $in: ['assigned', 'picked_up', 'in_transit'] };
+      // Default: treat these as "active" deliveries for the agent
+      query.status = { $in: ['assigned', 'accepted', 'picked_up', 'in_transit'] };
     }
 
     const assignments = await DeliveryAssignment.find(query)
@@ -274,6 +529,9 @@ router.get('/my-assignments', auth, async (req, res) => {
 /**
  * Accept assignment
  * PUT /api/delivery-assignments/:id/accept
+ * Handles both:
+ * - Unassigned assignments (status: 'pending', deliveryAgent: null) - manual assignment
+ * - Auto-assigned assignments (status: 'assigned', deliveryAgent: userId) - auto-assignment
  */
 router.put('/:id/accept', auth, async (req, res) => {
   try {
@@ -283,14 +541,44 @@ router.put('/:id/accept', auth, async (req, res) => {
       return res.status(404).json({ message: 'Assignment not found' });
     }
 
-    if (assignment.deliveryAgent?.toString() !== req.user.userId) {
-      return res.status(403).json({ message: 'This assignment is not assigned to you' });
+    const isMine = assignment.deliveryAgent?.toString() === req.user.userId;
+
+    // Idempotency: if already accepted by me, just return success
+    if (assignment.status === 'accepted' && isMine) {
+      return res.json({
+        message: 'Assignment already accepted',
+        assignment
+      });
     }
 
-    if (assignment.status !== 'assigned') {
-      return res.status(400).json({ message: 'Assignment cannot be accepted' });
+    // Check if assignment is available for this agent
+    // - Unassigned assignment (pending + no agent)
+    // - Auto-assigned to me (assigned + agent = me)
+    // - Defensive: if data is inconsistent (pending + agent = me), allow accept
+    const isUnassigned = assignment.status === 'pending' && !assignment.deliveryAgent;
+    const isAssignedToMe = assignment.status === 'assigned' && isMine;
+    const isPendingButMine = assignment.status === 'pending' && isMine;
+
+    if (!isUnassigned && !isAssignedToMe && !isPendingButMine) {
+      return res.status(403).json({ 
+        message: 'This assignment is not available for you. It may be assigned to another agent or already accepted.' 
+      });
     }
 
+    // If unassigned, assign to this agent
+    if (isUnassigned) {
+      assignment.deliveryAgent = req.user.userId;
+      assignment.status = 'assigned';
+      assignment.assignedAt = new Date();
+      assignment.assignmentType = 'manual';
+      
+      // Update agent's current deliveries count
+      await User.findByIdAndUpdate(req.user.userId, {
+        $inc: { 'staff.currentDeliveries': 1 }
+      });
+    }
+
+    // Accept the assignment
     assignment.status = 'accepted';
     assignment.acceptedAt = new Date();
     await assignment.save();
@@ -366,6 +654,23 @@ router.put('/:id/pickup', auth, async (req, res) => {
       assignment.gpsTracking.pickupLocation = location;
     }
     await assignment.save();
+
+    // Update order status to 'shipped' when agent picks up
+    // Check if all assignments for this order are picked up
+    const order = await Order.findById(assignment.order).populate('deliveryAssignments');
+    if (order) {
+      const allAssignments = await DeliveryAssignment.find({ order: order._id });
+      const allPickedUp = allAssignments.every(a => 
+        a.status === 'picked_up' || a.status === 'in_transit' || a.status === 'delivered'
+      );
+      
+      if (allPickedUp && order.status !== 'shipped' && order.status !== 'delivered') {
+        order.status = 'shipped';
+        order.deliveryStatus = 'in_progress';
+        await order.save();
+        console.log(`✅ Order ${order.orderNumber} status updated to 'shipped' - agent picked up`);
+      }
+    }
 
     // TODO: Notify customer - order is on the way
 
@@ -454,7 +759,8 @@ router.put('/:id/deliver', auth, async (req, res) => {
     }
     await assignment.save();
 
-    // Process payment to agent
+    // Process payment to agent (80% of delivery fee paid instantly)
+    // This also handles: vendor payout scheduling (Friday) and platform commission recording
     await processDeliveryPayment(assignment);
 
     // Update agent rating

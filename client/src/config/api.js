@@ -20,10 +20,19 @@ const api = axios.create({
 // Request interceptor to add auth token and handle FormData
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
-    if (token) {
+    // Prefer request-specific Authorization, then localStorage token, then axios default Authorization
+    const existingAuth =
+      (config.headers && (config.headers.Authorization || config.headers.authorization)) ||
+      api.defaults.headers.common?.Authorization ||
+      api.defaults.headers.common?.authorization;
+
+    const tokenFromStorage = localStorage.getItem('token');
+    const bearerFromStorage = tokenFromStorage ? `Bearer ${tokenFromStorage}` : null;
+
+    const authToUse = existingAuth || bearerFromStorage;
+    if (authToUse) {
       config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers.Authorization = authToUse;
     }
 
     // If sending FormData, let the browser set the correct multipart boundary
@@ -58,11 +67,6 @@ api.interceptors.response.use(
       // Token expired or invalid - only redirect if not already on login page
       localStorage.removeItem('token');
       delete api.defaults.headers.common['Authorization'];
-      
-      // Only redirect if not already on login page to avoid loops
-      if (window.location.pathname !== '/login' && window.location.pathname !== '/admin-login') {
-        window.location.href = '/login';
-      }
     }
     return Promise.reject(error);
   }

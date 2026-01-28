@@ -25,7 +25,9 @@ import {
 } from '@mui/material';
 import {
   CheckCircle,
-  Visibility
+  Visibility,
+  Build,
+  LocalShipping
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
@@ -38,6 +40,8 @@ const AdminOrders = () => {
   const [estimatedDelivery, setEstimatedDelivery] = useState('');
   const [adminNotes, setAdminNotes] = useState('');
   const [message, setMessage] = useState('');
+  const [repairing, setRepairing] = useState(false);
+  const [creatingAssignments, setCreatingAssignments] = useState(false);
 
   useEffect(() => {
     loadOrders();
@@ -69,6 +73,50 @@ const AdminOrders = () => {
     } catch (error) {
       console.error('Confirm order error:', error);
       setMessage(error.response?.data?.message || 'Failed to confirm order');
+    }
+  };
+
+  const handleRepairOrders = async () => {
+    if (!window.confirm('This will repair all confirmed orders to ensure they appear in vendor dashboards. Continue?')) {
+      return;
+    }
+
+    setRepairing(true);
+    setMessage('');
+    try {
+      const response = await api.post('/orders/admin/repair-orders');
+      setMessage(`✅ ${response.data.message} - ${response.data.repaired} orders repaired out of ${response.data.total} total.`);
+      if (response.data.errors && response.data.errors.length > 0) {
+        console.warn('Some orders had errors:', response.data.errors);
+      }
+      loadOrders(); // Reload to see updated orders
+    } catch (error) {
+      console.error('Repair orders error:', error);
+      setMessage(error.response?.data?.message || 'Failed to repair orders');
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  const handleCreateDeliveryAssignments = async () => {
+    if (!window.confirm('This will create delivery assignments for all confirmed orders that have vendor confirmations. This will make them visible in the delivery agent dashboard. Continue?')) {
+      return;
+    }
+
+    setCreatingAssignments(true);
+    setMessage('');
+    try {
+      const response = await api.post('/orders/admin/create-delivery-assignments');
+      setMessage(`✅ ${response.data.message} - ${response.data.created} assignments created, ${response.data.skipped} skipped.`);
+      if (response.data.errors && response.data.errors.length > 0) {
+        console.warn('Some orders had errors:', response.data.errors);
+        setMessage(`${response.data.message} - Some errors occurred. Check console for details.`);
+      }
+    } catch (error) {
+      console.error('Create delivery assignments error:', error);
+      setMessage(error.response?.data?.message || 'Failed to create delivery assignments');
+    } finally {
+      setCreatingAssignments(false);
     }
   };
 
@@ -106,13 +154,81 @@ const AdminOrders = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      <Typography variant="h4" gutterBottom>Order Management</Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
+        <Typography variant="h4" sx={{ flexGrow: 1 }}>Order Management</Typography>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+          <Button
+            variant="contained"
+            color="primary"
+            startIcon={<LocalShipping />}
+            onClick={handleCreateDeliveryAssignments}
+            disabled={creatingAssignments}
+            size="large"
+            sx={{ 
+              minWidth: '220px',
+              fontWeight: 'bold'
+            }}
+          >
+            {creatingAssignments ? 'Creating...' : '🚚 Create Assignments'}
+          </Button>
+          <Button
+            variant="contained"
+            color="warning"
+            startIcon={<Build />}
+            onClick={handleRepairOrders}
+            disabled={repairing}
+            size="large"
+            sx={{ 
+              minWidth: '180px',
+              fontWeight: 'bold'
+            }}
+          >
+            {repairing ? 'Repairing...' : '🔧 Repair Orders'}
+          </Button>
+        </Box>
+      </Box>
 
       {message && (
-        <Alert severity={message.includes('success') ? 'success' : 'error'} sx={{ mb: 3 }}>
+        <Alert 
+          severity={message.includes('✅') || message.includes('success') ? 'success' : message.includes('error') || message.includes('Failed') ? 'error' : 'info'} 
+          sx={{ mb: 3 }}
+        >
           {message}
         </Alert>
       )}
+
+      {/* Repair Orders Card - Prominent */}
+      <Box sx={{ mb: 3 }}>
+        <Card sx={{ bgcolor: 'warning.light', border: '2px solid', borderColor: 'warning.main' }}>
+          <CardContent>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Box>
+                <Typography variant="h6" gutterBottom>
+                  🔧 Fix Vendor Dashboard Orders
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Repair all confirmed orders to ensure they appear in vendor dashboards
+                </Typography>
+              </Box>
+              <Button
+                variant="contained"
+                color="warning"
+                startIcon={<Build />}
+                onClick={handleRepairOrders}
+                disabled={repairing}
+                size="large"
+                sx={{ 
+                  minWidth: '200px',
+                  fontWeight: 'bold',
+                  ml: 2
+                }}
+              >
+                {repairing ? 'Repairing...' : 'Repair All Orders'}
+              </Button>
+            </Box>
+          </CardContent>
+        </Card>
+      </Box>
 
       {/* Order Statistics */}
       <Grid container spacing={3} sx={{ mb: 4 }}>

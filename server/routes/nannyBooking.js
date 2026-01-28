@@ -104,6 +104,15 @@ router.post('/bookings', auth, async (req, res) => {
       console.error('❌ Missing serviceDate');
       return res.status(400).json({ message: 'Service date is required' });
     }
+    // Disallow bookings for past dates
+    const serviceDateOnly = new Date(serviceDate);
+    const today = new Date();
+    serviceDateOnly.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    if (serviceDateOnly < today) {
+      console.error('❌ serviceDate is in the past:', serviceDate);
+      return res.status(400).json({ message: 'You cannot book a nanny for a past date' });
+    }
     if (!startTime || !endTime) {
       console.error('❌ Missing time fields');
       return res.status(400).json({ message: 'Start time and end time are required' });

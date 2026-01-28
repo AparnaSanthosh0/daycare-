@@ -34,6 +34,7 @@ import api from '../../config/api';
 const VendorOrders = () => {
   const { user } = useAuth();
   const [orders, setOrders] = useState([]);
+  const [vendorId, setVendorId] = useState(null);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [confirmDialog, setConfirmDialog] = useState(false);
   const [confirmationStatus, setConfirmationStatus] = useState('confirmed');
@@ -47,11 +48,28 @@ const VendorOrders = () => {
 
   const loadOrders = async () => {
     try {
+      console.log('🔄 Loading vendor orders...');
       const response = await api.get('/orders/vendor');
+      console.log('📦 Vendor orders response:', response.data);
       setOrders(response.data.orders || []);
+      setVendorId(response.data.vendorId); // Store vendor ID from backend
+      
+      if (response.data.orders && response.data.orders.length === 0) {
+        // Try debug endpoint to see what's happening
+        try {
+          const debugResponse = await api.get('/orders/vendor/debug');
+          console.log('🔍 Debug info:', debugResponse.data);
+          if (debugResponse.data.ordersWithThisVendor && debugResponse.data.ordersWithThisVendor.length > 0) {
+            setMessage(`Found ${debugResponse.data.ordersWithThisVendor.length} orders but they're not showing. Check console for details.`);
+          }
+        } catch (debugError) {
+          console.error('Debug endpoint error:', debugError);
+        }
+      }
     } catch (error) {
-      console.error('Load orders error:', error);
-      setMessage('Failed to load orders');
+      console.error('❌ Load orders error:', error);
+      console.error('Error response:', error.response?.data);
+      setMessage(error.response?.data?.message || 'Failed to load orders. Check console for details.');
     }
   };
 
@@ -78,7 +96,8 @@ const VendorOrders = () => {
   const getStatusColor = (status) => {
     switch (status) {
       case 'pending': return 'warning';
-      case 'confirmed': return 'success';
+      case 'confirmed': return 'info';
+      case 'ready_for_pickup': return 'success';
       case 'rejected': return 'error';
       default: return 'default';
     }
@@ -87,7 +106,8 @@ const VendorOrders = () => {
   const getStatusLabel = (status) => {
     switch (status) {
       case 'pending': return 'Pending Vendor Confirmation';
-      case 'confirmed': return 'Confirmed - Ready to Ship';
+      case 'confirmed': return 'Confirmed - Preparing';
+      case 'ready_for_pickup': return 'Ready for Pickup';
       case 'rejected': return 'Rejected - Out of Stock';
       default: return status;
     }
@@ -118,7 +138,14 @@ const VendorOrders = () => {
           <Card>
             <CardContent>
               <Typography variant="h4" color="warning.main">
-                {orders.filter(o => o.vendorConfirmations?.some(v => v.vendor.toString() === user.userId && v.status === 'pending')).length}
+                {orders.filter(o => {
+                  if (!vendorId) return false;
+                  const conf = o.vendorConfirmations?.find(v => {
+                    const vid = v.vendor?._id ? v.vendor._id.toString() : v.vendor?.toString();
+                    return vid === vendorId;
+                  });
+                  return conf?.status === 'pending';
+                }).length}
               </Typography>
               <Typography variant="body2">Pending Confirmation</Typography>
             </CardContent>
@@ -128,9 +155,16 @@ const VendorOrders = () => {
           <Card>
             <CardContent>
               <Typography variant="h4" color="success.main">
-                {orders.filter(o => o.vendorConfirmations?.some(v => v.vendor.toString() === user.userId && v.status === 'confirmed')).length}
+                {orders.filter(o => {
+                  if (!vendorId) return false;
+                  const conf = o.vendorConfirmations?.find(v => {
+                    const vid = v.vendor?._id ? v.vendor._id.toString() : v.vendor?.toString();
+                    return vid === vendorId;
+                  });
+                  return conf?.status === 'confirmed' || conf?.status === 'ready_for_pickup';
+                }).length}
               </Typography>
-              <Typography variant="body2">Confirmed</Typography>
+              <Typography variant="body2">Confirmed / Ready</Typography>
             </CardContent>
           </Card>
         </Grid>
@@ -163,9 +197,11 @@ const VendorOrders = () => {
             </TableHead>
             <TableBody>
               {orders.map((order) => {
-                const vendorConfirmation = order.vendorConfirmations?.find(
-                  v => v.vendor.toString() === user.userId
-                );
+                // Find vendor confirmation for this vendor
+                const vendorConfirmation = vendorId ? order.vendorConfirmations?.find(v => {
+                  const vid = v.vendor?._id ? v.vendor._id.toString() : v.vendor?.toString();
+                  return vid === vendorId;
+                }) : null;
 
                 return (
                   <TableRow key={order._id}>
@@ -182,7 +218,10 @@ const VendorOrders = () => {
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2">
-                        {order.items?.filter(item => item.vendor?.toString() === user.userId).length || 0} items
+                        {vendorId ? order.items?.filter(item => {
+                          const itemVendorId = item.vendor?._id ? item.vendor._id.toString() : item.vendor?.toString();
+                          return itemVendorId === vendorId;
+                        }).length || 0 : 0} items
                       </Typography>
                     </TableCell>
                     <TableCell>
@@ -247,15 +286,34 @@ const VendorOrders = () => {
       {/* Confirmation Dialog */}
       <Dialog open={confirmDialog} onClose={() => setConfirmDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle>
-          {confirmationStatus === 'confirmed' ? 'Confirm Order' : 'Reject Order'}
+          {confirmationStatus === 'confirmed' ? 'Confirm Order' : 
+           confirmationStatus === 'ready_for_pickup' ? 'Mark Ready for Pickup' :
+           'Reject Order'}
         </DialogTitle>
         <DialogContent>
           <Typography variant="body2" sx={{ mb: 2 }}>
             {confirmationStatus === 'confirmed'
-              ? `Confirm that you can fulfill order ${selectedOrder?.orderNumber}?`
+              ? `Confirm that you can fulfill order ${selectedOrder?.orderNumber}? This will calculate commission and create delivery assignment.`
+              : confirmationStatus === 'ready_for_pickup'
+              ? `Mark order ${selectedOrder?.orderNumber} as ready for pickup? The delivery agent will be notified.`
               : `Reject order ${selectedOrder?.orderNumber}? Please provide a reason.`
             }
           </Typography>
+
+          {(confirmationStatus === 'confirmed' || confirmationStatus === 'ready_for_pickup') && (
+            <TextField
+              fullWidth
+              label="Notes (Optional)"
+              value={vendorNotes}
+              onChange={(e) => setVendorNotes(e.target.value)}
+              sx={{ mb: 2 }}
+              multiline
+              rows={2}
+              placeholder={confirmationStatus === 'ready_for_pickup' 
+                ? "Any notes for the delivery agent..."
+                : "Any notes for admin or customer..."}
+            />
+          )}
 
           {confirmationStatus === 'confirmed' && (
             <TextField
@@ -268,19 +326,18 @@ const VendorOrders = () => {
             />
           )}
 
-          <TextField
-            fullWidth
-            label="Notes"
-            value={vendorNotes}
-            onChange={(e) => setVendorNotes(e.target.value)}
-            multiline
-            rows={3}
-            placeholder={confirmationStatus === 'confirmed'
-              ? "Any notes for admin or customer..."
-              : "Reason for rejection (required)"
-            }
-            required={confirmationStatus === 'rejected'}
-          />
+          {confirmationStatus === 'rejected' && (
+            <TextField
+              fullWidth
+              label="Reason for Rejection"
+              value={vendorNotes}
+              onChange={(e) => setVendorNotes(e.target.value)}
+              multiline
+              rows={3}
+              placeholder="Reason for rejection (required)"
+              required
+            />
+          )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setConfirmDialog(false)}>Cancel</Button>
@@ -290,7 +347,9 @@ const VendorOrders = () => {
             onClick={handleVendorConfirmation}
             disabled={confirmationStatus === 'rejected' && !vendorNotes.trim()}
           >
-            {confirmationStatus === 'confirmed' ? 'Confirm Order' : 'Reject Order'}
+            {confirmationStatus === 'confirmed' ? 'Confirm Order' : 
+             confirmationStatus === 'ready_for_pickup' ? 'Mark Ready for Pickup' :
+             'Reject Order'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -326,12 +385,15 @@ const VendorOrders = () => {
 
               <Grid item xs={12} md={6}>
                 <Typography variant="h6" gutterBottom>Your Products</Typography>
-                {selectedOrder.items?.filter(item => item.vendor?.toString() === user.userId).map((item, index) => (
+                {vendorId ? selectedOrder.items?.filter(item => {
+                  const itemVendorId = item.vendor?._id ? item.vendor._id.toString() : item.vendor?.toString();
+                  return itemVendorId === vendorId;
+                }).map((item, index) => (
                   <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                     <Typography>{item.name} (x{item.quantity})</Typography>
                     <Typography>₹{(item.price * item.quantity).toFixed(2)}</Typography>
                   </Box>
-                ))}
+                )) : null}
 
                 <Divider sx={{ my: 2 }} />
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -44,7 +44,10 @@ import {
   Logout,
   GpsFixed,
   ShoppingCart,
-  KeyboardVoice
+  KeyboardVoice,
+  Schedule,
+  NotificationsActive,
+  CrisisAlert
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
@@ -57,39 +60,7 @@ const calculateAgeYears = (dob) => {
   return Math.max(0, Math.floor(diffMs / (365.25 * 24 * 60 * 60 * 1000)));
 };
 
-const resolveChildId = (childEntity) => {
-  if (!childEntity) return null;
-  if (typeof childEntity === 'string') return childEntity;
-  if (childEntity._id) return childEntity._id;
-  if (childEntity.child) return resolveChildId(childEntity.child);
-  return null;
-};
-
-const resolveChildProfile = (childEntity) => {
-  if (!childEntity) return null;
-  if (childEntity.child) return childEntity.child;
-  return childEntity;
-};
-
-const getChildDisplayName = (childEntity) => {
-  const profile = resolveChildProfile(childEntity);
-  if (!profile) return 'Child';
-  if (profile.firstName || profile.lastName) {
-    return [profile.firstName, profile.lastName].filter(Boolean).join(' ').trim() || 'Child';
-  }
-  return profile.name || 'Child';
-};
-
-const parseTimeStringToToday = (timeStr) => {
-  if (!timeStr || typeof timeStr !== 'string') return null;
-  const now = new Date();
-  const baseDate = now.toDateString();
-  const normalized = timeStr.includes('AM') || timeStr.includes('PM') || timeStr.includes('am') || timeStr.includes('pm')
-    ? `${baseDate} ${timeStr}`
-    : `${baseDate} ${timeStr}:00`;
-  const parsed = new Date(normalized);
-  return isNaN(parsed.getTime()) ? null : parsed;
-};
+const childId = (c) => (c && (c._id || c.child)) ? (c._id || c.child) : null;
 
 const DriverDashboard = () => {
   const { user, logout } = useAuth();
@@ -101,8 +72,9 @@ const DriverDashboard = () => {
   const [routes, setRoutes] = useState([]);
   const [todayTrips, setTodayTrips] = useState([]);
   const [activeTab, setActiveTab] = useState(0);
-  const [selectedTrip] = useState(null);
+  const [selectedTrip, setSelectedTrip] = useState(null);
   const [tripDialog, setTripDialog] = useState({ open: false, trip: null });
+  const [routeHistory, setRouteHistory] = useState([]);
   const [otpDialog, setOtpDialog] = useState({ open: false, trip: null, child: null, action: '' });
   const [otpCode, setOtpCode] = useState('');
   const [otpGenerated, setOtpGenerated] = useState('');
@@ -123,7 +95,14 @@ const DriverDashboard = () => {
   const fetchRoutes = async () => {
     try {
       const response = await api.get('/driver/routes');
-      setRoutes(response.data || []);
+      const routesData = response.data || [];
+      console.log('Fetched routes:', routesData);
+      console.log('Routes count:', routesData.length);
+      if (routesData.length > 0) {
+        console.log('First route:', routesData[0]);
+        console.log('First route assignedChildren:', routesData[0].assignedChildren);
+      }
+      setRoutes(routesData);
     } catch (error) {
       console.error('Error fetching routes:', error);
       setError('Failed to load routes');
@@ -135,11 +114,14 @@ const DriverDashboard = () => {
   const fetchTodayTrips = async () => {
     try {
       const response = await api.get('/driver/trips/today');
-      setTodayTrips(response.data || []);
+      const list = response.data || [];
+      setTodayTrips(list);
+      return list;
     } catch (error) {
       console.error('Error fetching today trips:', error);
       setError('Failed to load today\'s trips');
       setTodayTrips([]);
+      return [];
     } finally {
       setLoading(false);
     }
@@ -175,53 +157,58 @@ const DriverDashboard = () => {
     }
   };
 
+  // Fetch route history (daily completion & logs)
+  const fetchRouteHistory = async () => {
+    try {
+      const response = await api.get('/driver/route-history?limit=30');
+      setRouteHistory(response.data || []);
+    } catch (error) {
+      console.error('Error fetching route history:', error);
+    }
+  };
+
   useEffect(() => {
     fetchRoutes();
     fetchTodayTrips();
     fetchVehicleLogs();
     fetchComplianceReport();
     fetchIncidents();
+    fetchRouteHistory();
   }, []);
 
-  // Start location tracking
+  // Start location tracking (use selectedTrip or first in-progress trip)
   useEffect(() => {
-    if (locationTracking && selectedTrip) {
-      const watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          const location = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            speed: position.coords.speed || 0,
-            heading: position.coords.heading || 0
-          };
-          setCurrentLocation(location);
-          
-          // Send location to server
-          if (selectedTrip) {
-            api.post(`/api/driver/trips/${selectedTrip._id}/location`, location).catch(err => {
-              console.error('Error updating location:', err);
-            });
-          }
-        },
-        (error) => {
-          console.error('Geolocation error:', error);
-          setError('Failed to get location. Please enable location services.');
-        },
-        { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-      );
-
-      return () => {
-        navigator.geolocation.clearWatch(watchId);
-      };
-    }
-  }, [locationTracking, selectedTrip]);
+    const inProgress = todayTrips.find((t) => t.status === 'in-progress');
+    const trip = selectedTrip || inProgress || null;
+    if (!locationTracking || !trip || trip.status !== 'in-progress') return;
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        const loc = {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          speed: position.coords.speed || 0,
+          heading: position.coords.heading || 0
+        };
+        setCurrentLocation(loc);
+        api.post(`/driver/trips/${trip._id}/location`, loc).catch((err) => console.error('Error updating location:', err));
+      },
+      (err) => {
+        console.error('Geolocation error:', err);
+        setError('Failed to get location. Please enable location services.');
+      },
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, [locationTracking, selectedTrip, todayTrips]);
 
   // Generate OTP
   const handleGenerateOTP = async (trip, child, action) => {
+    const id = childId(child);
+    if (!id) return;
     try {
-      const response = await api.post(`/api/driver/trips/${trip._id}/children/${child._id}/generate-otp`);
+      const response = await api.post(`/driver/trips/${trip._id}/children/${id}/generate-otp`);
       setOtpGenerated(response.data.otp);
-      setOtpDialog({ open: true, trip, child, action });
+      setOtpDialog({ open: true, trip, child: child && (child._id || child.child) ? child : { _id: id }, action });
       setSuccess('OTP generated. Share with parent/guardian.');
     } catch (error) {
       setError('Failed to generate OTP');
@@ -230,18 +217,84 @@ const DriverDashboard = () => {
 
   // Verify OTP
   const handleVerifyOTP = async () => {
+    if (!otpDialog.trip || !otpDialog.child) return;
+    const id = childId(otpDialog.child);
+    if (!id) return;
     try {
-      await api.post(`/api/driver/trips/${otpDialog.trip._id}/children/${otpDialog.child._id}/verify-otp`, {
+      await api.post(`/driver/trips/${otpDialog.trip._id}/children/${id}/verify-otp`, {
         otp: otpCode,
         action: otpDialog.action
       });
-      setSuccess(`${otpDialog.action === 'board' ? 'Boarding' : 'Deboarding'} confirmed`);
+      setSuccess(otpDialog.action === 'board' ? 'Pickup confirmed' : 'Drop confirmed');
       setOtpDialog({ open: false, trip: null, child: null, action: '' });
       setOtpCode('');
       setOtpGenerated('');
-      fetchTodayTrips();
+      const list = await fetchTodayTrips();
+      fetchRoutes();
+      const updated = list.find((t) => t._id === otpDialog.trip._id);
+      if (updated) setTripDialog((prev) => (prev.open && prev.trip?._id === otpDialog.trip._id ? { ...prev, trip: updated } : prev));
     } catch (error) {
       setError('Invalid or expired OTP');
+    }
+  };
+
+  // Start trip
+  const handleStartTrip = async (trip) => {
+    try {
+      if (!navigator.geolocation) {
+        setError('Geolocation not supported');
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            await api.post(`/driver/trips/${trip._id}/start`, {
+              latitude: pos.coords.latitude,
+              longitude: pos.coords.longitude
+            });
+            setSuccess('Trip started. Share location to track live.');
+            setSelectedTrip(trip);
+            const list = await fetchTodayTrips();
+            const updated = list.find((t) => t._id === trip._id);
+            if (updated) setTripDialog((prev) => (prev.open && prev.trip?._id === trip._id ? { ...prev, trip: updated } : prev));
+          } catch (e) {
+            setError(e.response?.data?.message || 'Failed to start trip');
+          }
+        },
+        () => setError('Could not get location. Enable location and retry.')
+      );
+    } catch (error) {
+      setError('Failed to start trip');
+    }
+  };
+
+  // Complete trip
+  const handleCompleteTrip = async (trip) => {
+    try {
+      await api.post(`/driver/trips/${trip._id}/complete`);
+      setSuccess('Trip completed. Route history updated.');
+      setSelectedTrip(null);
+      setTripDialog({ open: false, trip: null });
+      fetchTodayTrips();
+      fetchRouteHistory();
+    } catch (error) {
+      setError(error.response?.data?.message || 'Failed to complete trip');
+    }
+  };
+
+  // Emergency alert
+  const handleEmergency = async (trip) => {
+    if (!trip) {
+      setError('Select an active trip first');
+      return;
+    }
+    try {
+      await api.post(`/driver/trips/${trip._id}/emergency`, { description: 'Driver triggered emergency. Admin and parents notified.' });
+      setSuccess('Emergency alert sent. Admin and parents have been notified instantly.');
+      fetchTodayTrips();
+      fetchIncidents();
+    } catch (error) {
+      setError(error.response?.data?.message || 'Failed to send emergency alert');
     }
   };
 
@@ -305,6 +358,22 @@ const DriverDashboard = () => {
   const activeTrip =
     todayTrips.find((t) => t.status === 'in-progress') || todayTrips.find((t) => t.status === 'scheduled') || null;
 
+  // Debug logging
+  useEffect(() => {
+    if (routes.length > 0) {
+      console.log('Driver Dashboard - Routes loaded:', routes.length);
+      routes.forEach((r, idx) => {
+        console.log(`Route ${idx + 1}: ${r.routeName || 'Unnamed'} - ${r.assignedChildren?.length || 0} children`);
+        if (r.assignedChildren?.length > 0) {
+          r.assignedChildren.forEach((ac, cIdx) => {
+            const child = ac.child;
+            console.log(`  Child ${cIdx + 1}: ${child?.firstName || 'N/A'} ${child?.lastName || ''}`);
+          });
+        }
+      });
+    }
+  }, [routes]);
+
   if (loading) {
     return (
       <Box sx={{ p: 3 }}>
@@ -328,7 +397,13 @@ const DriverDashboard = () => {
     : '--';
   const primaryGuardians = primaryChild?.authorizedGuardians?.length
     ? primaryChild.authorizedGuardians
-    : primaryChild?.child?.parent
+    : (primaryChild?.child?.parents && primaryChild.child.parents.length > 0)
+    ? primaryChild.child.parents.map((p) => ({
+        name: p.name || [p.firstName, p.lastName].filter(Boolean).join(' ') || 'Parent',
+        phone: p.phone || p.contactNumber || 'N/A',
+        relationship: p.relationship || 'Parent'
+      }))
+    : (primaryChild?.child?.parent)
     ? [
         {
           name:
@@ -469,41 +544,58 @@ const DriverDashboard = () => {
             >
               Shop
             </Button>
-            <Button
-              variant="contained"
-              startIcon={<Warning />}
-              onClick={() => setIncidentDialog({ open: true, trip: activeTrip })}
-              sx={{
-                bgcolor: '#d32f2f',
-                '&:hover': { bgcolor: '#c62828' },
-                textTransform: 'none',
-                fontWeight: 600,
-                px: 3
-              }}
-            >
-              Report Incident
-            </Button>
-            <Button
-              variant="contained"
-              startIcon={<GpsFixed />}
-              onClick={() => {
-                setLocationTracking(!locationTracking);
-                if (!locationTracking) {
-                  setSuccess('Location sharing started');
-                } else {
-                  setSuccess('Location sharing stopped');
-                }
-              }}
-              sx={{
-                bgcolor: '#14B8A6',
-                '&:hover': { bgcolor: '#0d9488' },
-                textTransform: 'none',
-                fontWeight: 600,
-                px: 3
-              }}
-            >
-              {locationTracking ? 'Stop Sharing' : 'Share Location'}
-            </Button>
+            <Tooltip title="Report delay, breakdown, etc.">
+              <Button
+                variant="contained"
+                startIcon={<Warning />}
+                onClick={() => setIncidentDialog({ open: true, trip: activeTrip || selectedTrip })}
+                sx={{
+                  bgcolor: '#d32f2f',
+                  '&:hover': { bgcolor: '#c62828' },
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 3
+                }}
+              >
+                Report Incident
+              </Button>
+            </Tooltip>
+            <Tooltip title="Parents and admin can view live updates. Delays are automatically notified.">
+              <Button
+                variant="contained"
+                startIcon={<GpsFixed />}
+                onClick={() => {
+                  setLocationTracking(!locationTracking);
+                  if (!locationTracking) setSuccess('Live location sharing started. Parents and admin can view.');
+                  else setSuccess('Location sharing stopped.');
+                }}
+                sx={{
+                  bgcolor: '#14B8A6',
+                  '&:hover': { bgcolor: '#0d9488' },
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 3
+                }}
+              >
+                {locationTracking ? 'Stop Sharing' : 'Share Location'}
+              </Button>
+            </Tooltip>
+            <Tooltip title="Admin and parents notified instantly">
+              <Button
+                variant="contained"
+                startIcon={<CrisisAlert />}
+                onClick={() => handleEmergency(activeTrip || selectedTrip)}
+                sx={{
+                  bgcolor: '#b71c1c',
+                  '&:hover': { bgcolor: '#8b0000' },
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 3
+                }}
+              >
+                Emergency
+              </Button>
+            </Tooltip>
             <Button
               variant="outlined"
               startIcon={<Logout />}
@@ -556,9 +648,29 @@ const DriverDashboard = () => {
         </Tabs>
       </Box>
 
-      {/* Tab 0: Routes overview + Today's schedule */}
+      {/* Tab 0: Route & Schedule View – daily pickup/drop, child names, pickup locations, route map */}
       {activeTab === 0 && (
         <Box>
+          <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Schedule /> Route & Schedule View
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Daily pickup and drop schedule • Child names and pickup locations •{' '}
+            <Typography component="span" sx={{ color: '#14B8A6', cursor: 'pointer', fontWeight: 600 }} onClick={() => setActiveTab(5)}>
+              View route map →
+            </Typography>
+          </Typography>
+
+          {/* Pickup Assignment */}
+          {routes.length > 0 && (
+            <Alert severity="info" icon={<NotificationsActive />} sx={{ mb: 3 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>Pickup assignment</Typography>
+              You are assigned to {routes.filter((r) => /school|daycare|home/i.test(r.routeType || '')).length || routes.length} route(s):{' '}
+              {[...new Set(routes.map((r) => r.routeType?.replace(/-/g, ' ')))].filter(Boolean).join(', ') || 'Home-to-daycare, School-to-daycare'}.
+              Driver receives assignment notification when admin assigns routes.
+            </Alert>
+          )}
+
           {/* Stats Cards */}
           <Grid container spacing={2.5} sx={{ mb: 3 }}>
             <Grid item xs={12} sm={6} md={3}>
@@ -771,9 +883,9 @@ const DriverDashboard = () => {
             </Grid>
           </Box>
 
-          {/* Today's Schedule */}
+          {/* Today's Schedule – daily pickup and drop */}
           <Typography variant="h6" sx={{ mb: 2, fontWeight: 600, color: 'text.primary' }}>
-            Today's Schedule - {new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+            Today&apos;s Schedule — {new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
           </Typography>
 
           {todayTrips.length === 0 ? (
@@ -784,56 +896,56 @@ const DriverDashboard = () => {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {todayTrips.map((trip) => {
                 const statusLabel =
-                  trip.status === 'completed'
-                    ? 'Completed'
-                    : trip.status === 'in-progress'
-                    ? 'In Progress'
-                    : 'Scheduled';
-                const statusColor =
-                  trip.status === 'completed'
-                    ? '#e8f5e9'
-                    : trip.status === 'in-progress'
-                    ? '#e3f2fd'
-                    : '#f5f5f5';
-                const statusTextColor =
-                  trip.status === 'completed'
-                    ? '#4caf50'
-                    : trip.status === 'in-progress'
-                    ? '#2196f3'
-                    : '#757575';
+                  trip.status === 'completed' ? 'Completed' : trip.status === 'in-progress' ? 'In Progress' : 'Scheduled';
+                const statusColor = trip.status === 'completed' ? '#e8f5e9' : trip.status === 'in-progress' ? '#e3f2fd' : '#f5f5f5';
+                const statusTextColor = trip.status === 'completed' ? '#4caf50' : trip.status === 'in-progress' ? '#2196f3' : '#757575';
+                const childrenList = trip.assignedChildren || [];
+                const stopsList = trip.stops || [];
 
                 return (
-                  <Paper 
-                    key={trip._id} 
-                    sx={{ 
-                      p: 2.5, 
-                      borderRadius: 2, 
+                  <Paper
+                    key={trip._id}
+                    onClick={() => {
+                      setTripDialog({ open: true, trip });
+                      setSelectedTrip(trip);
+                    }}
+                    sx={{
+                      p: 2.5,
+                      borderRadius: 2,
                       boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                      border: trip.status === 'in-progress' ? '2px solid #2196f3' : 'none'
+                      border: trip.status === 'in-progress' ? '2px solid #2196f3' : 'none',
+                      cursor: 'pointer',
+                      '&:hover': { bgcolor: 'action.hover' }
                     }}
                   >
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 2 }}>
+                      <Box sx={{ flex: 1, minWidth: 200 }}>
                         <Typography variant="h6" sx={{ fontWeight: 600, mb: 0.5 }}>
                           {trip.routeName || trip.route?.routeName || 'Route'}
                         </Typography>
+                        <Chip label={trip.tripType === 'dropoff' ? 'Drop-off' : 'Pickup'} size="small" sx={{ mb: 1 }} />
                         <Typography variant="body2" color="text.secondary">
-                          {trip.stops?.length || 0} stops • {trip.children?.length || trip.assignedChildren?.length || 0} children
+                          {trip.tripType === 'dropoff' ? 'Daycare → Home' : 'Home → Daycare'} • {stopsList.length || childrenList.length || 0} stops
                         </Typography>
+                        {(stopsList.length > 0 || childrenList.length > 0) && (
+                          <Stack direction="row" flexWrap="wrap" spacing={1} sx={{ mt: 1 }}>
+                            {stopsList.length
+                              ? stopsList.map((s, i) => (
+                                  <Chip key={i} size="small" variant="outlined" label={`${s.name} @ ${s.address || '—'}`} />
+                                ))
+                              : childrenList.map((ac, i) => {
+                                  const nm = [ac.child?.firstName, ac.child?.lastName].filter(Boolean).join(' ') || 'Child';
+                                  const addr = ac.pickupAddress?.street || ac.pickupAddress?.city || '—';
+                                  return <Chip key={i} size="small" variant="outlined" label={`${nm} @ ${addr}`} />;
+                                })}
+                          </Stack>
+                        )}
                       </Box>
                       <Box sx={{ textAlign: 'right' }}>
                         <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.5 }}>
                           {trip.scheduledTime || trip.startTime || 'Not scheduled'}
                         </Typography>
-                        <Chip 
-                          label={statusLabel} 
-                          sx={{ 
-                            bgcolor: statusColor,
-                            color: statusTextColor,
-                            fontWeight: 600
-                          }} 
-                          size="small" 
-                        />
+                        <Chip label={statusLabel} sx={{ bgcolor: statusColor, color: statusTextColor, fontWeight: 600 }} size="small" />
                       </Box>
                     </Box>
                   </Paper>
@@ -841,26 +953,72 @@ const DriverDashboard = () => {
               })}
             </Box>
           )}
+
+          {/* Daily Completion & Logs – Route History */}
+          <Typography variant="h6" sx={{ fontWeight: 600, mt: 4, mb: 2 }}>Route History &amp; Logs</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Pickup/drop timestamps • Admin reviews performance
+          </Typography>
+          {routeHistory.length > 0 ? (
+            <Paper sx={{ borderRadius: 2, overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow sx={{ bgcolor: '#f5f5f5' }}>
+                      <TableCell sx={{ fontWeight: 600 }}>Date</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Route</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Type</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Scheduled</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Actual</TableCell>
+                      <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {routeHistory.slice(0, 15).map((h, i) => (
+                      <TableRow key={h._id || i} hover>
+                        <TableCell>{new Date(h.date).toLocaleDateString()}</TableCell>
+                        <TableCell>{h.routeName}</TableCell>
+                        <TableCell>{h.tripType === 'dropoff' ? 'Drop-off' : 'Pickup'}</TableCell>
+                        <TableCell>{h.scheduledTime || '—'}</TableCell>
+                        <TableCell>{h.actualTime || h.actualStartTime || '—'}</TableCell>
+                        <TableCell>
+                          <Chip size="small" label={h.status || '—'} sx={{ textTransform: 'capitalize' }} />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+          ) : (
+            <Paper sx={{ p: 3, textAlign: 'center', borderRadius: 2 }}>
+              <Typography color="text.secondary">No route history yet. Complete trips to see logs.</Typography>
+            </Paper>
+          )}
         </Box>
       )}
 
       {/* Tab 1: Active Route */}
       {activeTab === 1 && (
         <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               Active Route
             </Typography>
-            {activeTrip && activeTrip.status === 'in-progress' && (
-              <Chip 
-                icon={<DirectionsCar />}
-                label="In Progress" 
-                sx={{ 
-                  bgcolor: '#e3f2fd',
-                  color: '#2196f3',
-                  fontWeight: 600
-                }} 
-              />
+            {activeTrip && (
+              <Stack direction="row" spacing={1} alignItems="center">
+                {activeTrip.status === 'in-progress' && (
+                  <Chip icon={<DirectionsCar />} label="In Progress" sx={{ bgcolor: '#e3f2fd', color: '#2196f3', fontWeight: 600 }} />
+                )}
+                <Button size="small" variant="outlined" onClick={() => { setTripDialog({ open: true, trip: activeTrip }); setSelectedTrip(activeTrip); }}>
+                  Trip Details & OTP
+                </Button>
+                {activeTrip.status === 'in-progress' && (
+                  <Button size="small" variant="contained" color="success" startIcon={<Assessment />} onClick={() => handleCompleteTrip(activeTrip)}>
+                    Complete Trip
+                  </Button>
+                )}
+              </Stack>
             )}
           </Box>
 
@@ -923,6 +1081,59 @@ const DriverDashboard = () => {
                   </Grid>
                 </Grid>
               </Paper>
+
+              {/* Assigned Children for Active Route */}
+              {(activeTrip.assignedChildren && activeTrip.assignedChildren.length > 0) && (
+                <Box sx={{ mb: 3 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                      Assigned Children
+                    </Typography>
+                    <Chip 
+                      label={`Route: ${activeTrip.routeName || 'Kottayam'}`}
+                      sx={{ 
+                        bgcolor: '#14B8A6',
+                        color: 'white',
+                        fontWeight: 700,
+                        textTransform: 'capitalize'
+                      }} 
+                    />
+                  </Box>
+                  <Grid container spacing={2}>
+                    {activeTrip.assignedChildren.map((ac, idx) => {
+                      const child = ac.child;
+                      const childName = child ? [child.firstName, child.lastName].filter(Boolean).join(' ') : 'Child';
+                      const pickupAddr = ac.pickupAddress?.street || ac.pickupAddress?.city || child?.address?.street || child?.address || 'Kottayam';
+                      const dropAddr = ac.dropoffAddress?.street || ac.dropoffAddress?.city || 'Tiny Tots Daycare';
+                      return (
+                        <Grid item xs={12} md={6} key={child?._id || idx}>
+                          <Paper sx={{ p: 2.5, borderRadius: 2, bgcolor: '#f1f8e9', border: '1px solid #c8e6c9' }}>
+                            <Typography variant="h6" sx={{ fontWeight: 700, mb: 1, color: '#2e7d32' }}>
+                              {childName}
+                            </Typography>
+                            <Stack spacing={0.5}>
+                              <Typography variant="body2" color="text.secondary">
+                                <strong>Route:</strong> {activeTrip.routeName || 'Kottayam'}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                <strong>Pickup:</strong> {pickupAddr}
+                              </Typography>
+                              <Typography variant="body2" color="text.secondary">
+                                <strong>Drop-off:</strong> {dropAddr}
+                              </Typography>
+                              {ac.authorizedGuardians && ac.authorizedGuardians.length > 0 && (
+                                <Typography variant="body2" color="text.secondary">
+                                  <strong>Guardian:</strong> {ac.authorizedGuardians[0].name} ({ac.authorizedGuardians[0].phone})
+                                </Typography>
+                              )}
+                            </Stack>
+                          </Paper>
+                        </Grid>
+                      );
+                    })}
+                  </Grid>
+                </Box>
+              )}
 
               {/* Current Stop */}
               {activeTrip.stops && activeTrip.stops.length > 0 && (
@@ -1063,28 +1274,40 @@ const DriverDashboard = () => {
 
           {/* Current Assignment Summary (for single driver & primary route like Kottayam) */}
           {primaryRoute && primaryChild && (
-            <Paper sx={{ mb: 3, p: 2.5, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', bgcolor: '#f1f8e9' }}>
+            <Paper sx={{ mb: 3, p: 2.5, borderRadius: 2, boxShadow: '0 2px 8px rgba(0,0,0,0.06)', bgcolor: '#f1f8e9', border: '2px solid #c8e6c9' }}>
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary">
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
                     Current Route
                   </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
-                    {primaryRoute.routeName || primaryRoute.name || 'Assigned Route'}
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#2e7d32', mb: 1, textTransform: 'capitalize' }}>
+                    {primaryRoute.routeName || primaryRoute.name || 'Kottayam'}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {primaryRoute.stops?.length || 0} stops • {primaryRoute.assignedChildren?.length || 0} child
-                  </Typography>
+                  <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                    <Chip 
+                      label={`${primaryRoute.stops?.length || 0} stops`}
+                      size="small"
+                      sx={{ bgcolor: '#e8f5e9', color: '#2e7d32', fontWeight: 600 }}
+                    />
+                    <Chip 
+                      label={`${primaryRoute.assignedChildren?.length || 0} child`}
+                      size="small"
+                      sx={{ bgcolor: '#e3f2fd', color: '#1976d2', fontWeight: 600 }}
+                    />
+                  </Stack>
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <Typography variant="subtitle2" color="text.secondary">
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
                     Assigned Child
                   </Typography>
-                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 700, color: '#2e7d32', mb: 1 }}>
                     {primaryChild.child?.firstName || 'Child'} {primaryChild.child?.lastName || ''}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Pickup area: {primaryChild.child?.address?.street || primaryChild.child?.address || 'Kottayam route'}
+                    <strong>Pickup area:</strong> {primaryChild.pickupAddress?.street || primaryChild.pickupAddress?.city || primaryChild.child?.address?.street || primaryChild.child?.address || 'Kottayam'}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    <strong>Route:</strong> <Chip label={primaryRoute.routeName || 'Kottayam'} size="small" sx={{ ml: 0.5, textTransform: 'capitalize' }} />
                   </Typography>
                 </Grid>
               </Grid>
@@ -1097,6 +1320,7 @@ const DriverDashboard = () => {
                 <Table>
                   <TableHead>
                     <TableRow sx={{ bgcolor: '#f5f5f5' }}>
+                      <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Route</TableCell>
                       <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Child Name</TableCell>
                       <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Age</TableCell>
                       <TableCell sx={{ fontWeight: 600, color: 'text.primary' }}>Address</TableCell>
@@ -1107,19 +1331,37 @@ const DriverDashboard = () => {
                   </TableHead>
                   <TableBody>
                     {routes.map((route) =>
-                      route.assignedChildren?.map((child) => {
+                      (route.assignedChildren || []).filter(ac => ac.child).map((child) => {
                         const calculatedAge = child.child?.dateOfBirth
                           ? calculateAgeYears(child.child.dateOfBirth)
                           : null;
                         const childAge = calculatedAge ?? child.child?.age ?? '--';
-                        const parentName = child.child?.parent?.firstName && child.child?.parent?.lastName
-                          ? `${child.child.parent.firstName} ${child.child.parent.lastName}`
-                          : child.child?.parent?.name || 'N/A';
-                        const parentPhone = child.child?.parent?.phone || child.child?.parent?.contactNumber || 'N/A';
-                        const childAddress = child.child?.address?.street || child.child?.address || 'N/A';
+                        const parent = child.child?.parents && child.child.parents.length > 0 
+                          ? child.child.parents[0] 
+                          : child.child?.parent || null;
+                        const parentName = parent
+                          ? (parent.firstName && parent.lastName
+                              ? `${parent.firstName} ${parent.lastName}`
+                              : parent.name || 'N/A')
+                          : 'N/A';
+                        const parentPhone = parent?.phone || parent?.contactNumber || 'N/A';
+                        const childAddress = child.child?.address?.street || child.child?.address || child.pickupAddress?.street || child.pickupAddress?.city || 'N/A';
+                        const routeName = route.routeName || route.name || 'Route';
 
                         return (
                           <TableRow key={child.child?._id || Math.random()} hover>
+                            <TableCell>
+                              <Chip 
+                                label={routeName}
+                                size="small"
+                                sx={{ 
+                                  bgcolor: '#e0f2f1',
+                                  color: '#14B8A6',
+                                  fontWeight: 600,
+                                  textTransform: 'capitalize'
+                                }} 
+                              />
+                            </TableCell>
                             <TableCell sx={{ fontWeight: 500 }}>
                               {child.child?.firstName || 'Unknown'} {child.child?.lastName || ''}
                             </TableCell>
@@ -1185,14 +1427,41 @@ const DriverDashboard = () => {
                 </Grid>
               </Box>
             </Paper>
-          ) : (
-            <Paper sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}>
+          ) : routes.length > 0 ? (
+            <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
               <People sx={{ fontSize: 60, color: '#bdbdbd', mb: 2 }} />
               <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
                 No Assigned Children
               </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                You have {routes.length} route(s) assigned, but no children are currently assigned to these routes.
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, justifyContent: 'center' }}>
+                {routes.map((r, idx) => (
+                  <Chip 
+                    key={r._id || idx}
+                    label={`Route: ${r.routeName || 'Unnamed'}`}
+                    sx={{ 
+                      bgcolor: '#e0f2f1',
+                      color: '#14B8A6',
+                      fontWeight: 600,
+                      textTransform: 'capitalize'
+                    }}
+                  />
+                ))}
+              </Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                Contact admin to assign children to your routes.
+              </Typography>
+            </Paper>
+          ) : (
+            <Paper sx={{ p: 5, textAlign: 'center', borderRadius: 2 }}>
+              <People sx={{ fontSize: 60, color: '#bdbdbd', mb: 2 }} />
+              <Typography variant="h6" color="text.secondary" sx={{ mb: 1 }}>
+                No Routes Assigned
+              </Typography>
               <Typography variant="body2" color="text.secondary">
-                Children will appear here once assigned to your routes
+                No routes have been assigned to you yet. Contact admin to get assigned to a route.
               </Typography>
             </Paper>
           )}
@@ -1269,27 +1538,37 @@ const DriverDashboard = () => {
           </Grid>
 
           {/* Vehicle Logs */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 600 }}>
               Vehicle Logs
             </Typography>
-            <Button
-              variant="contained"
-              startIcon={<Add />}
-              onClick={() => {
-                const today = new Date().toISOString().split('T')[0];
-                setVehicleLogForm({ ...vehicleLogForm, date: today });
-                setVehicleLogDialog({ open: true });
-              }}
-              sx={{
-                bgcolor: '#4caf50',
-                '&:hover': { bgcolor: '#388e3c' },
-                textTransform: 'none',
-                fontWeight: 600
-              }}
-            >
-              Add Log Entry
-            </Button>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                startIcon={<Warning />}
+                onClick={() => setVehicleIssueDialog({ open: true, trip: activeTrip || selectedTrip })}
+                sx={{ textTransform: 'none', fontWeight: 600 }}
+              >
+                Report Vehicle Issue
+              </Button>
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  setVehicleLogForm({ ...vehicleLogForm, date: today });
+                  setVehicleLogDialog({ open: true });
+                }}
+                sx={{
+                  bgcolor: '#4caf50',
+                  '&:hover': { bgcolor: '#388e3c' },
+                  textTransform: 'none',
+                  fontWeight: 600
+                }}
+              >
+                Add Log Entry
+              </Button>
+            </Stack>
           </Box>
 
           {vehicleLogs.length > 0 ? (
@@ -1449,86 +1728,99 @@ const DriverDashboard = () => {
         </Box>
       )}
 
-      {/* Trip Details Dialog */}
+      {/* Trip Details Dialog – Child Pickup Process, OTP, Start/Complete */}
       <Dialog
         open={tripDialog.open}
-        onClose={() => {
-          setTripDialog({ open: false, trip: null });
-          setLocationTracking(false);
-        }}
+        onClose={() => { setTripDialog({ open: false, trip: null }); }}
         maxWidth="md"
         fullWidth
       >
         <DialogTitle>
-          Trip Details - {tripDialog.trip?.routeName}
-          {locationTracking && (
-            <Chip label="Tracking Active" color="success" size="small" sx={{ ml: 2 }} />
-          )}
+          Trip Details — {tripDialog.trip?.routeName}
+          {locationTracking && <Chip label="Live tracking" color="success" size="small" sx={{ ml: 2 }} />}
         </DialogTitle>
         <DialogContent>
           {tripDialog.trip && (
             <Box>
               <Typography variant="body2" color="text.secondary" gutterBottom>
-                Type: {tripDialog.trip.tripType} | Scheduled: {tripDialog.trip.scheduledTime}
+                {tripDialog.trip.tripType === 'dropoff' ? 'Drop-off' : 'Pickup'} • Scheduled: {tripDialog.trip.scheduledTime}
               </Typography>
               {currentLocation && (
                 <Alert severity="info" sx={{ mb: 2 }}>
-                  Current Location: {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
+                  Current location: {currentLocation.latitude.toFixed(6)}, {currentLocation.longitude.toFixed(6)}
                 </Alert>
               )}
-              <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>Children:</Typography>
+
+              {/* Child Pickup Process */}
+              <Paper sx={{ p: 2, mb: 3, bgcolor: '#e3f2fd' }}>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#1976d2', mb: 1 }}>Child Pickup Process</Typography>
+                <Typography variant="body2" component="ol" sx={{ pl: 2, m: 0 }}>
+                  <li>Driver reaches pickup location</li>
+                  <li>Parent provides OTP</li>
+                  <li>Driver verifies OTP in the system</li>
+                  <li>Child pickup / drop is confirmed</li>
+                </Typography>
+              </Paper>
+
+              <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+                {tripDialog.trip.status === 'scheduled' && (
+                  <Button variant="contained" startIcon={<DirectionsCar />} onClick={() => handleStartTrip(tripDialog.trip)}>
+                    Start Trip
+                  </Button>
+                )}
+                {tripDialog.trip.status === 'in-progress' && (
+                  <Button variant="contained" color="success" startIcon={<Assessment />} onClick={() => handleCompleteTrip(tripDialog.trip)}>
+                    Complete Trip
+                  </Button>
+                )}
+              </Stack>
+
+              <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>Children</Typography>
               <TableContainer>
                 <Table size="small">
                   <TableHead>
                     <TableRow>
                       <TableCell>Name</TableCell>
-                      <TableCell>Boarding Status</TableCell>
-                      <TableCell>Deboarding Status</TableCell>
+                      <TableCell>Pickup</TableCell>
+                      <TableCell>Drop</TableCell>
                       <TableCell>Actions</TableCell>
                     </TableRow>
                   </TableHead>
                   <TableBody>
-                    {tripDialog.trip.children?.map((childTrip) => (
-                      <TableRow key={childTrip.child?._id || childTrip.child}>
-                        <TableCell>
-                          {childTrip.child?.firstName || 'Unknown'} {childTrip.child?.lastName || ''}
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={childTrip.boardingStatus || 'pending'}
-                            size="small"
-                            color={childTrip.boardingStatus === 'otp-verified' ? 'success' : 'default'}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          <Chip
-                            label={childTrip.deboardingStatus || 'pending'}
-                            size="small"
-                            color={childTrip.deboardingStatus === 'otp-verified' ? 'success' : 'default'}
-                          />
-                        </TableCell>
-                        <TableCell>
-                          {tripDialog.trip.tripType === 'pickup' && childTrip.boardingStatus !== 'otp-verified' && (
-                            <Button
-                              size="small"
-                              startIcon={<QrCodeScanner />}
-                              onClick={() => handleGenerateOTP(tripDialog.trip, childTrip.child || childTrip.child, 'board')}
-                            >
-                              Generate OTP
-                            </Button>
-                          )}
-                          {tripDialog.trip.tripType === 'dropoff' && childTrip.deboardingStatus !== 'otp-verified' && (
-                            <Button
-                              size="small"
-                              startIcon={<QrCodeScanner />}
-                              onClick={() => handleGenerateOTP(tripDialog.trip, childTrip.child || childTrip.child, 'deboard')}
-                            >
-                              Generate OTP
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {((tripDialog.trip.children && tripDialog.trip.children.length) ? tripDialog.trip.children : (tripDialog.trip.assignedChildren || []).map((ac) => ({
+                      child: ac.child,
+                      boardingStatus: 'pending',
+                      deboardingStatus: 'pending'
+                    }))).map((childTrip, idx) => {
+                      const c = childTrip.child;
+                      const name = c ? [c.firstName, c.lastName].filter(Boolean).join(' ') : 'Child';
+                      const bid = childTrip.boardingStatus === 'otp-verified';
+                      const did = childTrip.deboardingStatus === 'otp-verified';
+                      const canOtp = !!tripDialog.trip.children?.length;
+                      return (
+                        <TableRow key={childId(c) || childId(childTrip.child) || `row-${idx}`}>
+                          <TableCell>{name || '—'}</TableCell>
+                          <TableCell>
+                            <Chip label={bid ? 'Confirmed' : 'Pending'} size="small" color={bid ? 'success' : 'default'} />
+                          </TableCell>
+                          <TableCell>
+                            <Chip label={did ? 'Dropped' : 'Pending'} size="small" color={did ? 'success' : 'default'} />
+                          </TableCell>
+                          <TableCell>
+                            {tripDialog.trip.tripType === 'pickup' && !bid && canOtp && (
+                              <Button size="small" startIcon={<QrCodeScanner />} onClick={() => handleGenerateOTP(tripDialog.trip, childTrip.child || c, 'board')}>
+                                Generate OTP
+                              </Button>
+                            )}
+                            {tripDialog.trip.tripType === 'dropoff' && !did && canOtp && (
+                              <Button size="small" startIcon={<QrCodeScanner />} onClick={() => handleGenerateOTP(tripDialog.trip, childTrip.child || c, 'deboard')}>
+                                Generate OTP
+                              </Button>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -1536,12 +1828,7 @@ const DriverDashboard = () => {
           )}
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => {
-            setTripDialog({ open: false, trip: null });
-            setLocationTracking(false);
-          }}>
-            Close
-          </Button>
+          <Button onClick={() => setTripDialog({ open: false, trip: null })}>Close</Button>
         </DialogActions>
       </Dialog>
 
@@ -1631,7 +1918,7 @@ const DriverDashboard = () => {
           }}>
             Cancel
           </Button>
-          <Button variant="contained" onClick={handleReportIncident} disabled={!incidentForm.type || !incidentForm.description}>
+          <Button variant="contained" onClick={handleReportIncident} disabled={!incidentDialog.trip || !incidentForm.type || !incidentForm.description}>
             Report
           </Button>
         </DialogActions>
@@ -1689,7 +1976,7 @@ const DriverDashboard = () => {
           }}>
             Cancel
           </Button>
-          <Button variant="contained" onClick={handleReportVehicleIssue} disabled={!vehicleIssueForm.issueType || !vehicleIssueForm.description}>
+          <Button variant="contained" onClick={handleReportVehicleIssue} disabled={!vehicleIssueDialog.trip || !vehicleIssueForm.issueType || !vehicleIssueForm.description}>
             Report
           </Button>
         </DialogActions>

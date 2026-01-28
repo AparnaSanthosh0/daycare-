@@ -103,6 +103,8 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [searchImage, setSearchImage] = useState(null);
   const [imageColors, setImageColors] = useState(null);
+  const [aiSearchResults, setAiSearchResults] = useState(null);
+  const [searchFeatures, setSearchFeatures] = useState(null);
   const { addToCart, wishlist, toggleWishlist, cartCount, interactions, recentlyViewed, cartItems } = useShop();
   const productsRef = React.useRef(null);
 
@@ -119,17 +121,28 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
     // hydrate query from navigation state (header search)
     const q = location.state && location.state.q;
     const img = location.state && location.state.searchImage;
+    const aiResults = location.state && location.state.aiSearchResults;
+    const features = location.state && location.state.searchFeatures;
     
     if (typeof q === 'string') {
       setQuery(q);
-      setSearchImage(null); // Clear image search when text search is active
+      setSearchImage(null);
+      setAiSearchResults(null);
+      setSearchFeatures(null);
     } else if (img) {
       setSearchImage(img);
       setQuery(''); // Clear text search when image search is active
+      // Set AI search results if available
+      if (aiResults) {
+        setAiSearchResults(aiResults);
+        setSearchFeatures(features);
+      }
     } else {
       // Always apply initialQuery on route change; clears when empty
       setQuery(initialQuery || '');
       setSearchImage(null);
+      setAiSearchResults(null);
+      setSearchFeatures(null);
     }
     // update category if prop changes (e.g., /fashion route)
     setSelectedCategory(initialCategory || 'all');
@@ -379,7 +392,40 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
     const q = (isOffersPage ? query : '').trim().toLowerCase();
     let list = products;
     
-    // VISUAL SEARCH - Like Myntra/Flipkart
+    // AI PHOTO SEARCH - Use backend AI results if available
+    if (searchImage && aiSearchResults && aiSearchResults.length > 0) {
+      // Map AI search results to product format
+      const aiProducts = aiSearchResults.map(match => {
+        const p = match.product;
+        return {
+          id: p._id,
+          name: p.name,
+          price: p.price,
+          originalPrice: null,
+          activeDiscount: 0,
+          discountStatus: 'none',
+          image: p.image || (Array.isArray(p.images) && p.images[0] ? p.images[0] : null),
+          images: p.images || [],
+          imageFit: 'cover',
+          imageFocalX: 50,
+          imageFocalY: 50,
+          category: p.category || 'General',
+          rating: p.rating || 4.5,
+          reviews: p.reviews || 0,
+          stockQty: p.stockQty ?? 0,
+          inStock: (p.stockQty ?? 0) > 0 && (p.inStock !== false),
+          isNew: false,
+          isBestseller: false,
+          description: p.description || '',
+          aiScore: match.score,
+          matchReason: match.matchReason || ''
+        };
+      });
+      
+      return aiProducts;
+    }
+    
+    // VISUAL SEARCH - Like Myntra/Flipkart (fallback if no AI results)
     if (searchImage && imageColors) {
       const imageFeatures = analyzeImageFeatures(imageColors);
       
@@ -542,7 +588,7 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
 
     // default: intersection (must match both)
     return list.filter(p => byCategory(p) && byQuery(p));
-  }, [products, query, selectedCategory, filterMode, location.pathname, searchImage, imageColors, analyzeImageFeatures]);
+  }, [products, query, selectedCategory, filterMode, location.pathname, searchImage, imageColors, analyzeImageFeatures, aiSearchResults]);
 
   // Personalized recommendations based on user signals (wishlist, cart, views)
   const personalized = useMemo(() => {
@@ -702,6 +748,8 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                   onClick={() => {
                     setSearchImage(null);
                     setImageColors(null);
+                    setAiSearchResults(null);
+                    setSearchFeatures(null);
                     navigate('/shop');
                   }}
                   sx={{ 
@@ -734,20 +782,28 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                   }}
                 />
                 <Box sx={{ flex: 1 }}>
-                  <Typography variant="h5" sx={{ fontWeight: 700, mb: 1, color: '#2e7d32' }}>
-                    Visual Search Results
+                <Typography variant="h5" sx={{ fontWeight: 700, mb: 1, color: '#2e7d32' }}>
+                  {aiSearchResults ? 'AI Photo Search Results' : 'Visual Search Results'}
+                </Typography>
+                <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+                  {filtered.length > 0 
+                    ? `Found ${filtered.length} matching product${filtered.length !== 1 ? 's' : ''}${aiSearchResults ? ' using AI' : ''}`
+                    : 'No matching products found'
+                  }
+                </Typography>
+                {aiSearchResults && searchFeatures && (
+                  <Chip 
+                    label="AI-Powered Search" 
+                    color="success" 
+                    size="small" 
+                    sx={{ mb: 1, fontWeight: 600 }}
+                  />
+                )}
+                {filtered.length === 0 && (
+                  <Typography variant="body2" color="error" sx={{ fontWeight: 500 }}>
+                    ⚠️ No exact matches. Try uploading a clearer image or browse our catalog.
                   </Typography>
-                  <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-                    {filtered.length > 0 
-                      ? `Found ${filtered.length} matching product${filtered.length !== 1 ? 's' : ''}`
-                      : 'No matching products found'
-                    }
-                  </Typography>
-                  {filtered.length === 0 && (
-                    <Typography variant="body2" color="error" sx={{ fontWeight: 500 }}>
-                      ⚠️ No exact matches. Try uploading a clearer image or browse our catalog.
-                    </Typography>
-                  )}
+                )}
                 </Box>
               </Box>
             </Box>
@@ -785,22 +841,30 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
           {filtered.map((product) => (
             <Grid item xs={12} sm={6} md={4} key={product.id}>
               <StyledCard>
-                <Box sx={{ position: 'relative' }}>
-                  <ProductImage
-                    component="img"
-                    src={product.image}
-                    alt={product.name}
-                    sx={{
-                      height: 200,
-                      objectFit: product.imageFit || 'cover',
-                      objectPosition: `${product.imageFocalX ?? 50}% ${product.imageFocalY ?? 50}%`,
-                    }}
-                    onError={(e) => { e.currentTarget.src = '/logo192.svg'; }}
-                    onClick={() => navigate(`/product/${product.id}`)}
-                  />
-                  
-                  {/* Product Badges */}
-                  <Box sx={{ position: 'absolute', top: 12, left: 12, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Box sx={{ position: 'relative' }}>
+                    <ProductImage
+                      component="img"
+                      src={product.image}
+                      alt={product.name}
+                      sx={{
+                        height: 200,
+                        objectFit: product.imageFit || 'cover',
+                        objectPosition: `${product.imageFocalX ?? 50}% ${product.imageFocalY ?? 50}%`,
+                      }}
+                      onError={(e) => { e.currentTarget.src = '/logo192.svg'; }}
+                      onClick={() => navigate(`/product/${product.id}`)}
+                    />
+                    
+                    {/* Product Badges */}
+                    <Box sx={{ position: 'absolute', top: 12, left: 12, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {product.aiScore && product.aiScore >= 80 && (
+                        <Chip 
+                          label="AI Match" 
+                          color="success" 
+                          size="small" 
+                          sx={{ fontWeight: 700, fontSize: '0.75rem' }} 
+                        />
+                      )}
                     {product.activeDiscount > 0 && (
                       <Chip 
                         label={`${product.activeDiscount}% OFF`} 
@@ -850,6 +914,12 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                   <Typography variant="h6" fontWeight={600} gutterBottom sx={{ cursor: 'pointer' }} onClick={() => navigate(`/product/${product.id}`)}>
                     {product.name}
                   </Typography>
+                  
+                  {product.matchReason && (
+                    <Typography variant="caption" color="success.main" sx={{ display: 'block', mb: 1, fontWeight: 600 }}>
+                      {product.matchReason}
+                    </Typography>
+                  )}
                   
                   <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                     {product.description}

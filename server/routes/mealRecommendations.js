@@ -51,6 +51,25 @@ router.post('/predict', async (req, res) => {
 
     let output = '';
     let errorOutput = '';
+    let responded = false;
+
+    const sendFallback = () => {
+      if (responded) return;
+      responded = true;
+      const fallbackResult = getFallbackRecommendation(age, dietaryPrefNum, allergyNum);
+      res.json(fallbackResult);
+    };
+
+    // Timeout after 45s (client uses 60s) so we can respond with fallback before client aborts
+    const timeoutMs = 45000;
+    const timeoutId = setTimeout(() => {
+      if (responded) return;
+      try {
+        pythonProcess.kill('SIGTERM');
+      } catch (_) { /* already dead */ }
+      console.warn('Meal recommendation: Python subprocess timed out, using rule-based fallback.');
+      sendFallback();
+    }, timeoutMs);
 
     pythonProcess.stdout.on('data', (data) => {
       output += data.toString();
@@ -61,21 +80,20 @@ router.post('/predict', async (req, res) => {
     });
 
     pythonProcess.on('close', (code) => {
+      clearTimeout(timeoutId);
+      if (responded) return;
       if (code !== 0) {
         console.error('Python script error:', errorOutput);
-        // Fallback to rule-based system
-        const fallbackResult = getFallbackRecommendation(age, dietaryPrefNum, allergyNum);
-        return res.json(fallbackResult);
+        return sendFallback();
       }
 
       try {
         const result = JSON.parse(output);
+        responded = true;
         res.json(result);
       } catch (parseError) {
         console.error('Error parsing Python output:', parseError);
-        // Fallback to rule-based system
-        const fallbackResult = getFallbackRecommendation(age, dietaryPrefNum, allergyNum);
-        res.json(fallbackResult);
+        sendFallback();
       }
     });
 

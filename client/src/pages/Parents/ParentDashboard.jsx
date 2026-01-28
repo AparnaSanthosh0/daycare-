@@ -3375,7 +3375,7 @@ const ParentDashboard = ({ initialTab }) => {
                               </Grid>
                               <Grid item xs={12} md={4} sx={{ textAlign: 'right' }}>
                                 <Chip 
-                                  label={request.status.toUpperCase()}
+                                  label={request.status?.toUpperCase() || 'N/A'}
                                   color={
                                     request.status === 'approved' ? 'success' : 
                                     request.status === 'rejected' ? 'error' : 
@@ -3540,7 +3540,7 @@ const ParentDashboard = ({ initialTab }) => {
                               {/* Order Status */}
                               <Grid item xs={12} md={4} sx={{ textAlign: { xs: 'left', md: 'right' } }}>
                                 <Chip 
-                                  label={order.status.toUpperCase()}
+                                  label={order.status?.toUpperCase() || 'N/A'}
                                   color={
                                     order.status === 'delivered' ? 'success' :
                                     order.status === 'shipped' || order.status === 'processing' ? 'primary' :
@@ -3732,7 +3732,7 @@ const ParentDashboard = ({ initialTab }) => {
                                       {invoice.description}
                                     </Typography>
                                   </Box>
-                                  <Chip label={invoice.status.toUpperCase()} color="warning" size="small" />
+                                  <Chip label={invoice.status?.toUpperCase() || 'N/A'} color="warning" size="small" />
                                 </Box>
                                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                                   <Typography variant="h5" color="success.main">
@@ -3796,7 +3796,7 @@ const ParentDashboard = ({ initialTab }) => {
                               <Typography variant="h6" color="success.main">
                                 ${payment.amount.toFixed(2)}
                               </Typography>
-                              <Chip label={payment.status.toUpperCase()} color="success" size="small" />
+                              <Chip label={payment.status?.toUpperCase() || 'N/A'} color="success" size="small" />
                             </Box>
                           </Box>
                         ))}
@@ -4106,7 +4106,7 @@ const ParentDashboard = ({ initialTab }) => {
                                     </Box>
                                   </Box>
                                   <Chip
-                                    label={appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1)}
+                                    label={appointment.status ? appointment.status.charAt(0).toUpperCase() + appointment.status.slice(1) : 'N/A'}
                                     size="small"
                                     color={
                                       appointment.status === 'confirmed' ? 'success' :

@@ -16,7 +16,8 @@ import {
   FormControlLabel,
   Radio,
   FormControl,
-  FormLabel
+  FormLabel,
+  TextField
 } from '@mui/material';
 import {
   Delete,
@@ -38,9 +39,34 @@ export default function CartPage() {
   const [orderNumber, setOrderNumber] = useState('');
   const [productStocks, setProductStocks] = useState({}); // { productId: stockQty }
   const [stockErrors, setStockErrors] = useState({}); // { itemKey: errorMessage }
+  const [shippingForm, setShippingForm] = useState({
+    recipientName: '',
+    phone: '',
+    street: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    country: 'India'
+  });
 
+  // Initialize form with user data if available
+  useEffect(() => {
+    if (user) {
+      setShippingForm({
+        recipientName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+        phone: user.phone || '',
+        street: user.address?.street || '',
+        city: user.address?.city || '',
+        state: user.address?.state || '',
+        zipCode: user.address?.zipCode || '',
+        country: user.address?.country || 'India'
+      });
+    }
+  }, [user]);
+
+  const shipping = cartSubtotal > 500 ? 0 : 50; // Free shipping over ₹500
   const tax = cartSubtotal * 0.08;
-  const total = cartSubtotal + tax;
+  const total = cartSubtotal + shipping + tax;
 
   // Fetch fresh stock data for all products in cart
   useEffect(() => {
@@ -110,11 +136,24 @@ export default function CartPage() {
           image: item.image
         }));
 
+        // Build full address string
+        const fullAddress = [
+          shippingForm.street,
+          shippingForm.city,
+          shippingForm.state,
+          shippingForm.zipCode,
+          shippingForm.country
+        ].filter(Boolean).join(', ');
+
         const shippingAddress = {
-          street: user.address?.street || '',
-          city: user.address?.city || '',
-          state: user.address?.state || '',
-          zipCode: user.address?.zipCode || ''
+          street: shippingForm.street,
+          city: shippingForm.city,
+          state: shippingForm.state,
+          zipCode: shippingForm.zipCode,
+          country: shippingForm.country,
+          phone: shippingForm.phone,
+          recipientName: shippingForm.recipientName,
+          fullAddress: fullAddress
         };
 
         const response = await api.post('/orders', {
@@ -182,11 +221,24 @@ export default function CartPage() {
                 image: item.image
               }));
 
+              // Build full address string
+              const fullAddress = [
+                shippingForm.street,
+                shippingForm.city,
+                shippingForm.state,
+                shippingForm.zipCode,
+                shippingForm.country
+              ].filter(Boolean).join(', ');
+
               const shippingAddress = {
-                street: user.address?.street || '',
-                city: user.address?.city || '',
-                state: user.address?.state || '',
-                zipCode: user.address?.zipCode || ''
+                street: shippingForm.street,
+                city: shippingForm.city,
+                state: shippingForm.state,
+                zipCode: shippingForm.zipCode,
+                country: shippingForm.country,
+                phone: shippingForm.phone,
+                recipientName: shippingForm.recipientName,
+                fullAddress: fullAddress
               };
 
               const orderData = {
@@ -389,6 +441,16 @@ export default function CartPage() {
                     <Typography>₹{cartSubtotal.toFixed(2)}</Typography>
                   </Box>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography>Shipping</Typography>
+                    <Typography>
+                      {shipping === 0 ? (
+                        <Chip size="small" label="FREE" color="success" />
+                      ) : (
+                        `₹${shipping.toFixed(2)}`
+                      )}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
                     <Typography>Tax (8%)</Typography>
                     <Typography>₹{tax.toFixed(2)}</Typography>
                   </Box>
@@ -396,6 +458,88 @@ export default function CartPage() {
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
                     <Typography fontWeight={700}>Total</Typography>
                     <Typography fontWeight={800}>₹{total.toFixed(2)}</Typography>
+                  </Box>
+
+                  {/* Shipping Address Form */}
+                  <Box sx={{ mb: 3 }}>
+                    <Typography variant="h6" fontWeight={700} sx={{ mb: 2 }}>
+                      Delivery Address
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Recipient Name *"
+                          value={shippingForm.recipientName}
+                          onChange={(e) => setShippingForm({ ...shippingForm, recipientName: e.target.value })}
+                          required
+                          size="small"
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Phone Number *"
+                          value={shippingForm.phone}
+                          onChange={(e) => setShippingForm({ ...shippingForm, phone: e.target.value })}
+                          required
+                          size="small"
+                          placeholder="10-digit mobile number"
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Street Address *"
+                          value={shippingForm.street}
+                          onChange={(e) => setShippingForm({ ...shippingForm, street: e.target.value })}
+                          required
+                          size="small"
+                          multiline
+                          rows={2}
+                          placeholder="House/Flat number, Building name, Street"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="City *"
+                          value={shippingForm.city}
+                          onChange={(e) => setShippingForm({ ...shippingForm, city: e.target.value })}
+                          required
+                          size="small"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="State *"
+                          value={shippingForm.state}
+                          onChange={(e) => setShippingForm({ ...shippingForm, state: e.target.value })}
+                          required
+                          size="small"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Zip Code *"
+                          value={shippingForm.zipCode}
+                          onChange={(e) => setShippingForm({ ...shippingForm, zipCode: e.target.value })}
+                          required
+                          size="small"
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <TextField
+                          fullWidth
+                          label="Country"
+                          value={shippingForm.country}
+                          onChange={(e) => setShippingForm({ ...shippingForm, country: e.target.value })}
+                          size="small"
+                        />
+                      </Grid>
+                    </Grid>
                   </Box>
 
                   {/* Payment Method Selection */}
@@ -462,10 +606,19 @@ export default function CartPage() {
                       variant="contained"
                       color="success"
                       onClick={handlePlaceOrder}
-                      disabled={placingOrder || cartItems.some(item => {
-                        const currentStock = productStocks[item.id] ?? item.stockQty ?? 0;
-                        return currentStock <= 0 || item.quantity > currentStock;
-                      })}
+                      disabled={
+                        placingOrder || 
+                        !shippingForm.recipientName || 
+                        !shippingForm.phone || 
+                        !shippingForm.street || 
+                        !shippingForm.city || 
+                        !shippingForm.state || 
+                        !shippingForm.zipCode ||
+                        cartItems.some(item => {
+                          const currentStock = productStocks[item.id] ?? item.stockQty ?? 0;
+                          return currentStock <= 0 || item.quantity > currentStock;
+                        })
+                      }
                       sx={{ py: 1.5 }}
                     >
                       {placingOrder ? 'Placing Order...' : 'Place Order'}

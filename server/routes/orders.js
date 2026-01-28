@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const auth = require('../middleware/auth');
 const Order = require('../models/Order');
 const Product = require('../models/Product');
@@ -103,6 +104,22 @@ router.post('/', auth, async (req, res) => {
       }
     }
     
+    // Initialize vendorConfirmations array for each unique vendor
+    // This allows vendors to see orders in their dashboard immediately after admin confirms
+    // Ensure vendor IDs are ObjectIds for proper MongoDB querying
+    const vendorConfirmations = Array.from(vendors).map(vendorId => {
+      const vendorObjectId = mongoose.Types.ObjectId.isValid(vendorId) 
+        ? new mongoose.Types.ObjectId(vendorId) 
+        : vendorId;
+      return {
+        vendor: vendorObjectId,
+        status: 'pending'
+      };
+    });
+
+    console.log(`📦 Creating order with ${vendorConfirmations.length} vendor confirmations`);
+    console.log(`   Vendor IDs: ${vendorConfirmations.map(c => c.vendor.toString()).join(', ')}`);
+
     const order = new Order({
       customer: customerId,
       items: orderItems,
@@ -115,11 +132,14 @@ router.post('/', auth, async (req, res) => {
       paymentMethod,
       paymentId,
       paymentStatus: finalPaymentStatus,
-      assignedVendors: Array.from(vendors),
-      status: finalPaymentStatus === 'paid' ? 'confirmed' : 'pending'
+      assignedVendors: Array.from(vendors).map(v => mongoose.Types.ObjectId.isValid(v) ? new mongoose.Types.ObjectId(v) : v),
+      vendorConfirmations: vendorConfirmations, // Initialize vendor confirmations
+      status: 'pending' // Always start as pending, admin must confirm
     });
 
     await order.save();
+    console.log(`✅ Order ${order.orderNumber} created with vendorConfirmations:`, 
+      order.vendorConfirmations?.map(vc => ({ vendor: vc.vendor.toString(), status: vc.status })));
 
     // Decrement stock for each product in the order
     for (const item of items) {
@@ -193,7 +213,10 @@ router.post('/', auth, async (req, res) => {
         }
 
         // Notify vendors about paid order
-        const uniqueVendors = [...new Set(order.items.map(item => item.vendor._id.toString()))];
+        const uniqueVendors = [...new Set(order.items.map(item => {
+          // item.vendor might be ObjectId or populated object
+          return item.vendor?._id ? item.vendor._id.toString() : item.vendor?.toString();
+        }).filter(Boolean))];
         for (const vendorId of uniqueVendors) {
           const vendor = await Vendor.findById(vendorId);
           if (vendor) {
@@ -446,6 +469,287 @@ router.get('/admin', auth, async (req, res) => {
   }
 });
 
+// Admin: Create delivery assignments for existing confirmed orders
+// IMPORTANT: These routes must come BEFORE /admin/:orderId/confirm to avoid route conflicts
+
+// Test route (GET) to verify routing works - NO AUTH for testing
+router.get('/admin/create-delivery-assignments-test', (req, res) => {
+  console.log('✅ TEST ROUTE HIT: /admin/create-delivery-assignments-test');
+  res.json({ 
+    message: 'Route is accessible! Server is working.', 
+    timestamp: new Date().toISOString(),
+    routeVersion: '2.0',
+    availableRoutes: [
+      'POST /api/orders/admin/create-delivery-assignments',
+      'POST /api/orders/admin/repair-orders',
+      'PUT /api/orders/admin/:orderId/confirm'
+    ]
+  });
+});
+
+// Main route for creating delivery assignments
+router.post('/admin/create-delivery-assignments', auth, async (req, res) => {
+  console.log('✅ POST /admin/create-delivery-assignments hit');
+  console.log('   Request body:', req.body);
+  console.log('   User:', req.user ? { role: req.user.role, userId: req.user.userId } : 'No user');
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    console.log('🚚 Creating delivery assignments for existing confirmed orders...');
+
+    // Find all orders that are admin confirmed and have vendor confirmations
+    const confirmedOrders = await Order.find({ 
+      adminConfirmed: true,
+      'vendorConfirmations.status': { $in: ['confirmed', 'ready_for_pickup'] }
+    })
+      .populate('customer', 'firstName lastName email phone')
+      .populate('items.vendor', '_id vendorName email phone address warehouseLocation')
+      .populate('vendorConfirmations.vendor', '_id vendorName');
+
+    let created = 0;
+    let skipped = 0;
+    let errors = [];
+
+    const { autoAssignDeliveryAgent } = require('../utils/autoAssignment');
+    const settings = await PlatformSettings.getSettings();
+
+    for (const order of confirmedOrders) {
+      try {
+        // Get all unique vendors from order items
+        const vendorMap = new Map();
+        order.items.forEach(item => {
+          const vendorId = item.vendor?._id ? item.vendor._id.toString() : item.vendor?.toString();
+          if (vendorId && !vendorMap.has(vendorId)) {
+            vendorMap.set(vendorId, {
+              vendorId: vendorId,
+              items: []
+            });
+          }
+          if (vendorId) {
+            vendorMap.get(vendorId).items.push(item);
+          }
+        });
+
+        if (vendorMap.size === 0) {
+          console.log(`⚠️ Order ${order.orderNumber} has no vendors - skipping`);
+          skipped++;
+          continue;
+        }
+
+        // Check which vendors have confirmed
+        const confirmedVendors = new Set();
+        order.vendorConfirmations.forEach(vc => {
+          if (vc.status === 'confirmed' || vc.status === 'ready_for_pickup') {
+            const vendorId = vc.vendor?._id ? vc.vendor._id.toString() : vc.vendor?.toString();
+            if (vendorId) {
+              confirmedVendors.add(vendorId);
+            }
+          }
+        });
+
+        console.log(`📦 Processing order ${order.orderNumber}: ${vendorMap.size} vendors, ${confirmedVendors.size} confirmed`);
+
+        // Create delivery assignment for each confirmed vendor
+        for (const [vendorId, vendorData] of vendorMap) {
+          // Only create assignment if vendor has confirmed
+          if (!confirmedVendors.has(vendorId)) {
+            console.log(`   ⏭️ Vendor ${vendorId} not confirmed - skipping assignment`);
+            continue;
+          }
+
+          // Check if assignment already exists
+          const existingAssignment = await DeliveryAssignment.findOne({
+            order: order._id,
+            vendor: vendorId
+          });
+
+          if (existingAssignment) {
+            console.log(`   ⏭️ Assignment already exists for vendor ${vendorId}`);
+            skipped++;
+            continue;
+          }
+
+          const vendor = await Vendor.findById(vendorId);
+          if (!vendor) {
+            console.warn(`   ⚠️ Vendor ${vendorId} not found - skipping`);
+            continue;
+          }
+
+          // Calculate delivery fee for this vendor's portion (defensive for legacy orders)
+          const itemsValue = vendorData.items.reduce((sum, item) => sum + (Number(item.price) * Number(item.quantity)), 0);
+          const orderTotal = Number(order.total) || 0;
+          const orderShipping = Number(order.shipping) || 0;
+          const vendorDeliveryFee = orderTotal > 0 ? (itemsValue / orderTotal) * orderShipping : 0;
+
+          // Get platform settings for commission split
+          // PlatformSettings schema uses `commission` (singular), not `commissions`
+          const deliverySplit = settings?.commission?.delivery || { agentShare: 80, platformShare: 20 };
+          const agentShare = vendorDeliveryFee * (deliverySplit.agentShare / 100);
+          const platformShare = vendorDeliveryFee * (deliverySplit.platformShare / 100);
+
+          // Create delivery assignment
+          const assignment = await DeliveryAssignment.create({
+            order: order._id,
+            orderNumber: order.orderNumber,
+            vendor: vendor._id,
+            vendorName: vendor.vendorName || vendor.businessName || 'Vendor',
+            customer: order.customer._id,
+            customerName: `${order.customer.firstName} ${order.customer.lastName}`,
+            pickupLocation: {
+              vendorName: vendor.vendorName || vendor.businessName || 'Vendor',
+              address: vendor.warehouseLocation?.address || vendor.address || '',
+              city: vendor.warehouseLocation?.city || vendor.city || '',
+              zipCode: vendor.warehouseLocation?.zipCode || vendor.zipCode || '',
+              coordinates: vendor.warehouseLocation?.coordinates || { lat: 0, lng: 0 },
+              zone: vendor.warehouseLocation?.zone || 'Unknown',
+              contactPerson: vendor.warehouseLocation?.contactPerson || vendor.vendorName || vendor.businessName || 'Vendor',
+              contactPhone: vendor.warehouseLocation?.contactPhone || vendor.phone || vendor.email || ''
+            },
+            deliveryLocation: (() => {
+              const sa = order.shippingAddress || {};
+              const fallbackAddress = `${sa.street || ''}, ${sa.city || ''}, ${sa.state || ''} ${sa.zipCode || ''}`.trim();
+              return {
+                address: sa.fullAddress || fallbackAddress || 'N/A',
+                city: sa.city || '',
+                zipCode: sa.zipCode || '',
+                coordinates: {
+                  lat: sa.latitude || 0,
+                  lng: sa.longitude || 0
+                },
+                zone: sa.zone || 'Unknown',
+                customerName: sa.recipientName || `${order.customer?.firstName || ''} ${order.customer?.lastName || ''}`.trim() || 'Customer',
+                customerPhone: sa.phone || order.customer?.phone || ''
+              };
+            })(),
+            items: vendorData.items,
+            deliveryFee: vendorDeliveryFee,
+            agentShare: agentShare,
+            platformShare: platformShare,
+            status: 'pending',
+            assignmentType: 'manual'
+          });
+
+          // Add to order's delivery assignments
+          await Order.findByIdAndUpdate(order._id, {
+            $addToSet: { deliveryAssignments: assignment._id }
+          });
+
+          console.log(`   ✅ Created assignment ${assignment._id} for vendor ${vendor.vendorName || vendor.businessName}`);
+
+          // Auto-assign agent if enabled
+          if (settings.autoAssignment.enabled) {
+            try {
+              const assignedAgent = await autoAssignDeliveryAgent(assignment);
+              if (assignedAgent) {
+                console.log(`   ✅ Auto-assigned to agent: ${assignedAgent.firstName} ${assignedAgent.lastName}`);
+              }
+            } catch (autoErr) {
+              console.error(`   ⚠️ Auto-assignment error:`, autoErr.message);
+            }
+          }
+
+          created++;
+        }
+      } catch (err) {
+        errors.push({ orderNumber: order.orderNumber, error: err.message });
+        console.error(`❌ Error processing order ${order.orderNumber}:`, err.message);
+      }
+    }
+
+    res.json({
+      message: `Delivery assignments created: ${created} assignments, ${skipped} skipped`,
+      created,
+      skipped,
+      total: confirmedOrders.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error) {
+    console.error('Create delivery assignments error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Admin: Repair orders - Fix vendorConfirmations for existing confirmed orders
+// IMPORTANT: This route must come BEFORE /admin/:orderId/confirm to avoid route conflicts
+router.post('/admin/repair-orders', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    console.log('🔧 Starting order repair - fixing vendorConfirmations for confirmed orders...');
+
+    // Find all orders that are admin confirmed but might have missing/incorrect vendorConfirmations
+    const confirmedOrders = await Order.find({ adminConfirmed: true })
+      .populate('items.vendor', '_id')
+      .populate('items.product', 'vendor');
+
+    let repaired = 0;
+    let errors = [];
+
+    for (const order of confirmedOrders) {
+      try {
+        // Get unique vendor IDs from order items
+        const uniqueVendorIds = new Set();
+        
+        order.items.forEach(item => {
+          const vendorId = item.vendor?._id ? item.vendor._id.toString() : 
+                          item.vendor?.toString() || 
+                          item.product?.vendor?.toString();
+          if (vendorId) {
+            uniqueVendorIds.add(vendorId);
+          }
+        });
+
+        // Also check assignedVendors
+        if (order.assignedVendors && order.assignedVendors.length > 0) {
+          order.assignedVendors.forEach(vendorId => {
+            uniqueVendorIds.add(vendorId.toString());
+          });
+        }
+
+        if (uniqueVendorIds.size === 0) {
+          console.log(`⚠️ Order ${order.orderNumber} has no vendors - skipping`);
+          continue;
+        }
+
+        // Create vendorConfirmations with proper ObjectIds
+        const vendorConfirmations = Array.from(uniqueVendorIds).map(vendorId => ({
+          vendor: mongoose.Types.ObjectId.isValid(vendorId) 
+            ? new mongoose.Types.ObjectId(vendorId) 
+            : vendorId,
+          status: 'pending'
+        }));
+
+        // Update the order
+        await Order.findByIdAndUpdate(order._id, {
+          $set: {
+            vendorConfirmations
+          }
+        });
+
+        repaired++;
+        console.log(`✅ Repaired order ${order.orderNumber} - ${vendorConfirmations.length} vendor confirmations`);
+      } catch (err) {
+        errors.push({ orderNumber: order.orderNumber, error: err.message });
+        console.error(`❌ Error repairing order ${order.orderNumber}:`, err.message);
+      }
+    }
+
+    res.json({
+      message: `Repair complete: ${repaired} orders fixed`,
+      repaired,
+      total: confirmedOrders.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error) {
+    console.error('Repair orders error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Admin: Confirm order and assign to vendors
 router.put('/admin/:orderId/confirm', auth, async (req, res) => {
   try {
@@ -474,46 +778,320 @@ router.put('/admin/:orderId/confirm', auth, async (req, res) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
-    // Initialize vendor confirmations if not already done
-    if (!order.vendorConfirmations || order.vendorConfirmations.length === 0) {
-      const uniqueVendors = [...new Set(order.items.map(item => item.vendor._id.toString()))];
-      const vendorConfirmations = uniqueVendors.map(vendorId => ({
-        vendor: vendorId,
-        status: 'pending'
-      }));
+    // ALWAYS ensure vendor confirmations are properly set up when admin confirms
+    // Get unique vendor IDs from order items (this is the source of truth)
+    const uniqueVendorIds = new Set();
+    
+    // Get vendors from items
+    order.items.forEach(item => {
+      // item.vendor might be ObjectId or populated object
+      const vendorId = item.vendor?._id ? item.vendor._id.toString() : item.vendor?.toString();
+      if (vendorId) {
+        uniqueVendorIds.add(vendorId);
+      }
+    });
 
-      await Order.findByIdAndUpdate(req.params.orderId, {
-        vendorConfirmations,
-        status: 'confirmed'
+    // Also check assignedVendors as fallback
+    if (order.assignedVendors && order.assignedVendors.length > 0) {
+      order.assignedVendors.forEach(vendorId => {
+        uniqueVendorIds.add(vendorId.toString());
       });
     }
 
+    console.log(`🔍 Admin confirming order ${order.orderNumber}`);
+    console.log(`   Found ${uniqueVendorIds.size} unique vendors: ${Array.from(uniqueVendorIds).join(', ')}`);
+
+    // Create fresh vendorConfirmations array with proper ObjectIds
+    const vendorConfirmations = Array.from(uniqueVendorIds).map(vendorId => {
+      // Ensure vendor ID is an ObjectId
+      const vendorObjectId = mongoose.Types.ObjectId.isValid(vendorId) 
+        ? new mongoose.Types.ObjectId(vendorId) 
+        : vendorId;
+      return {
+        vendor: vendorObjectId,
+        status: 'pending'
+      };
+    });
+
+    // ALWAYS update vendorConfirmations when admin confirms (even if they exist)
+    // This ensures they're properly formatted and match the current vendors
+    if (vendorConfirmations.length > 0) {
+      await Order.findByIdAndUpdate(req.params.orderId, {
+        $set: {
+          vendorConfirmations,
+          status: 'confirmed',
+          adminConfirmed: true // Ensure this is set
+        }
+      });
+      console.log(`✅ Updated ${vendorConfirmations.length} vendor confirmations for order ${order.orderNumber}`);
+      console.log(`   Vendor IDs: ${vendorConfirmations.map(c => c.vendor.toString()).join(', ')}`);
+    } else {
+      console.warn(`⚠️ No vendors found for order ${order.orderNumber} - cannot create vendorConfirmations`);
+    }
+
+    // Reload order to get updated vendorConfirmations and return to client
+    const updatedOrder = await Order.findById(req.params.orderId)
+      .populate('customer', 'firstName lastName email')
+      .populate('items.vendor', 'businessName email')
+      .populate('items.product', 'name image')
+      .populate('vendorConfirmations.vendor', 'businessName email')
+      .populate('adminConfirmedBy', 'firstName lastName');
+
     // Notify vendors about order assignment
     try {
-      const uniqueVendors = [...new Set(order.items.map(item => item.vendor._id.toString()))];
-      for (const vendorId of uniqueVendors) {
-        const vendor = await Vendor.findById(vendorId);
-        if (vendor) {
-          // TODO: Send email notification to vendor
-          console.log(`Order ${order.orderNumber} assigned to vendor ${vendor.email}`);
+      if (updatedOrder.vendorConfirmations && updatedOrder.vendorConfirmations.length > 0) {
+        for (const confirmation of updatedOrder.vendorConfirmations) {
+          const vendorId = confirmation.vendor?._id || confirmation.vendor;
+          const vendor = await Vendor.findById(vendorId);
+          if (vendor) {
+            // TODO: Send email notification to vendor
+            console.log(`📧 Order ${updatedOrder.orderNumber} assigned to vendor ${vendor.email || vendor.vendorName}`);
+          }
         }
       }
     } catch (e) {
       console.warn('Vendor notification failed:', e.message);
     }
 
+    // STEP: Calculate commission when admin confirms
+    if (!updatedOrder.commissionCalculated) {
+      try {
+        const commissionResult = await calculateOrderCommission(updatedOrder);
+        console.log(`✅ Commission calculated for order ${updatedOrder.orderNumber}: ₹${commissionResult.platformRevenue.toFixed(2)}`);
+        // Reload order to get updated commission data
+        const orderWithCommission = await Order.findById(req.params.orderId);
+        Object.assign(updatedOrder, orderWithCommission);
+      } catch (commErr) {
+        console.error('Commission calculation error:', commErr);
+        // Continue even if commission fails
+      }
+    }
+
+    // STEP: Create delivery assignments for all vendors and auto-assign agents
+    try {
+      const { autoAssignDeliveryAgent } = require('../utils/autoAssignment');
+      const settings = await PlatformSettings.getSettings();
+      
+      // Get all unique vendors from order items
+      const vendorMap = new Map();
+      updatedOrder.items.forEach(item => {
+        const vendorId = item.vendor?._id ? item.vendor._id.toString() : item.vendor?.toString();
+        if (vendorId && !vendorMap.has(vendorId)) {
+          vendorMap.set(vendorId, {
+            vendorId: vendorId,
+            items: []
+          });
+        }
+        if (vendorId) {
+          vendorMap.get(vendorId).items.push(item);
+        }
+      });
+
+      console.log(`📦 Creating delivery assignments for ${vendorMap.size} vendors`);
+
+      // Create delivery assignment for each vendor
+      for (const [vendorId, vendorData] of vendorMap) {
+        const vendor = await Vendor.findById(vendorId);
+        if (!vendor) {
+          console.warn(`⚠️ Vendor ${vendorId} not found - skipping delivery assignment`);
+          continue;
+        }
+
+        // Calculate delivery fee for this vendor's portion
+        const itemsValue = vendorData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const vendorDeliveryFee = (itemsValue / updatedOrder.total) * updatedOrder.shipping;
+
+        // Get platform settings for commission split
+        // PlatformSettings schema uses `commission` (singular), not `commissions`
+        const deliverySplit = settings?.commission?.delivery || { agentShare: 80, platformShare: 20 };
+        const agentShare = vendorDeliveryFee * (deliverySplit.agentShare / 100);
+        const platformShare = vendorDeliveryFee * (deliverySplit.platformShare / 100);
+
+        // Check if assignment already exists for this vendor
+        const existingAssignment = await DeliveryAssignment.findOne({
+          order: updatedOrder._id,
+          vendor: vendorId
+        });
+
+        if (existingAssignment) {
+          console.log(`⏭️ Delivery assignment already exists for vendor ${vendor.vendorName}`);
+          continue;
+        }
+
+        // Create delivery assignment
+        const assignment = await DeliveryAssignment.create({
+          order: updatedOrder._id,
+          orderNumber: updatedOrder.orderNumber,
+          vendor: vendor._id,
+          vendorName: vendor.vendorName || vendor.businessName || 'Vendor',
+          customer: updatedOrder.customer._id,
+          customerName: `${updatedOrder.customer.firstName} ${updatedOrder.customer.lastName}`,
+          pickupLocation: {
+            vendorName: vendor.vendorName || vendor.businessName || 'Vendor',
+            address: vendor.warehouseLocation?.address || vendor.address || '',
+            city: vendor.warehouseLocation?.city || vendor.city || '',
+            zipCode: vendor.warehouseLocation?.zipCode || vendor.zipCode || '',
+            coordinates: vendor.warehouseLocation?.coordinates || { lat: 0, lng: 0 },
+            zone: vendor.warehouseLocation?.zone || 'Unknown',
+            contactPerson: vendor.warehouseLocation?.contactPerson || vendor.vendorName || vendor.businessName || 'Vendor',
+            contactPhone: vendor.warehouseLocation?.contactPhone || vendor.phone || vendor.email || ''
+          },
+          deliveryLocation: {
+            address: updatedOrder.shippingAddress.fullAddress || 
+                    `${updatedOrder.shippingAddress.street || ''}, ${updatedOrder.shippingAddress.city || ''}, ${updatedOrder.shippingAddress.state || ''} ${updatedOrder.shippingAddress.zipCode || ''}`,
+            city: updatedOrder.shippingAddress.city || '',
+            zipCode: updatedOrder.shippingAddress.zipCode || '',
+            coordinates: {
+              lat: updatedOrder.shippingAddress.latitude || 0,
+              lng: updatedOrder.shippingAddress.longitude || 0
+            },
+            zone: updatedOrder.shippingAddress.zone || 'Unknown',
+            customerName: updatedOrder.shippingAddress.recipientName || `${updatedOrder.customer.firstName} ${updatedOrder.customer.lastName}`,
+            customerPhone: updatedOrder.shippingAddress.phone || updatedOrder.customer.phone || ''
+          },
+          items: vendorData.items,
+          deliveryFee: vendorDeliveryFee,
+          agentShare: agentShare,
+          platformShare: platformShare,
+          status: 'pending',
+          assignmentType: 'manual' // Will be set to 'auto' if auto-assigned
+        });
+
+        // Add to order's delivery assignments
+        await Order.findByIdAndUpdate(updatedOrder._id, {
+          $addToSet: { deliveryAssignments: assignment._id }
+        });
+
+        console.log(`✅ Delivery assignment created for vendor ${vendor.vendorName}: ${assignment._id}`);
+        console.log(`   Assignment status: ${assignment.status}, Order: ${assignment.orderNumber}`);
+
+        // Auto-assign agent if enabled
+        if (settings.autoAssignment.enabled) {
+          console.log(`🤖 Auto-assigning agent for assignment ${assignment._id}`);
+          try {
+            const assignedAgent = await autoAssignDeliveryAgent(assignment);
+            if (assignedAgent) {
+              // Reload assignment to get updated status
+              const updatedAssignment = await DeliveryAssignment.findById(assignment._id)
+                .populate('deliveryAgent', 'firstName lastName email phone');
+              console.log(`✅ Auto-assigned to agent: ${assignedAgent.firstName} ${assignedAgent.lastName} (${assignedAgent._id})`);
+              console.log(`   Assignment status: ${updatedAssignment.status}, Agent ID: ${updatedAssignment.deliveryAgent?._id || updatedAssignment.deliveryAgent}`);
+              console.log(`   Assignment will be visible in agent dashboard`);
+            } else {
+              console.log(`⚠️ No available agents - assignment remains pending for manual assignment`);
+              console.log(`   Assignment status: ${assignment.status}, will be visible to all agents`);
+            }
+          } catch (autoErr) {
+            console.error('Auto-assignment error:', autoErr);
+            console.error('   Assignment will remain pending for manual assignment');
+            // Assignment stays pending for manual assignment
+          }
+        } else {
+          console.log(`📋 Manual assignment mode - assignment pending admin action`);
+          console.log(`   Assignment status: ${assignment.status}, will be visible to all agents`);
+        }
+      }
+    } catch (deliveryErr) {
+      console.error('Delivery assignment creation error:', deliveryErr);
+      // Continue even if delivery assignment fails
+    }
+
     // Notify customer
     try {
       // TODO: Send email notification to customer
-      console.log(`Order ${order.orderNumber} confirmed - notify customer ${order.customer.email}`);
+      console.log(`Order ${updatedOrder.orderNumber} confirmed - notify customer ${updatedOrder.customer.email}`);
     } catch (e) {
       console.warn('Customer notification failed:', e.message);
     }
 
-    res.json(order);
+    // Reload order one more time to get all updates
+    const finalOrder = await Order.findById(req.params.orderId)
+      .populate('customer', 'firstName lastName email')
+      .populate('items.vendor', 'businessName email')
+      .populate('items.product', 'name image')
+      .populate('vendorConfirmations.vendor', 'businessName email')
+      .populate('adminConfirmedBy', 'firstName lastName')
+      .populate('deliveryAssignments');
+
+    res.json(finalOrder);
   } catch (error) {
     console.error('Confirm order error:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+
+// Debug endpoint: Get vendor debug info (for troubleshooting)
+router.get('/vendor/debug', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'vendor') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const vendor = await Vendor.findOne({ user: req.user.userId });
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor not found' });
+    }
+
+    const vendorId = vendor._id;
+
+    // Get sample orders to inspect
+    const sampleOrders = await Order.find({ adminConfirmed: true })
+      .limit(5)
+      .select('orderNumber adminConfirmed vendorConfirmations assignedVendors items.vendor')
+      .lean();
+
+    // Get orders with this vendor
+    const ordersWithThisVendor = await Order.find({
+      $or: [
+        { 'vendorConfirmations.vendor': vendorId },
+        { assignedVendors: vendorId }
+      ],
+      adminConfirmed: true
+    })
+      .select('orderNumber adminConfirmed vendorConfirmations assignedVendors')
+      .lean();
+
+    res.json({
+      vendor: {
+        id: vendorId,
+        name: vendor.vendorName,
+        email: vendor.email
+      },
+      stats: {
+        totalAdminConfirmed: await Order.countDocuments({ adminConfirmed: true }),
+        ordersWithVendorInConfirmations: await Order.countDocuments({
+          'vendorConfirmations.vendor': vendorId,
+          adminConfirmed: true
+        }),
+        ordersWithVendorInAssigned: await Order.countDocuments({
+          assignedVendors: vendorId,
+          adminConfirmed: true
+        })
+      },
+      sampleOrders: sampleOrders.map(o => ({
+        orderNumber: o.orderNumber,
+        adminConfirmed: o.adminConfirmed,
+        vendorConfirmations: o.vendorConfirmations?.map(vc => ({
+          vendor: vc.vendor?.toString(),
+          status: vc.status
+        })),
+        assignedVendors: o.assignedVendors?.map(v => v.toString()),
+        itemVendors: o.items?.map(i => i.vendor?.toString())
+      })),
+      ordersWithThisVendor: ordersWithThisVendor.map(o => ({
+        orderNumber: o.orderNumber,
+        adminConfirmed: o.adminConfirmed,
+        vendorConfirmations: o.vendorConfirmations?.map(vc => ({
+          vendor: vc.vendor?.toString(),
+          status: vc.status
+        })),
+        assignedVendors: o.assignedVendors?.map(v => v.toString())
+      }))
+    });
+  } catch (error) {
+    console.error('Debug endpoint error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -524,30 +1102,155 @@ router.get('/vendor', auth, async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    const vendorId = req.user.vendorId || req.user.userId;
+    console.log(`\n🔍 VENDOR ORDERS REQUEST - User ID: ${req.user.userId}, Role: ${req.user.role}`);
+
+    // Look up vendor by user ID (vendors are linked to users via Vendor.user field)
+    const vendor = await Vendor.findOne({ user: req.user.userId });
+    if (!vendor) {
+      console.log(`❌ Vendor not found for user ${req.user.userId}`);
+      // Try alternative: check if user has vendorId field
+      if (req.user.vendorId) {
+        const vendorById = await Vendor.findById(req.user.vendorId);
+        if (vendorById) {
+          console.log(`✅ Found vendor by vendorId: ${vendorById.vendorName}`);
+          // Continue with vendorById
+        }
+      }
+      return res.status(404).json({ message: 'Vendor profile not found. Please contact admin to link your vendor account.' });
+    }
+
+    const vendorId = vendor._id;
+    console.log(`✅ Vendor found: ${vendor.vendorName} (ID: ${vendorId})`);
+    
+    // Debug: Check all orders with adminConfirmed
+    const allConfirmedOrders = await Order.countDocuments({ adminConfirmed: true });
+    console.log(`📊 Total orders with adminConfirmed=true: ${allConfirmedOrders}`);
+    
+    // Debug: Check orders with this vendor in assignedVendors
+    const ordersWithVendor = await Order.countDocuments({ 
+      assignedVendors: vendorId,
+      adminConfirmed: true 
+    });
+    console.log(`📊 Orders with this vendor in assignedVendors: ${ordersWithVendor}`);
+    
+    // Debug: Check orders with this vendor in vendorConfirmations (using different query methods)
+    const ordersWithVendorConf1 = await Order.countDocuments({ 
+      'vendorConfirmations.vendor': vendorId,
+      adminConfirmed: true 
+    });
+    console.log(`📊 Orders with vendorConfirmation (dot notation): ${ordersWithVendorConf1}`);
+    
+    const ordersWithVendorConf2 = await Order.countDocuments({ 
+      vendorConfirmations: {
+        $elemMatch: { vendor: vendorId }
+      },
+      adminConfirmed: true 
+    });
+    console.log(`📊 Orders with vendorConfirmation ($elemMatch): ${ordersWithVendorConf2}`);
+    
     const { page = 1, limit = 20, status } = req.query;
 
+    // Try multiple query strategies
     let query = {
-      'vendorConfirmations.vendor': vendorId,
-      adminConfirmed: true
+      adminConfirmed: true,
+      vendorConfirmations: {
+        $elemMatch: {
+          vendor: vendorId
+        }
+      }
     };
 
     if (status) {
       query.status = status;
     }
 
-    const orders = await Order.find(query)
+    console.log(`📋 Query:`, JSON.stringify(query, null, 2));
+
+    let orders = await Order.find(query)
       .populate('customer', 'firstName lastName email phone')
       .populate('items.product', 'name image')
-      .populate('vendorConfirmations.vendor', 'name email')
+      .populate('items.vendor', 'businessName email')
+      .populate('vendorConfirmations.vendor', 'businessName email')
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);
 
-    const total = await Order.countDocuments(query);
+    // If no orders found with $elemMatch, try alternative query
+    if (orders.length === 0) {
+      console.log(`⚠️ No orders found with $elemMatch, trying alternative query...`);
+      const altQuery = {
+        adminConfirmed: true,
+        'vendorConfirmations.vendor': vendorId
+      };
+      if (status) altQuery.status = status;
+      
+      orders = await Order.find(altQuery)
+        .populate('customer', 'firstName lastName email phone')
+        .populate('items.product', 'name image')
+        .populate('items.vendor', 'businessName email')
+        .populate('vendorConfirmations.vendor', 'businessName email')
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit);
+      
+      console.log(`📊 Alternative query found ${orders.length} orders`);
+    }
 
+    // If still no orders, try checking assignedVendors
+    if (orders.length === 0 && ordersWithVendor > 0) {
+      console.log(`⚠️ No orders in vendorConfirmations, checking assignedVendors...`);
+      const fallbackQuery = {
+        adminConfirmed: true,
+        assignedVendors: vendorId
+      };
+      if (status) fallbackQuery.status = status;
+      
+      orders = await Order.find(fallbackQuery)
+        .populate('customer', 'firstName lastName email phone')
+        .populate('items.product', 'name image')
+        .populate('items.vendor', 'businessName email')
+        .populate('vendorConfirmations.vendor', 'businessName email')
+        .sort({ createdAt: -1 })
+        .limit(limit * 1)
+        .skip((page - 1) * limit);
+      
+      console.log(`📊 Fallback query (assignedVendors) found ${orders.length} orders`);
+      
+      // If we found orders via assignedVendors but no vendorConfirmations, create them
+      if (orders.length > 0) {
+        for (const order of orders) {
+          if (!order.vendorConfirmations || order.vendorConfirmations.length === 0) {
+            console.log(`🔧 Creating missing vendorConfirmations for order ${order.orderNumber}`);
+            await Order.findByIdAndUpdate(order._id, {
+              $push: {
+                vendorConfirmations: {
+                  vendor: vendorId,
+                  status: 'pending'
+                }
+              }
+            });
+          }
+        }
+        // Reload orders after updating
+        orders = await Order.find(fallbackQuery)
+          .populate('customer', 'firstName lastName email phone')
+          .populate('items.product', 'name image')
+          .populate('items.vendor', 'businessName email')
+          .populate('vendorConfirmations.vendor', 'businessName email')
+          .sort({ createdAt: -1 })
+          .limit(limit * 1)
+          .skip((page - 1) * limit);
+      }
+    }
+
+    const total = await Order.countDocuments(query);
+    
+    console.log(`✅ Returning ${orders.length} orders for vendor ${vendor.vendorName} (total matching query: ${total})\n`);
+
+    // Include vendor ID in response for frontend matching
     res.json({
       orders,
+      vendorId: vendorId.toString(), // Include vendor ID so frontend can match correctly
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
@@ -556,8 +1259,9 @@ router.get('/vendor', auth, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Get vendor orders error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('❌ Get vendor orders error:', error);
+    console.error('Error stack:', error.stack);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 
@@ -568,21 +1272,43 @@ router.put('/vendor/:orderId/confirm', auth, async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
+    // Look up vendor by user ID
+    const vendor = await Vendor.findOne({ user: req.user.userId });
+    if (!vendor) {
+      return res.status(404).json({ message: 'Vendor profile not found' });
+    }
+
     const { status, notes, trackingNumber } = req.body;
-    const vendorId = req.user.vendorId || req.user.userId;
+    const vendorId = vendor._id;
+
+    // Prepare update object
+    const updateFields = {
+      'vendorConfirmations.$.status': status,
+      'vendorConfirmations.$.notes': notes
+    };
+
+    // Set timestamps based on status
+    if (status === 'confirmed') {
+      updateFields['vendorConfirmations.$.confirmedAt'] = new Date();
+    } else if (status === 'ready_for_pickup') {
+      updateFields['vendorConfirmations.$.readyForPickupAt'] = new Date();
+    }
+
+    if (trackingNumber) {
+      updateFields.trackingNumber = trackingNumber;
+    }
 
     const order = await Order.findOneAndUpdate(
       {
         _id: req.params.orderId,
-        'vendorConfirmations.vendor': vendorId
+        vendorConfirmations: {
+          $elemMatch: {
+            vendor: vendorId
+          }
+        }
       },
       {
-        $set: {
-          'vendorConfirmations.$.status': status,
-          'vendorConfirmations.$.confirmedAt': new Date(),
-          'vendorConfirmations.$.notes': notes,
-          ...(trackingNumber && { trackingNumber })
-        }
+        $set: updateFields
       },
       { new: true }
     ).populate('customer', 'firstName lastName email phone')
@@ -592,111 +1318,8 @@ router.put('/vendor/:orderId/confirm', auth, async (req, res) => {
       return res.status(404).json({ message: 'Order not found' });
     }
 
-    // STEP 1: Calculate commission if not already done
-    if (!order.commissionCalculated && status === 'confirmed') {
-      try {
-        const commissionResult = await calculateOrderCommission(order);
-        console.log(`✅ Commission calculated for order ${order.orderNumber}: ₹${commissionResult.platformRevenue.toFixed(2)}`);
-      } catch (commErr) {
-        console.error('Commission calculation error:', commErr);
-        // Continue even if commission fails
-      }
-    }
-
-    // STEP 2: Create delivery assignment for this vendor
-    if (status === 'confirmed') {
-      try {
-        const vendor = await Vendor.findById(vendorId);
-        if (!vendor) {
-          throw new Error('Vendor not found');
-        }
-
-        // Get vendor's items from order
-        const vendorItems = order.items.filter(item => 
-          item.vendor?._id?.toString() === vendorId.toString()
-        );
-
-        if (vendorItems.length > 0) {
-          // Calculate delivery fee for this vendor's portion
-          const itemsValue = vendorItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-          const vendorDeliveryFee = (itemsValue / order.total) * order.shipping;
-
-          // Get platform settings for commission split
-          const settings = await PlatformSettings.getSettings();
-          const deliverySplit = settings.commissions.delivery;
-          const agentShare = vendorDeliveryFee * (deliverySplit.agentShare / 100);
-          const platformShare = vendorDeliveryFee * (deliverySplit.platformShare / 100);
-
-          // Create delivery assignment
-          const assignment = await DeliveryAssignment.create({
-            order: order._id,
-            orderNumber: order.orderNumber,
-            vendor: vendor._id,
-            vendorName: vendor.vendorName,
-            customer: order.customer._id,
-            customerName: `${order.customer.firstName} ${order.customer.lastName}`,
-            pickupLocation: {
-              address: vendor.warehouseLocation?.address || vendor.address,
-              coordinates: vendor.warehouseLocation?.coordinates || { lat: 0, lng: 0 },
-              zone: vendor.warehouseLocation?.zone || 'Unknown',
-              contactPerson: vendor.warehouseLocation?.contactPerson || vendor.vendorName
-            },
-            deliveryLocation: {
-              address: order.shippingAddress.fullAddress,
-              coordinates: {
-                lat: order.shippingAddress.latitude || 0,
-                lng: order.shippingAddress.longitude || 0
-              },
-              zipCode: order.shippingAddress.zipCode,
-              contactPerson: order.shippingAddress.recipientName || `${order.customer.firstName} ${order.customer.lastName}`,
-              phone: order.shippingAddress.phone || order.customer.phone
-            },
-            items: vendorItems,
-            deliveryFee: vendorDeliveryFee,
-            agentShare: agentShare,
-            platformShare: platformShare,
-            status: 'pending',
-            assignmentType: 'pending' // Will be set when assigned
-          });
-
-          // Add to order's delivery assignments
-          order.deliveryAssignments.push(assignment._id);
-          await order.save();
-
-          console.log(`✅ Delivery assignment created: ${assignment._id}`);
-          console.log(`📦 Vendor: ${vendor.vendorName}, Delivery Fee: ₹${vendorDeliveryFee.toFixed(2)}`);
-
-          // STEP 3: Check if we should auto-assign or wait for manual
-          
-          if (settings.autoAssignment.enabled) {
-            // 🤖 AUTO-ASSIGNMENT MODE: Trigger immediately
-            console.log(`🤖 Auto-assignment enabled - assigning agent for ${assignment._id}`);
-            try {
-              const { autoAssignDeliveryAgent } = require('../utils/autoAssignment');
-              const assignedAssignment = await autoAssignDeliveryAgent(assignment);
-              
-              if (assignedAssignment && assignedAssignment.deliveryAgent) {
-                console.log(`✅ Auto-assigned to agent: ${assignedAssignment.agentName}`);
-                // TODO: Send notification to agent
-              } else {
-                console.log(`⚠️ No available agents - assignment remains pending`);
-                // TODO: Send notification to admin
-              }
-            } catch (autoErr) {
-              console.error('Auto-assignment error:', autoErr);
-              // Assignment stays pending for manual assignment
-            }
-          } else {
-            // 📋 MANUAL MODE: Admin/Vendor will assign later
-            console.log(`📋 Manual assignment mode - assignment pending admin action`);
-            // TODO: Send notification to admin for manual assignment
-          }
-        }
-      } catch (deliveryErr) {
-        console.error('Delivery assignment error:', deliveryErr);
-        // Continue even if delivery assignment fails
-      }
-    }
+    // NOTE: Commission calculation and delivery assignment creation are now done at admin confirmation
+    // Vendor confirmation only updates the vendor's confirmation status
 
     // Check if all vendors have confirmed
     const allConfirmed = order.vendorConfirmations.every(conf => conf.status === 'confirmed');
@@ -862,5 +1485,35 @@ router.get('/admin/stats', auth, async (req, res) => {
     res.status(500).json({ message: 'Server error' });
   }
 });
+
+// Debug: Log all registered admin routes (remove in production)
+console.log('📋 Orders router loaded. Checking admin routes...');
+setTimeout(() => {
+  const adminRoutes = [];
+  router.stack.forEach((r) => {
+    if (r.route && r.route.path && r.route.path.includes('/admin')) {
+      const method = Object.keys(r.route.methods)[0]?.toUpperCase() || 'UNKNOWN';
+      adminRoutes.push(`${method} ${r.route.path}`);
+    }
+  });
+  if (adminRoutes.length > 0) {
+    console.log('✅ Registered admin routes in orders.js:');
+    adminRoutes.forEach(route => console.log(`   ${route}`));
+  } else {
+    console.log('⚠️ No admin routes found in router.stack');
+  }
+  
+  // Check specifically for our route
+  const targetRoute = router.stack.find(r => 
+    r.route && 
+    r.route.path === '/admin/create-delivery-assignments' &&
+    r.route.methods.post
+  );
+  if (targetRoute) {
+    console.log('✅ POST /admin/create-delivery-assignments route is REGISTERED');
+  } else {
+    console.log('❌ POST /admin/create-delivery-assignments route NOT FOUND in router.stack');
+  }
+}, 100);
 
 module.exports = router;
