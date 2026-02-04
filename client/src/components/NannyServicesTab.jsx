@@ -24,13 +24,10 @@ import {
   Select,
   MenuItem
 } from '@mui/material';
-import {
-  Person,
-  Event,
-  Assessment
-} from '@mui/icons-material';
+import { Person, Payment } from '@mui/icons-material';
 import api from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
+import { RAZORPAY_CONFIG } from '../config/razorpay';
 
 const NannyServicesTab = () => {
   const { user } = useAuth();
@@ -185,6 +182,73 @@ const NannyServicesTab = () => {
     } catch (error) {
       console.error('Error cancelling booking:', error);
       alert(error.response?.data?.message || 'Failed to cancel booking');
+    }
+  };
+
+  const handlePayNanny = async (booking) => {
+    try {
+      const amount = booking.totalAmount || 0;
+      if (amount <= 0) {
+        alert('Invalid amount');
+        return;
+      }
+      const res = await api.post('/payments/create-order-for-service', {
+        paymentType: 'nanny',
+        bookingId: booking._id,
+        amount,
+        currency: 'INR'
+      });
+      if (!res.data?.success || !res.data?.order) {
+        alert(res.data?.message || 'Failed to create payment');
+        return;
+      }
+      const loadRazorpay = () => new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        s.onload = () => resolve(true);
+        s.onerror = () => resolve(false);
+        document.body.appendChild(s);
+      });
+      if (!(await loadRazorpay())) {
+        alert('Failed to load payment. Please try again.');
+        return;
+      }
+      const options = {
+        key: RAZORPAY_CONFIG.key_id,
+        amount: res.data.order.amount,
+        currency: res.data.order.currency || 'INR',
+        name: RAZORPAY_CONFIG.name || 'TinyTots',
+        description: 'Nanny service payment - held by platform until service completion',
+        order_id: res.data.order.id,
+        handler: async (response) => {
+          try {
+            const verify = await api.post('/payments/verify-payment', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              paymentType: 'nanny',
+              bookingId: booking._id
+            });
+            if (verify.data?.success) {
+              alert(verify.data.message || 'Payment successful! Amount held by platform.');
+              fetchBookings();
+            } else {
+              alert(verify.data?.message || 'Payment verification failed');
+            }
+          } catch (e) {
+            console.error(e);
+            alert(e.response?.data?.message || 'Payment verification failed');
+          }
+        },
+        prefill: { name: user?.firstName ? `${user.firstName} ${user.lastName}` : '', email: user?.email || '', contact: user?.phone || '' },
+        theme: RAZORPAY_CONFIG.theme || { color: '#1abc9c' },
+        modal: { ondismiss: () => {} }
+      };
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (error) {
+      console.error('Pay nanny error:', error);
+      alert(error.response?.data?.message || 'Failed to initiate payment');
     }
   };
 
@@ -361,6 +425,22 @@ const NannyServicesTab = () => {
                         Latest Note: {booking.serviceNotes[booking.serviceNotes.length - 1].note}
                       </Typography>
                     </Box>
+                  )}
+                  {booking.status === 'accepted' && booking.payment?.status === 'pending' && (
+                    <Button
+                      fullWidth
+                      variant="contained"
+                      startIcon={<Payment />}
+                      sx={{ mt: 2, bgcolor: '#1abc9c', '&:hover': { bgcolor: '#169b83' } }}
+                      onClick={() => handlePayNanny(booking)}
+                    >
+                      Pay ₹{booking.totalAmount} (UPI / Card / Net Banking)
+                    </Button>
+                  )}
+                  {booking.payment?.status === 'payment_held' && (
+                    <Alert severity="success" sx={{ mt: 2 }}>
+                      Payment received. Amount held by platform. Nanny will be paid after service completion.
+                    </Alert>
                   )}
                   {(booking.status === 'pending' || booking.status === 'admin-approved' || booking.status === 'accepted') && (
                     <Button

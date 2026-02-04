@@ -324,8 +324,19 @@ router.get('/track/:orderNumber', auth, async (req, res) => {
     }
 
     // Check if user has permission to view this order
-    const customerId = req.user.customerId || req.user.userId;
-    const isOwner = order.customer._id.toString() === customerId.toString();
+    // Orders belong to a Customer document; parents/staff may not have customerId on the token.
+    let customerId = req.user.customerId;
+    if (!customerId && req.user.email) {
+      const customer = await Customer.findOne({ email: req.user.email }).select('_id');
+      if (customer) customerId = customer._id;
+    }
+    // Fall back to userId only if we couldn't resolve a Customer record.
+    if (!customerId) customerId = req.user.userId;
+
+    const orderCustomerId = order.customer?._id;
+    const isOwner = orderCustomerId && customerId
+      ? orderCustomerId.toString() === customerId.toString()
+      : false;
     const isAdmin = req.user.role === 'admin';
     const isVendor = req.user.role === 'vendor' && order.items.some(item => 
       item.vendor?._id?.toString() === (req.user.vendorId || req.user.userId).toString()

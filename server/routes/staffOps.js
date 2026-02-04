@@ -25,14 +25,48 @@ function staffOnly(req, res, next) {
 
 // Attendance
 router.post('/attendance/child/:id', auth, staffOnly, (req, res) => {
-  const entry = { type: 'child', id: req.params.id, status: req.body.status || 'present', at: new Date(), by: req.user.userId };
+  const entry = {
+    type: 'child',
+    id: req.params.id,
+    date: req.body.date || new Date().toISOString().split('T')[0],
+    status: req.body.status || 'present',
+    checkInAt: req.body.checkInAt || null,
+    checkOutAt: req.body.checkOutAt || null,
+    notes: req.body.notes || '',
+    at: new Date(),
+    by: req.user.userId
+  };
   memory.attendance.push(entry);
   res.json({ message: 'Recorded', entry });
 });
 router.post('/attendance/staff/:id', auth, staffOnly, (req, res) => {
-  const entry = { type: 'staff', id: req.params.id, status: req.body.status || 'present', at: new Date(), by: req.user.userId };
+  const entry = {
+    type: 'staff',
+    id: req.params.id,
+    date: req.body.date || new Date().toISOString().split('T')[0],
+    status: req.body.status || 'present',
+    checkInAt: req.body.checkInAt || null,
+    checkOutAt: req.body.checkOutAt || null,
+    notes: req.body.notes || '',
+    at: new Date(),
+    by: req.user.userId
+  };
   memory.attendance.push(entry);
   res.json({ message: 'Recorded', entry });
+});
+
+// Get attendance (simple in-memory stub)
+// Query params:
+// - date: YYYY-MM-DD (optional; defaults today)
+// - type: 'child' | 'staff' (optional)
+router.get('/attendance', auth, staffOnly, (req, res) => {
+  const date = req.query.date || new Date().toISOString().split('T')[0];
+  const type = req.query.type;
+
+  let rows = memory.attendance.filter((a) => a.date === date);
+  if (type) rows = rows.filter((a) => a.type === type);
+
+  res.json({ date, count: rows.length, items: rows });
 });
 
 // Activities & curriculum

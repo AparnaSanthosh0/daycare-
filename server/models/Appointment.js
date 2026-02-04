@@ -92,7 +92,28 @@ const appointmentSchema = new mongoose.Schema({
   rescheduledReason: String,
   completedAt: Date,
   cancelledAt: Date,
-  cancelReason: String
+  cancelReason: String,
+
+  // Escrow payment (parent pays to platform → held → parent confirms → admin releases to doctor)
+  payment: {
+    status: { type: String, enum: ['pending', 'payment_held', 'parent_confirmed', 'admin_approved', 'paid_to_doctor'], default: 'pending' },
+    consultationFee: { type: Number, default: 500 },
+    paymentId: String,
+    paidAt: Date,
+    heldAt: Date,
+    parentConfirmedAt: Date,
+    paidToDoctorAt: Date,
+    commissionRate: { type: Number, default: 10 },
+    commissionAmount: Number,
+    doctorPayoutAmount: Number,
+    parentConfirmation: {
+      confirmed: Boolean,
+      confirmedAt: Date,
+      rating: Number,
+      feedback: String,
+      issues: String
+    }
+  }
 }, {
   timestamps: true
 });

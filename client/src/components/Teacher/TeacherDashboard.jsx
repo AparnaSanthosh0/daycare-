@@ -68,7 +68,7 @@ const TeacherDashboard = () => {
   const [selectedStudent, setSelectedStudent] = useState(null);
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [attendanceData] = useState({});
+  const [attendanceData, setAttendanceData] = useState({});
   const [feedbackText, setFeedbackText] = useState('');
   const [serviceCategory, setServiceCategory] = useState('Meal & Nutrition');
   const [rating, setRating] = useState(5);
@@ -130,6 +130,38 @@ const TeacherDashboard = () => {
     fetchStudents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?._id]);
+
+  const fetchTodayAttendance = async () => {
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      // Use unified attendance report so parents and teachers see the same data
+      const res = await api.get('/attendance/report', {
+        params: { entityType: 'child', from: today, to: today }
+      });
+      const records = res.data?.records || [];
+
+      // Build map of latest entry per child id
+      const map = {};
+      for (const rec of records) {
+        if (!rec?.entityId) continue;
+        map[rec.entityId] = rec;
+      }
+      setAttendanceData(map);
+    } catch (e) {
+      console.error('Error fetching attendance:', e);
+      setAttendanceData({});
+    }
+  };
+
+  // Load today's attendance once we have students (and on change)
+  useEffect(() => {
+    if (!students?.length) {
+      setAttendanceData({});
+      return;
+    }
+    fetchTodayAttendance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [students.length]);
   // ...existing code...
 
   const handleTabChange = (event, newValue) => {
@@ -289,21 +321,27 @@ const TeacherDashboard = () => {
     if (selectedStudent) {
       try {
         const today = new Date();
-        const checkInTime = document.querySelector('input[type="time"]')?.value || today.toTimeString().slice(0, 5);
-        const [hours, minutes] = checkInTime.split(':');
-        const checkInDateTime = new Date();
-        checkInDateTime.setHours(parseInt(hours), parseInt(minutes), 0, 0);
+        const checkInTime =
+          document.querySelector('input[type="time"]')?.value || today.toTimeString().slice(0, 5);
 
-        await api.post('/staff-ops/attendance/child/' + selectedStudent._id, {
-          date: today.toISOString().split('T')[0],
-          status: 'present',
-          checkInAt: checkInDateTime.toISOString(),
-          notes: 'Marked by teacher'
+        // Build a local Date for the chosen time (avoid UTC shifts)
+        const checkInDateTime = new Date();
+        const [h, m] = checkInTime.split(':').map(Number);
+        if (!Number.isNaN(h) && !Number.isNaN(m)) {
+          checkInDateTime.setHours(h, m, 0, 0);
+        }
+
+        // Use unified attendance check-in endpoint so data appears in parent dashboard
+        await api.post('/attendance/check-in', {
+          entityType: 'child',
+          entityId: selectedStudent._id,
+          when: checkInDateTime.toISOString(),
+          notes: 'Marked present by teacher'
         });
         
         alert(`${selectedStudent.firstName} ${selectedStudent.lastName} marked as present!`);
         handleCloseAttendanceDialog();
-        fetchStudents(); // Refresh the list
+        await fetchTodayAttendance(); // Refresh present count/status
       } catch (error) {
         console.error('Error marking attendance:', error);
         alert('Failed to mark attendance. Please try again.');
@@ -314,17 +352,20 @@ const TeacherDashboard = () => {
   const handleMarkAbsent = async () => {
     if (selectedStudent) {
       try {
-        const today = new Date();
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
 
-        await api.post('/staff-ops/attendance/child/' + selectedStudent._id, {
-          date: today.toISOString().split('T')[0],
-          status: 'absent',
+        // Use unified attendance absence endpoint so data appears in parent dashboard
+        await api.post('/attendance/mark-absence', {
+          entityType: 'child',
+          entityId: selectedStudent._id,
+          date: startOfDay.toISOString(),
           notes: 'Marked absent by teacher'
         });
         
         alert(`${selectedStudent.firstName} ${selectedStudent.lastName} marked as absent!`);
         handleCloseAttendanceDialog();
-        fetchStudents(); // Refresh the list
+        await fetchTodayAttendance(); // Refresh present count/status
       } catch (error) {
         console.error('Error marking attendance:', error);
         alert('Failed to mark attendance. Please try again.');
@@ -2420,7 +2461,13 @@ const TeacherDashboard = () => {
         </DialogTitle>
         <DialogContent sx={{ mt: 2 }}>
           <Typography variant="body1" sx={{ mb: 2 }}>
-            Are you sure you want to mark <strong>{selectedStudent}</strong> as present?
+            Are you sure you want to mark{' '}
+            <strong>
+              {selectedStudent
+                ? `${selectedStudent.firstName || ''} ${selectedStudent.lastName || ''}`.trim() || selectedStudent._id || 'this student'
+                : 'this student'}
+            </strong>{' '}
+            as present?
           </Typography>
           <TextField
             fullWidth

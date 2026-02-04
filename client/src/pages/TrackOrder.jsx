@@ -13,9 +13,15 @@ export default function TrackOrder() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
 
-  const handleTrackOrder = useCallback(async (orderIdToTrack = orderId) => {
+  const handleTrackOrder = useCallback(async (orderIdToTrack) => {
+    // If called from an event handler, ignore the event object
+    const raw =
+      orderIdToTrack && typeof orderIdToTrack === 'object' && 'preventDefault' in orderIdToTrack
+        ? orderId
+        : (orderIdToTrack ?? orderId);
+
     // Convert to string and trim, handle null/undefined cases
-    const trimmedOrderId = String(orderIdToTrack || '').trim();
+    const trimmedOrderId = String(raw || '').trim();
     
     if (!trimmedOrderId) {
       setError('Please enter an order ID');
@@ -25,7 +31,8 @@ export default function TrackOrder() {
     try {
       setLoading(true);
       setError('');
-      const response = await api.get(`/api/orders/track/${trimmedOrderId}`);
+      // api baseURL already ends with '/api'
+      const response = await api.get(`/orders/track/${encodeURIComponent(trimmedOrderId)}`);
       setOrderData(response.data);
     } catch (err) {
       console.error('Error tracking order:', err);
@@ -94,7 +101,7 @@ export default function TrackOrder() {
               color="success"
               fullWidth
               size="large"
-              onClick={handleTrackOrder}
+              onClick={() => handleTrackOrder()}
               disabled={loading}
               sx={{ height: '56px' }}
             >
@@ -160,7 +167,10 @@ export default function TrackOrder() {
                     </Typography>
                     {item.vendor && (
                       <Typography variant="caption" color="text.secondary">
-                        Vendor: {item.vendor}
+                        Vendor:{' '}
+                        {typeof item.vendor === 'string'
+                          ? item.vendor
+                          : item.vendor.vendorName || item.vendor.businessName || item.vendor.name || item.vendor.email || item.vendor._id}
                       </Typography>
                     )}
                   </Box>

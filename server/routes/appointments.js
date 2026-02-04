@@ -98,6 +98,78 @@ router.get('/doctor', auth, async (req, res) => {
   }
 });
 
+// Admin: Get pending doctor payments
+router.get('/payments/admin/pending', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin access required' });
+    const DoctorPayment = require('../models/DoctorPayment');
+    const payments = await DoctorPayment.find({ status: { $in: ['parent_confirmed', 'admin_approved'] } })
+      .populate('appointment')
+      .populate('doctor', 'firstName lastName email phone')
+      .populate('parent', 'firstName lastName email')
+      .sort({ parentConfirmedAt: -1 });
+    res.json(payments);
+  } catch (error) {
+    console.error('Get doctor payments error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Admin: Approve doctor payout (after parent confirmed)
+router.put('/payments/:paymentId/approve', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin access required' });
+    const DoctorPayment = require('../models/DoctorPayment');
+    const payment = await DoctorPayment.findById(req.params.paymentId).populate('appointment doctor');
+    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+    if (payment.status !== 'parent_confirmed') {
+      return res.status(400).json({ message: 'Payment must be confirmed by parent first' });
+    }
+    payment.status = 'admin_approved';
+    payment.adminApprovedAt = new Date();
+    payment.approvedBy = req.user.userId;
+    payment.payoutMethod = req.body.payoutMethod || 'bank_transfer';
+    payment.payoutDetails = req.body.payoutDetails || {};
+    await payment.save();
+    if (payment.appointment) {
+      payment.appointment.payment = payment.appointment.payment || {};
+      payment.appointment.payment.status = 'admin_approved';
+      await payment.appointment.save();
+    }
+    res.json({ message: 'Payment approved. Ready for payout to doctor.', payment });
+  } catch (error) {
+    console.error('Approve doctor payment error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Admin: Mark doctor payment as paid (after actual transfer)
+router.put('/payments/:paymentId/mark-paid', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') return res.status(403).json({ message: 'Admin access required' });
+    const DoctorPayment = require('../models/DoctorPayment');
+    const payment = await DoctorPayment.findById(req.params.paymentId).populate('appointment');
+    if (!payment) return res.status(404).json({ message: 'Payment not found' });
+    if (payment.status !== 'admin_approved') {
+      return res.status(400).json({ message: 'Payment must be approved first' });
+    }
+    payment.status = 'paid';
+    payment.paidAt = new Date();
+    payment.payoutTransactionId = req.body.payoutTransactionId || '';
+    await payment.save();
+    if (payment.appointment) {
+      payment.appointment.payment = payment.appointment.payment || {};
+      payment.appointment.payment.status = 'paid_to_doctor';
+      payment.appointment.payment.paidToDoctorAt = new Date();
+      await payment.appointment.save();
+    }
+    res.json({ message: 'Payment marked as paid.', payment });
+  } catch (error) {
+    console.error('Mark doctor paid error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
 // Get appointment by ID
 router.get('/:id', auth, async (req, res) => {
   try {
@@ -299,6 +371,55 @@ router.post('/:id/message', auth, async (req, res) => {
   } catch (error) {
     console.error('Error sending message:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Parent confirms service completion (escrow - releases for admin payout)
+router.post('/:id/confirm-payment', auth, async (req, res) => {
+  try {
+    const { rating, feedback, issues } = req.body;
+    const appointment = await Appointment.findById(req.params.id).populate('doctor', 'firstName lastName');
+    if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
+    if (appointment.parent.toString() !== req.user.userId) {
+      return res.status(403).json({ message: 'Not authorized' });
+    }
+    if (appointment.payment?.status !== 'payment_held') {
+      return res.status(400).json({ message: 'Payment must be held before confirmation' });
+    }
+    const DoctorPayment = require('../models/DoctorPayment');
+    let payment = await DoctorPayment.findOne({ appointment: appointment._id });
+    if (!payment) {
+      payment = new DoctorPayment({
+        appointment: appointment._id,
+        doctor: appointment.doctor._id,
+        parent: appointment.parent,
+        totalAmount: appointment.payment?.consultationFee || 500,
+        commissionRate: 10,
+        commissionAmount: 0,
+        payoutAmount: 0,
+        status: 'parent_confirmed',
+        paymentReceivedAt: appointment.payment?.paidAt,
+        paymentHeldAt: appointment.payment?.heldAt,
+        parentConfirmedAt: new Date(),
+        parentConfirmation: { confirmed: true, confirmedAt: new Date(), rating: rating || 5, feedback: feedback || '', issues: issues || '' }
+      });
+      payment.commissionAmount = Math.round((payment.totalAmount * 10 / 100) * 100) / 100;
+      payment.payoutAmount = Math.round((payment.totalAmount - payment.commissionAmount) * 100) / 100;
+    } else {
+      payment.status = 'parent_confirmed';
+      payment.parentConfirmedAt = new Date();
+      payment.parentConfirmation = { confirmed: true, confirmedAt: new Date(), rating: rating || 5, feedback: feedback || '', issues: issues || '' };
+    }
+    await payment.save();
+    appointment.payment = appointment.payment || {};
+    appointment.payment.status = 'parent_confirmed';
+    appointment.payment.parentConfirmedAt = new Date();
+    appointment.payment.parentConfirmation = payment.parentConfirmation;
+    await appointment.save();
+    res.json({ message: 'Payment confirmed. Admin will review and approve payout.', appointment, payment });
+  } catch (error) {
+    console.error('Confirm doctor payment error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
   }
 });
 

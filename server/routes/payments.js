@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const auth = require('../middleware/auth');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
 const { sendMail } = require('../utils/mailer');
@@ -8,6 +9,64 @@ const { sendMail } = require('../utils/mailer');
 const razorpay = new Razorpay({
   key_id: 'rzp_test_RGXWGOBliVCIpU',
   key_secret: '9Q49llzcN0kLD3021OoSstOp'
+});
+
+// Create Razorpay order for nanny/doctor (escrow - parent pays to platform)
+router.post('/create-order-for-service', auth, async (req, res) => {
+  try {
+    const { paymentType, bookingId, appointmentId, amount, currency = 'INR' } = req.body;
+
+    if (!paymentType || !amount || amount <= 0) {
+      return res.status(400).json({ message: 'paymentType and valid amount are required' });
+    }
+
+    if (paymentType === 'nanny' && !bookingId) {
+      return res.status(400).json({ message: 'bookingId is required for nanny payment' });
+    }
+    if (paymentType === 'doctor' && !appointmentId) {
+      return res.status(400).json({ message: 'appointmentId is required for doctor payment' });
+    }
+
+    // Verify parent owns the booking/appointment
+    if (paymentType === 'nanny') {
+      const NannyBooking = require('../models/NannyBooking');
+      const booking = await NannyBooking.findById(bookingId);
+      if (!booking || booking.parent.toString() !== req.user.userId) {
+        return res.status(403).json({ message: 'Not authorized to pay for this booking' });
+      }
+    }
+    if (paymentType === 'doctor') {
+      const Appointment = require('../models/Appointment');
+      const apt = await Appointment.findById(appointmentId);
+      if (!apt || apt.parent.toString() !== req.user.userId) {
+        return res.status(403).json({ message: 'Not authorized to pay for this appointment' });
+      }
+    }
+
+    const options = {
+      amount: Math.round(amount * 100), // paise
+      currency,
+      receipt: `svc_${paymentType}_${bookingId || appointmentId}_${Date.now()}`,
+      payment_capture: 1
+    };
+
+    const order = await razorpay.orders.create(options);
+    res.status(201).json({
+      success: true,
+      order: {
+        id: order.id,
+        amount: order.amount,
+        currency: order.currency,
+        receipt: order.receipt
+      },
+      paymentType,
+      bookingId: bookingId || null,
+      appointmentId: appointmentId || null
+    });
+  } catch (error) {
+    console.error('Create service order error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create payment order', error: error.message });
+  }
 });
 
 // Create Razorpay order
@@ -51,10 +110,15 @@ router.post('/create-order', async (req, res) => {
   }
 });
 
-// Verify Razorpay payment
-router.post('/verify-payment', async (req, res) => {
+// Verify Razorpay payment (auth required for nanny/doctor escrow)
+router.post('/verify-payment', (req, res, next) => {
+  if (req.body.paymentType === 'nanny' || req.body.paymentType === 'doctor') {
+    return auth(req, res, next);
+  }
+  next();
+}, async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderData } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderData, paymentType, bookingId, appointmentId } = req.body;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return res.status(400).json({ message: 'Missing payment verification data' });
@@ -72,7 +136,7 @@ router.post('/verify-payment', async (req, res) => {
     if (isAuthentic) {
       console.log('Payment verified successfully:', razorpay_payment_id);
 
-      // Fetch payment details from Razorpay to get buyer email/contact and amount
+      // Fetch payment details from Razorpay
       let paymentDetails = null;
       try {
         paymentDetails = await razorpay.payments.fetch(razorpay_payment_id);
@@ -80,7 +144,96 @@ router.post('/verify-payment', async (req, res) => {
         console.warn('Unable to fetch payment details from Razorpay:', e?.message || e);
       }
 
-      // Create order if orderData is provided
+      // Handle nanny/doctor escrow payments (parent pays to platform)
+      if (paymentType === 'nanny' && bookingId) {
+        try {
+          const NannyBooking = require('../models/NannyBooking');
+          const booking = await NannyBooking.findById(bookingId);
+          if (!booking) {
+            return res.status(404).json({ success: false, message: 'Booking not found' });
+          }
+          if (booking.parent.toString() !== req.user.userId) {
+            return res.status(403).json({ success: false, message: 'Not authorized to pay for this booking' });
+          }
+          if (booking.payment?.status !== 'pending') {
+            return res.json({ success: true, message: 'Payment already recorded', booking });
+          }
+          const amountPaid = paymentDetails?.amount ? paymentDetails.amount / 100 : booking.totalAmount;
+          booking.payment.status = 'payment_held';
+          booking.payment.paidAt = new Date();
+          booking.payment.heldAt = new Date();
+          booking.payment.paymentId = razorpay_payment_id;
+          booking.payment.amount = amountPaid;
+          await booking.save();
+          console.log('Nanny booking payment held:', bookingId);
+          return res.json({
+            success: true,
+            message: 'Payment received. Amount held by platform. Nanny will be paid after service completion and your confirmation.',
+            paymentType: 'nanny',
+            booking,
+            payment_id: razorpay_payment_id
+          });
+        } catch (err) {
+          console.error('Nanny payment record error:', err);
+          return res.status(500).json({ success: false, message: err.message });
+        }
+      }
+
+      if (paymentType === 'doctor' && appointmentId) {
+        try {
+          const Appointment = require('../models/Appointment');
+          const DoctorPayment = require('../models/DoctorPayment');
+          const appointment = await Appointment.findById(appointmentId).populate('doctor', 'firstName lastName');
+          if (!appointment) {
+            return res.status(404).json({ success: false, message: 'Appointment not found' });
+          }
+          if (appointment.parent.toString() !== req.user.userId) {
+            return res.status(403).json({ success: false, message: 'Not authorized to pay for this appointment' });
+          }
+          const doctorId = appointment.doctor?._id || appointment.doctor;
+          const consultationFee = appointment.payment?.consultationFee ?? 500;
+          const commissionRate = 10;
+          const commissionAmount = Math.round((consultationFee * commissionRate / 100) * 100) / 100;
+          const doctorPayout = Math.round((consultationFee - commissionAmount) * 100) / 100;
+          const paymentRecord = new DoctorPayment({
+            appointment: appointment._id,
+            doctor: doctorId,
+            parent: appointment.parent,
+            totalAmount: consultationFee,
+            commissionRate,
+            commissionAmount,
+            payoutAmount: doctorPayout,
+            status: 'payment_held',
+            paymentId: razorpay_payment_id,
+            paymentReceivedAt: new Date(),
+            paymentHeldAt: new Date()
+          });
+          await paymentRecord.save();
+          if (!appointment.payment) appointment.payment = {};
+          appointment.payment.status = 'payment_held';
+          appointment.payment.paymentId = razorpay_payment_id;
+          appointment.payment.paidAt = new Date();
+          appointment.payment.heldAt = new Date();
+          appointment.payment.consultationFee = consultationFee;
+          appointment.payment.commissionRate = commissionRate;
+          appointment.payment.commissionAmount = commissionAmount;
+          appointment.payment.doctorPayoutAmount = doctorPayout;
+          await appointment.save();
+          console.log('Doctor appointment payment held:', appointmentId);
+          return res.json({
+            success: true,
+            message: 'Payment received. Amount held by platform. Doctor will be paid after consultation and your confirmation.',
+            paymentType: 'doctor',
+            appointment,
+            payment_id: razorpay_payment_id
+          });
+        } catch (err) {
+          console.error('Doctor payment record error:', err);
+          return res.status(500).json({ success: false, message: err.message });
+        }
+      }
+
+      // Create order if orderData is provided (e-commerce)
       let createdOrder = null;
       if (orderData && orderData.items && orderData.items.length > 0) {
         try {

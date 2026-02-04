@@ -56,9 +56,11 @@ import {
   KeyboardVoice,
   Notifications,
   Logout as LogoutIcon,
-  DirectionsCar
+  DirectionsCar,
+  Payment
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
+import { RAZORPAY_CONFIG } from '../../config/razorpay';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import MealRecommendation from '../../components/MealRecommendation';
@@ -1096,6 +1098,77 @@ const ParentDashboard = ({ initialTab }) => {
       setAppointmentError(error.response?.data?.message || 'Failed to book appointment');
     } finally {
       setAppointmentLoading(false);
+    }
+  };
+
+  const handlePayDoctor = async (appointment) => {
+    try {
+      const fee = appointment.payment?.consultationFee ?? 500;
+      const res = await api.post('/payments/create-order-for-service', {
+        paymentType: 'doctor',
+        appointmentId: appointment._id,
+        amount: fee,
+        currency: 'INR'
+      });
+      if (!res.data?.success || !res.data?.order) {
+        setAppointmentError(res.data?.message || 'Failed to create payment');
+        return;
+      }
+      const loadRazorpay = () => new Promise((resolve) => {
+        const s = document.createElement('script');
+        s.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        s.onload = () => resolve(true);
+        s.onerror = () => resolve(false);
+        document.body.appendChild(s);
+      });
+      if (!(await loadRazorpay())) {
+        setAppointmentError('Failed to load payment. Please try again.');
+        return;
+      }
+      const options = {
+        key: RAZORPAY_CONFIG.key_id,
+        amount: res.data.order.amount,
+        currency: res.data.order.currency || 'INR',
+        name: RAZORPAY_CONFIG.name || 'TinyTots',
+        description: 'Doctor consultation - held by platform until service completion',
+        order_id: res.data.order.id,
+        handler: async (response) => {
+          try {
+            const verify = await api.post('/payments/verify-payment', {
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              paymentType: 'doctor',
+              appointmentId: appointment._id
+            });
+            if (verify.data?.success) {
+              setAppointmentSuccess(verify.data.message || 'Payment successful! Amount held by platform.');
+              fetchAppointments();
+            } else {
+              setAppointmentError(verify.data?.message || 'Payment verification failed');
+            }
+          } catch (e) {
+            setAppointmentError(e.response?.data?.message || 'Payment verification failed');
+          }
+        },
+        prefill: { name: user?.firstName ? `${user.firstName} ${user.lastName}` : '', email: user?.email || '', contact: user?.phone || '' },
+        theme: RAZORPAY_CONFIG.theme || { color: '#1abc9c' },
+        modal: { ondismiss: () => {} }
+      };
+      const rzp = new window.Razorpay(options);
+      rzp.open();
+    } catch (error) {
+      setAppointmentError(error.response?.data?.message || 'Failed to initiate payment');
+    }
+  };
+
+  const handleConfirmDoctorPayment = async (appointment, rating = 5, feedback = '', issues = '') => {
+    try {
+      await api.post(`/appointments/${appointment._id}/confirm-payment`, { rating, feedback, issues });
+      setAppointmentSuccess('Payment confirmed. Admin will review and approve payout to doctor.');
+      fetchAppointments();
+    } catch (error) {
+      setAppointmentError(error.response?.data?.message || 'Failed to confirm payment');
     }
   };
 
@@ -4161,6 +4234,44 @@ const ParentDashboard = ({ initialTab }) => {
                                   {appointment.isEmergency && (
                                     <Grid item xs={12}>
                                       <Chip label="Emergency" size="small" color="error" />
+                                    </Grid>
+                                  )}
+
+                                  {/* Escrow payment: Pay when confirmed, Confirm when completed */}
+                                  {appointment.status === 'confirmed' && (!appointment.payment?.status || appointment.payment?.status === 'pending') && (
+                                    <Grid item xs={12} sx={{ mt: 2 }}>
+                                      <Button
+                                        fullWidth
+                                        variant="contained"
+                                        startIcon={<Payment />}
+                                        sx={{ bgcolor: '#1abc9c', '&:hover': { bgcolor: '#169b83' } }}
+                                        onClick={() => handlePayDoctor(appointment)}
+                                      >
+                                        Pay ₹{appointment.payment?.consultationFee ?? 500} (UPI / Card / Net Banking)
+                                      </Button>
+                                    </Grid>
+                                  )}
+                                  {appointment.payment?.status === 'payment_held' && appointment.status !== 'completed' && (
+                                    <Grid item xs={12} sx={{ mt: 2 }}>
+                                      <Alert severity="success">Payment held by platform. Doctor will be paid after consultation.</Alert>
+                                    </Grid>
+                                  )}
+                                  {appointment.status === 'completed' && appointment.payment?.status === 'payment_held' && (
+                                    <Grid item xs={12} sx={{ mt: 2 }}>
+                                      <Button
+                                        fullWidth
+                                        variant="contained"
+                                        startIcon={<CheckCircle />}
+                                        sx={{ bgcolor: '#1abc9c', '&:hover': { bgcolor: '#169b83' } }}
+                                        onClick={() => handleConfirmDoctorPayment(appointment)}
+                                      >
+                                        Confirm Service & Release Payment
+                                      </Button>
+                                    </Grid>
+                                  )}
+                                  {appointment.payment?.status === 'parent_confirmed' && (
+                                    <Grid item xs={12} sx={{ mt: 2 }}>
+                                      <Alert severity="info">Payment confirmed. Waiting for admin to release to doctor.</Alert>
                                     </Grid>
                                   )}
                                 </Grid>
