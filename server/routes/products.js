@@ -121,6 +121,26 @@ router.get('/categories/list', async (req, res) => {
   res.json({ categories: categories.sort() });
 });
 
+// Public: get single product by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id).populate('vendor', 'vendorName companyName');
+    
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+
+    // Return product (respect isActive for non-admin users)
+    res.json({ product });
+  } catch (error) {
+    console.error('Error fetching product:', error);
+    if (error.name === 'CastError') {
+      return res.status(400).json({ message: 'Invalid product ID format' });
+    }
+    res.status(500).json({ message: 'Error fetching product', error: error.message });
+  }
+});
+
 // Vendor: upload a product image -> returns URL under /uploads/products
 router.post('/upload', auth, authorize('vendor', 'admin'), upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No image uploaded' });

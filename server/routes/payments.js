@@ -46,7 +46,8 @@ router.post('/create-order-for-service', auth, async (req, res) => {
     const options = {
       amount: Math.round(amount * 100), // paise
       currency,
-      receipt: `svc_${paymentType}_${bookingId || appointmentId}_${Date.now()}`,
+      // Ensure receipt is always <= 40 characters
+      receipt: `svc_${paymentType}_${(bookingId || appointmentId).toString().slice(-8)}_${Date.now().toString().slice(-6)}`,
       payment_capture: 1
     };
 
@@ -222,7 +223,7 @@ router.post('/verify-payment', (req, res, next) => {
           console.log('Doctor appointment payment held:', appointmentId);
           return res.json({
             success: true,
-            message: 'Payment received. Amount held by platform. Doctor will be paid after consultation and your confirmation.',
+            message: 'Payment successful! Your appointment is confirmed. The doctor will contact you shortly.',
             paymentType: 'doctor',
             appointment,
             payment_id: razorpay_payment_id

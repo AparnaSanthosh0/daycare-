@@ -4,6 +4,22 @@ const Child = require('../models/Child');
 const User = require('../models/User');
 const VaccineReminder = require('../models/VaccineReminder');
 const auth = require('../middleware/auth');
+const multer = require('multer');
+const AttendanceBlockchainService = require('../services/attendanceBlockchainService');
+
+// Configure multer for photo uploads (memory storage for hashing)
+const photoStorage = multer.memoryStorage();
+const photoUpload = multer({
+  storage: photoStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  }
+});
 
 // Add vaccination to blockchain (Admin/Staff/Parent)
 router.post('/vaccination', auth, async (req, res) => {
@@ -285,6 +301,322 @@ router.get('/vaccination/reminders/history', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching reminder history:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==========================================
+// ATTENDANCE BLOCKCHAIN ROUTES
+// ==========================================
+
+/**
+ * Record attendance check-in to blockchain
+ * POST /api/blockchain/attendance/check-in
+ * 
+ * Immutable record with GPS location and photo verification
+ * Cannot be altered or deleted once recorded
+ */
+router.post('/attendance/check-in', [auth, photoUpload.single('photo')], async (req, res) => {
+  try {
+    const {
+      entityType,
+      entityId,
+      entityName,
+      latitude,
+      longitude,
+      accuracy,
+      address,
+      notes,
+      deviceId
+    } = req.body;
+
+    // Validate inputs
+    if (!entityType || !entityId || !entityName) {
+      return res.status(400).json({
+        error: 'entityType, entityId, and entityName are required'
+      });
+    }
+
+    // Verify entity exists
+    let entity;
+    if (entityType === 'child') {
+      entity = await Child.findById(entityId);
+      if (!entity) {
+        return res.status(404).json({ error: 'Child not found' });
+      }
+    } else if (entityType === 'staff') {
+      entity = await User.findById(entityId);
+      if (!entity || entity.role !== 'staff') {
+        return res.status(404).json({ error: 'Staff not found' });
+      }
+    } else {
+      return res.status(400).json({ error: 'Invalid entityType' });
+    }
+
+    // Prepare GPS location data
+    const gpsLocation = (latitude && longitude) ? {
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
+      accuracy: accuracy ? parseFloat(accuracy) : null,
+      address,
+      timestamp: new Date()
+    } : null;
+
+    // Prepare device info
+    const deviceInfo = {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip || req.connection.remoteAddress,
+      deviceId
+    };
+
+    // Get photo buffer if uploaded
+    const photoBuffer = req.file ? req.file.buffer : null;
+    let photoUrl = null;
+    
+    // TODO: In production, upload photo to cloud storage (S3, Cloudinary, etc.)
+    // For now, store path placeholder
+    if (photoBuffer) {
+      photoUrl = `/uploads/attendance/${Date.now()}_${entityId}.jpg`;
+      // Save photo to disk or cloud storage here
+    }
+
+    // Record to blockchain (immutable)
+    const result = await AttendanceBlockchainService.recordAttendance({
+      entityType,
+      entityId,
+      entityName,
+      actionType: 'check-in',
+      actionTime: new Date(),
+      gpsLocation,
+      photoBuffer,
+      photoUrl,
+      deviceInfo,
+      performedBy: req.user.userId || req.user._id,
+      notes
+    });
+
+    res.json({
+      success: true,
+      message: 'Check-in recorded to blockchain - IMMUTABLE',
+      blockNumber: result.blockNumber,
+      hash: result.hash,
+      actionTime: result.record.data.actionTime,
+      gpsVerified: !!gpsLocation,
+      photoVerified: !!photoBuffer,
+      record: {
+        id: result.record._id,
+        blockNumber: result.blockNumber,
+        hash: result.hash,
+        actionType: 'check-in',
+        actionTime: result.record.data.actionTime,
+        entityName: result.record.data.entityName,
+        gpsLocation: result.record.data.gpsLocation,
+        photoHash: result.record.data.photoHash,
+        timestamp: result.record.timestamp
+      }
+    });
+  } catch (error) {
+    console.error('Error recording check-in to blockchain:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Record attendance check-out to blockchain
+ * POST /api/blockchain/attendance/check-out
+ * 
+ * Immutable record with GPS location and photo verification
+ */
+router.post('/attendance/check-out', [auth, photoUpload.single('photo')], async (req, res) => {
+  try {
+    const {
+      entityType,
+      entityId,
+      entityName,
+      latitude,
+      longitude,
+      accuracy,
+      address,
+      notes,
+      deviceId
+    } = req.body;
+
+    // Validate inputs
+    if (!entityType || !entityId || !entityName) {
+      return res.status(400).json({
+        error: 'entityType, entityId, and entityName are required'
+      });
+    }
+
+    // Prepare GPS location data
+    const gpsLocation = (latitude && longitude) ? {
+      latitude: parseFloat(latitude),
+      longitude: parseFloat(longitude),
+      accuracy: accuracy ? parseFloat(accuracy) : null,
+      address,
+      timestamp: new Date()
+    } : null;
+
+    // Prepare device info
+    const deviceInfo = {
+      userAgent: req.headers['user-agent'],
+      ipAddress: req.ip || req.connection.remoteAddress,
+      deviceId
+    };
+
+    // Get photo buffer if uploaded
+    const photoBuffer = req.file ? req.file.buffer : null;
+    let photoUrl = null;
+    
+    if (photoBuffer) {
+      photoUrl = `/uploads/attendance/${Date.now()}_${entityId}.jpg`;
+    }
+
+    // Record to blockchain (immutable)
+    const result = await AttendanceBlockchainService.recordAttendance({
+      entityType,
+      entityId,
+      entityName,
+      actionType: 'check-out',
+      actionTime: new Date(),
+      gpsLocation,
+      photoBuffer,
+      photoUrl,
+      deviceInfo,
+      performedBy: req.user.userId || req.user._id,
+      notes
+    });
+
+    res.json({
+      success: true,
+      message: 'Check-out recorded to blockchain - IMMUTABLE',
+      blockNumber: result.blockNumber,
+      hash: result.hash,
+      actionTime: result.record.data.actionTime,
+      gpsVerified: !!gpsLocation,
+      photoVerified: !!photoBuffer,
+      record: {
+        id: result.record._id,
+        blockNumber: result.blockNumber,
+        hash: result.hash,
+        actionType: 'check-out',
+        actionTime: result.record.data.actionTime,
+        entityName: result.record.data.entityName,
+        gpsLocation: result.record.data.gpsLocation,
+        photoHash: result.record.data.photoHash,
+        timestamp: result.record.timestamp
+      }
+    });
+  } catch (error) {
+    console.error('Error recording check-out to blockchain:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get attendance history from blockchain
+ * GET /api/blockchain/attendance/:entityType/:entityId
+ * 
+ * Returns immutable attendance records with GPS and photo verification
+ */
+router.get('/attendance/:entityType/:entityId', auth, async (req, res) => {
+  try {
+    const { entityType, entityId } = req.params;
+    const { startDate, endDate, actionType } = req.query;
+
+    const filters = {};
+    if (startDate) filters.startDate = startDate;
+    if (endDate) filters.endDate = endDate;
+    if (actionType) filters.actionType = actionType;
+
+    const history = await AttendanceBlockchainService.getAttendanceHistory(
+      entityType,
+      entityId,
+      filters
+    );
+
+    res.json({
+      success: true,
+      count: history.length,
+      entityType,
+      entityId,
+      records: history
+    });
+  } catch (error) {
+    console.error('Error fetching attendance history:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Verify blockchain integrity
+ * GET /api/blockchain/attendance/verify/chain
+ * 
+ * Verifies all blocks are linked correctly and detect tampering
+ */
+router.get('/attendance/verify/chain', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId || req.user._id);
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const result = await AttendanceBlockchainService.verifyChainIntegrity();
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    console.error('Error verifying blockchain:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Verify specific block for tampering
+ * GET /api/blockchain/attendance/verify/:blockId
+ * 
+ * Checks if a specific attendance record has been tampered with
+ */
+router.get('/attendance/verify/:blockId', auth, async (req, res) => {
+  try {
+    const result = await AttendanceBlockchainService.detectTampering(req.params.blockId);
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error) {
+    console.error('Error verifying block:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Get attendance statistics from blockchain
+ * GET /api/blockchain/attendance/stats
+ * 
+ * Returns statistics about attendance records
+ */
+router.get('/attendance/stats', auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.userId || req.user._id);
+    if (user.role !== 'admin' && user.role !== 'staff') {
+      return res.status(403).json({ error: 'Admin or Staff access required' });
+    }
+
+    const { entityType, startDate, endDate } = req.query;
+    const filters = {};
+    if (entityType) filters.entityType = entityType;
+    if (startDate) filters.startDate = startDate;
+    if (endDate) filters.endDate = endDate;
+
+    const stats = await AttendanceBlockchainService.getAttendanceStats(filters);
+    res.json({
+      success: true,
+      stats
+    });
+  } catch (error) {
+    console.error('Error fetching attendance stats:', error);
     res.status(500).json({ error: error.message });
   }
 });

@@ -49,7 +49,8 @@ import {
   LocalHospital,
   ShoppingCart,
   Logout,
-  KeyboardVoice
+  KeyboardVoice,
+  AccountBalance
 } from '@mui/icons-material';
 import api from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -118,6 +119,26 @@ const DoctorDashboard = () => {
     childrenWithMedicalConditions: 0,
     recentCheckups: 0
   });
+  const [earnings, setEarnings] = useState({
+    wallet: {
+      walletBalance: 0,
+      totalEarnings: 0,
+      totalConsultations: 0,
+      pendingPayout: 0
+    },
+    recentEarnings: [],
+    monthlyStats: {
+      totalEarnings: 0,
+      totalConsultations: 0,
+      totalFees: 0,
+      totalCommission: 0
+    },
+    weeklyStats: {
+      totalEarnings: 0,
+      totalConsultations: 0
+    }
+  });
+  const [earningsLoading, setEarningsLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [selectedChild, setSelectedChild] = useState(null);
   const [selectedChildId, setSelectedChildId] = useState('');
@@ -246,6 +267,19 @@ const DoctorDashboard = () => {
     }
   }, []);
 
+  // Fetch earnings
+  const fetchEarnings = useCallback(async () => {
+    try {
+      setEarningsLoading(true);
+      const response = await api.get('/doctor/earnings');
+      setEarnings(response.data);
+    } catch (error) {
+      console.error('Error fetching earnings:', error);
+    } finally {
+      setEarningsLoading(false);
+    }
+  }, []);
+
   // Fetch appointments
   const fetchAppointments = async (status = 'all') => {
     try {
@@ -275,7 +309,8 @@ const DoctorDashboard = () => {
   useEffect(() => {
     fetchChildren();
     fetchStatistics();
-  }, [fetchStatistics]);
+    fetchEarnings();
+  }, [fetchStatistics, fetchEarnings]);
 
   // Persist prescriptions recorded in dashboard (medical records etc.)
   useEffect(() => {
@@ -579,8 +614,7 @@ const DoctorDashboard = () => {
         prescription: recordForm.prescription,
         followUpDate: recordForm.followUpDate
       };
-      const res = await api.post(`/doctor/children/${childIdForRecord}/medical-records`, payload);
-      const record = res.data?.record;
+      await api.post(`/doctor/children/${childIdForRecord}/medical-records`, payload);
       if (payload.prescription && safeTrim(payload.prescription)) {
         addPrescriptionLogEntry({
           source: 'medical-record',
@@ -706,6 +740,7 @@ const DoctorDashboard = () => {
       setConsultationDialog({ open: false, appointment: null });
       fetchAppointments(appointmentFilter);
       fetchStatistics();
+      fetchEarnings(); // Refresh earnings after consultation is completed
     } catch (error) {
       setError(`Failed to save consultation: ${error.response?.data?.message || error.message}`);
     }
@@ -723,9 +758,13 @@ const DoctorDashboard = () => {
       fetchAppointments('all');
     }
     if (activeTab === 5) {
+      // Earnings tab - refresh earnings data
+      fetchEarnings();
+    }
+    if (activeTab === 6) {
       fetchEmergencies('all');
     }
-  }, [activeTab]);
+  }, [activeTab, fetchEarnings]);
 
   const handleVaOpen = () => setVaOpen(true);
   const handleVaClose = () => setVaOpen(false);
@@ -867,6 +906,7 @@ const DoctorDashboard = () => {
         <Tab label="Appointments" icon={<CalendarToday />} />
         <Tab label="AI Health Insights" icon={<LocalHospital />} />
         <Tab label="Prescriptions" icon={<Medication />} />
+        <Tab label="Earnings" icon={<AccountBalance />} />
         <Tab label="Emergencies" icon={<WarningAmber />} />
       </Tabs>
 
@@ -1358,15 +1398,28 @@ const DoctorDashboard = () => {
                             </>
                           )}
                           {(appointment.status === 'confirmed' || appointment.status === 'completed') && (
-                            <Tooltip title="Add Consultation">
-                              <IconButton
-                                size="small"
-                                color="primary"
-                                onClick={() => handleOpenConsultation(appointment)}
-                              >
-                                <Add fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
+                            <>
+                              <Tooltip title="Add Consultation">
+                                <IconButton
+                                  size="small"
+                                  color="primary"
+                                  onClick={() => handleOpenConsultation(appointment)}
+                                >
+                                  <Add fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              {appointment.status === 'confirmed' && (
+                                <Tooltip title="Mark as Completed">
+                                  <IconButton
+                                    size="small"
+                                    color="success"
+                                    onClick={() => handleUpdateAppointmentStatus(appointment._id, 'completed')}
+                                  >
+                                    <EventAvailable fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                            </>
                           )}
                           <Tooltip title="View Details">
                             <IconButton
@@ -2897,8 +2950,171 @@ const DoctorDashboard = () => {
         </Box>
       )}
 
-      {/* Emergencies Tab */}
+      {/* Earnings Tab */}
       {activeTab === 5 && (
+        <Box>
+          {/* Wallet Summary Card */}
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12} md={3}>
+              <Card sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white' }}>
+                <CardContent>
+                  <Typography variant="subtitle2" sx={{ opacity: 0.9 }}>Wallet Balance</Typography>
+                  <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold' }}>
+                    ₹{earningsLoading ? '...' : earnings.wallet.walletBalance.toFixed(2)}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Card sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)', color: 'white' }}>
+                <CardContent>
+                  <Typography variant="subtitle2" sx={{ opacity: 0.9 }}>Total Earnings</Typography>
+                  <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold' }}>
+                    ₹{earningsLoading ? '...' : earnings.wallet.totalEarnings.toFixed(2)}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Card sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)', color: 'white' }}>
+                <CardContent>
+                  <Typography variant="subtitle2" sx={{ opacity: 0.9 }}>Total Consultations</Typography>
+                  <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold' }}>
+                    {earningsLoading ? '...' : earnings.wallet.totalConsultations}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={3}>
+              <Card sx={{ borderRadius: 2, background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)', color: 'white' }}>
+                <CardContent>
+                  <Typography variant="subtitle2" sx={{ opacity: 0.9 }}>This Month</Typography>
+                  <Typography variant="h4" sx={{ mt: 1, fontWeight: 'bold' }}>
+                    ₹{earningsLoading ? '...' : earnings.monthlyStats.totalEarnings.toFixed(2)}
+                  </Typography>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          {/* Monthly and Weekly Stats */}
+          <Grid container spacing={3} sx={{ mb: 3 }}>
+            <Grid item xs={12} md={6}>
+              <Card sx={{ borderRadius: 2 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>This Month's Summary</Typography>
+                  <Divider sx={{ my: 2 }} />
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
+                    <Typography color="text.secondary">Consultations:</Typography>
+                    <Typography fontWeight={600}>{earnings.monthlyStats.totalConsultations}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
+                    <Typography color="text.secondary">Total Fees:</Typography>
+                    <Typography fontWeight={600}>₹{earnings.monthlyStats.totalFees.toFixed(2)}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
+                    <Typography color="text.secondary">Platform Commission:</Typography>
+                    <Typography fontWeight={600} color="error.main">-₹{earnings.monthlyStats.totalCommission.toFixed(2)}</Typography>
+                  </Box>
+                  <Divider sx={{ my: 2 }} />
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="h6">Net Earnings:</Typography>
+                    <Typography variant="h6" color="success.main">₹{earnings.monthlyStats.totalEarnings.toFixed(2)}</Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <Card sx={{ borderRadius: 2 }}>
+                <CardContent>
+                  <Typography variant="h6" gutterBottom>Last 7 Days</Typography>
+                  <Divider sx={{ my: 2 }} />
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
+                    <Typography color="text.secondary">Consultations:</Typography>
+                    <Typography fontWeight={600}>{earnings.weeklyStats.totalConsultations}</Typography>
+                  </Box>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography color="text.secondary">Earnings:</Typography>
+                    <Typography fontWeight={600} color="success.main">₹{earnings.weeklyStats.totalEarnings.toFixed(2)}</Typography>
+                  </Box>
+                  <Divider sx={{ my: 2 }} />
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <Typography variant="body2" color="text.secondary">Average per consultation:</Typography>
+                    <Typography variant="body2" fontWeight={600}>
+                      ₹{earnings.weeklyStats.totalConsultations > 0 
+                        ? (earnings.weeklyStats.totalEarnings / earnings.weeklyStats.totalConsultations).toFixed(2)
+                        : '0.00'}
+                    </Typography>
+                  </Box>
+                </CardContent>
+              </Card>
+            </Grid>
+          </Grid>
+
+          {/* Recent Earnings Table */}
+          <Paper sx={{ p: 3, borderRadius: 2 }}>
+            <Typography variant="h6" gutterBottom>Recent Earnings</Typography>
+            <Divider sx={{ my: 2 }} />
+            {earningsLoading ? (
+              <Typography color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>Loading earnings...</Typography>
+            ) : earnings.recentEarnings.length === 0 ? (
+              <Alert severity="info">No earnings recorded yet. Complete consultations to start earning!</Alert>
+            ) : (
+              <TableContainer>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Date</TableCell>
+                      <TableCell>Patient</TableCell>
+                      <TableCell>Consultation Fee</TableCell>
+                      <TableCell>Commission</TableCell>
+                      <TableCell>Net Earning</TableCell>
+                      <TableCell>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {earnings.recentEarnings.map((earning) => (
+                      <TableRow key={earning._id}>
+                        <TableCell>
+                          {new Date(earning.consultationDate).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </TableCell>
+                        <TableCell>
+                          {earning.child ? `${earning.child.firstName} ${earning.child.lastName}` : 'N/A'}
+                        </TableCell>
+                        <TableCell>₹{earning.consultationFee.toFixed(2)}</TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="error.main">
+                            -₹{earning.commissionAmount.toFixed(2)} ({earning.commissionRate}%)
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="success.main" fontWeight={600}>
+                            ₹{earning.netEarning.toFixed(2)}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            label={earning.status}
+                            color={earning.status === 'credited' ? 'success' : earning.status === 'paid_out' ? 'info' : 'default'}
+                            size="small"
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        </Box>
+      )}
+
+      {/* Emergencies Tab */}
+      {activeTab === 6 && (
         <Box>
           <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

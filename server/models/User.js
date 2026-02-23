@@ -183,7 +183,20 @@ const userSchema = new mongoose.Schema({
       issuingOrganization: { type: String, trim: true },
       issueDate: { type: Date },
       expiryDate: { type: Date }
-    }]
+    }],
+    // Wallet & Earnings
+    walletBalance: { type: Number, default: 0 },
+    totalEarnings: { type: Number, default: 0 },
+    totalConsultations: { type: Number, default: 0 },
+    pendingPayout: { type: Number, default: 0 },
+    // Bank details for payout
+    bankAccount: {
+      accountNumber: String,
+      ifscCode: String,
+      accountHolderName: String,
+      bankName: String,
+      verified: { type: Boolean, default: false }
+    }
   },
   // Verification & security
   emailVerified: { type: Boolean, default: false },

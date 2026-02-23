@@ -72,6 +72,8 @@ import PickupTracker from '../../components/Maps/PickupTracker';
 import TransportRouteMap from '../../components/Maps/TransportRouteMap';
 import VaccinationCard from '../../components/Parents/VaccinationCard';
 import VoiceAssistant from '../../VoiceAssistant';
+import Chatbot from '../../components/Chatbot';
+import FeedbackForm from '../../components/FeedbackForm';
 
 // Simple helper to format date strings
 const formatDate = (d) => {
@@ -396,7 +398,9 @@ const ParentDashboard = ({ initialTab }) => {
     if (!childId) return;
     try {
       if (user?.role !== 'parent') return;
-      const [pRes, gRes, aRes, actRes, mRes, rRes, sRes] = await Promise.all([
+      
+      // Use Promise.allSettled to continue even if some endpoints fail
+      const [pRes, gRes, aRes, actRes, mRes, rRes, sRes] = await Promise.allSettled([
         api.get(`/children/${childId}`),
         api.get(`/children/${childId}/gallery`),
         api.get(`/children/${childId}/attendance`),
@@ -405,19 +409,30 @@ const ParentDashboard = ({ initialTab }) => {
         api.get(`/children/${childId}/reports`),
         api.get(`/children/${childId}/staff`)
       ]);
-      setProfile(pRes.data);
-      setGallery(gRes.data || []);
-      setAttendance(aRes.data || null);
-      setActivities(actRes.data || { recent: [], count: 0 });
-      setMeals(mRes.data || { plan: [], weekOf: null });
-      setReports(rRes.data || {
+      
+      // Extract data from settled promises, using defaults for failed ones
+      setProfile(pRes.status === 'fulfilled' ? pRes.value.data : null);
+      setGallery(gRes.status === 'fulfilled' ? (gRes.value.data || []) : []);
+      setAttendance(aRes.status === 'fulfilled' ? (aRes.value.data || null) : null);
+      setActivities(actRes.status === 'fulfilled' ? (actRes.value.data || { recent: [], count: 0 }) : { recent: [], count: 0 });
+      setMeals(mRes.status === 'fulfilled' ? (mRes.value.data || { plan: [], weekOf: null }) : { plan: [], weekOf: null });
+      setReports(rRes.status === 'fulfilled' ? (rRes.value.data || {
+        attendance: { summary: null, history: [] },
+        activities: { participation: [], trends: null },
+        milestones: { completed: [], upcoming: [] },
+        nutrition: { consumption: [], preferences: [] }
+      }) : {
         attendance: { summary: null, history: [] },
         activities: { participation: [], trends: null },
         milestones: { completed: [], upcoming: [] },
         nutrition: { consumption: [], preferences: [] }
       });
-      console.log('Assigned staff response:', sRes.data);
-      setAssignedStaff(sRes.data || []);
+      if (sRes.status === 'fulfilled') {
+        console.log('Assigned staff response:', sRes.value.data);
+        setAssignedStaff(sRes.value.data || []);
+      } else {
+        setAssignedStaff([]);
+      }
 
       // Seed edit fields from profile
       const pf = pRes.data || {};
@@ -431,13 +446,15 @@ const ParentDashboard = ({ initialTab }) => {
         notes: pf.notes || ''
       });
     } catch (e) {
-      console.error('Fetch child data error:', e);
-      const msg = e?.response?.data?.message || '';
+      // Only log actual errors, not network issues or 404s
       const status = e?.response?.status;
-      if (status === 404 || /route not found/i.test(msg)) {
-        // Ignore cosmetic 404s from optional endpoints; do not show banner.
+      const msg = e?.response?.data?.message || '';
+      
+      if (status === 404 || /route not found/i.test(msg) || e?.code === 'ERR_NETWORK') {
+        // Ignore cosmetic 404s from optional endpoints and network errors
         setErrorMsg('');
       } else {
+        console.error('Fetch child data error:', e);
         setErrorMsg(msg || 'Failed to load child data');
       }
     }
@@ -1279,7 +1296,7 @@ const ParentDashboard = ({ initialTab }) => {
 
   // Load appointments when tab changes
   useEffect(() => {
-    if (tab === 8 && user?.role === 'parent') {
+    if (tab === 7 && user?.role === 'parent') {
       fetchAppointments();
     }
   }, [tab, user?.role]);
@@ -1676,6 +1693,7 @@ const ParentDashboard = ({ initialTab }) => {
             <Tab icon={<Message />} label="Messages" iconPosition="start" />
             <Tab icon={<LocalHospital />} label="Doctor Appointments" iconPosition="start" />
             <Tab icon={<Assessment />} label="Feedback" iconPosition="start" />
+            <Tab icon={<KeyboardVoice />} label="AI Assistant" iconPosition="start" />
           </Tabs>
         </Box>
       </Box>
@@ -4090,6 +4108,81 @@ const ParentDashboard = ({ initialTab }) => {
               </Box>
             )}
 
+
+            {/* Tab 9: AI Assistant - Chatbot & Feedback */}
+            {tab === 9 && (
+              <Box>
+                <Grid container spacing={3}>
+                  {/* AI Chatbot Section */}
+                  <Grid item xs={12} lg={6}>
+                    <Card sx={{ height: '100%' }}>
+                      <CardHeader 
+                        title="🤖 AI Assistant" 
+                        subheader="Ask me anything about daycare policies, schedules, or your child's care"
+                      />
+                      <CardContent>
+                        <Chatbot />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  {/* Feedback Submission Form */}
+                  <Grid item xs={12} lg={6}>
+                    <Card sx={{ height: '100%' }}>
+                      <CardHeader 
+                        title="📝 Share Your Feedback" 
+                        subheader="Get instant AI-powered sentiment analysis"
+                      />
+                      <CardContent>
+                        <FeedbackForm />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+
+                {/* AI Features Info */}
+                <Card sx={{ mt: 3 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom color="primary">
+                      ✨ AI-Powered Features
+                    </Typography>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={4}>
+                        <Box sx={{ p: 2, bgcolor: 'primary.light', borderRadius: 2 }}>
+                          <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                            💬 Smart Chatbot
+                          </Typography>
+                          <Typography variant="body2">
+                            Get instant answers to your questions 24/7. The AI assistant understands context and provides personalized responses.
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} md={4}>
+                        <Box sx={{ p: 2, bgcolor: 'success.light', borderRadius: 2 }}>
+                          <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                            😊 Sentiment Analysis
+                          </Typography>
+                          <Typography variant="body2">
+                            Your feedback is automatically analyzed for sentiment, helping us understand and improve our services faster.
+                          </Typography>
+                        </Box>
+                      </Grid>
+                      <Grid item xs={12} md={4}>
+                        <Box sx={{ p: 2, bgcolor: 'info.light', borderRadius: 2 }}>
+                          <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                            🎯 Actionable Insights
+                          </Typography>
+                          <Typography variant="body2">
+                            AI identifies key topics and action items from feedback to ensure nothing important is missed.
+                          </Typography>
+                        </Box>
+                      </Grid>
+                    </Grid>
+                  </CardContent>
+                </Card>
+              </Box>
+            )}
+
             {/* Tab 6: Doctor Appointments */}
             {/* Tab 7: Doctor Appointments */}
             {tab === 7 && (
@@ -4382,19 +4475,40 @@ const ParentDashboard = ({ initialTab }) => {
                 value={appointmentForm.appointmentDate}
                 onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentDate: e.target.value })}
                 InputLabelProps={{ shrink: true }}
-                inputProps={{ min: new Date().toISOString().split('T')[0] }}
+                inputProps={{ 
+                  min: new Date().toISOString().split('T')[0],
+                  max: new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString().split('T')[0]
+                }}
+                helperText="Appointments can be booked up to 3 months in advance"
               />
             </Grid>
 
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                type="time"
-                label="Appointment Time"
-                value={appointmentForm.appointmentTime}
-                onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentTime: e.target.value })}
-                InputLabelProps={{ shrink: true }}
-              />
+              <FormControl fullWidth>
+                <InputLabel>Appointment Time</InputLabel>
+                <Select
+                  value={appointmentForm.appointmentTime}
+                  onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentTime: e.target.value })}
+                  label="Appointment Time"
+                >
+                  <MenuItem value="09:00">09:00 AM</MenuItem>
+                  <MenuItem value="09:30">09:30 AM</MenuItem>
+                  <MenuItem value="10:00">10:00 AM</MenuItem>
+                  <MenuItem value="10:30">10:30 AM</MenuItem>
+                  <MenuItem value="11:00">11:00 AM</MenuItem>
+                  <MenuItem value="11:30">11:30 AM</MenuItem>
+                  <MenuItem value="12:00">12:00 PM</MenuItem>
+                  <MenuItem value="14:00">02:00 PM</MenuItem>
+                  <MenuItem value="14:30">02:30 PM</MenuItem>
+                  <MenuItem value="15:00">03:00 PM</MenuItem>
+                  <MenuItem value="15:30">03:30 PM</MenuItem>
+                  <MenuItem value="16:00">04:00 PM</MenuItem>
+                  <MenuItem value="16:30">04:30 PM</MenuItem>
+                  <MenuItem value="17:00">05:00 PM</MenuItem>
+                  <MenuItem value="17:30">05:30 PM</MenuItem>
+                  <MenuItem value="18:00">06:00 PM</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
 
             <Grid item xs={12}>

@@ -9,10 +9,10 @@ import {
   TextField,
   Typography
 } from '@mui/material';
-import { Mic, Stop } from '@mui/icons-material';
-import { translateText } from "./utils/translate";
-import { detectLanguage } from "./utils/detectLanguage";
-import { extractIntent } from "./utils/extractIntent";
+import {
+  Mic,
+  Stop
+} from '@mui/icons-material';
 import api from './config/api';
 
 function parseSimpleDate(input = '') {
@@ -39,6 +39,23 @@ function parseSimpleTime(input = '') {
   if (ap === 'am' && h === 12) h = 0;
   if (Number.isNaN(h) || Number.isNaN(min)) return '09:00';
   return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
+}
+
+// Simple intent extraction fallback
+function extractSimpleIntent(text) {
+  const lower = text.toLowerCase();
+  // More flexible matching with variations
+  if (lower.match(/\b(doctor|appointment|medical|health)\b/)) return 'book_doctor';
+  if (lower.match(/\b(attendance|present|absent)\b/)) return 'check_attendance';
+  if (lower.match(/\b(menu|meal|food|lunch|breakfast|dinner|today.*menu|show.*menu)\b/)) return 'view_menu';
+  if (lower.match(/\b(message|teacher|talk|contact|reach)\b/)) return 'message_teacher';
+  if (lower.match(/\b(schedule|timetable|routine|activity|activities)\b/)) return 'check_schedule';
+  if (lower.match(/\b(delivery|track|order|package)\b/)) return 'track_delivery';
+  if (lower.match(/\b(pay|fee|bill|payment|charge)\b/)) return 'pay_fees';
+  if (lower.match(/\b(transport|bus|pickup|drop)\b/)) return 'book_transport';
+  if (lower.match(/\b(issue|problem|report|concern|complain)\b/)) return 'report_issue';
+  if (lower.match(/\b(update|notification|news|latest)\b/)) return 'get_updates';
+  return 'unknown';
 }
 
 const VoiceAssistant = ({ themeColor = '#1abc9c', activeChildId } = {}) => {
@@ -69,15 +86,33 @@ const VoiceAssistant = ({ themeColor = '#1abc9c', activeChildId } = {}) => {
     const recognition = new SpeechRecognition();
     recognition.lang = 'en-US';
     recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.continuous = false;
+    
     recognition.onresult = (event) => {
       const text = event.results?.[0]?.[0]?.transcript || '';
       setTranscript(text);
+      setError('');
     };
-    recognition.onerror = () => setListening(false);
+    
+    recognition.onerror = (event) => {
+      console.error('Speech recognition error:', event.error);
+      setListening(false);
+      if (event.error === 'no-speech') {
+        setError('No speech detected. Please try again.');
+      } else if (event.error === 'audio-capture') {
+        setError('Microphone access denied or not available.');
+      } else {
+        setError(`Speech recognition error: ${event.error}`);
+      }
+    };
+    
     recognition.onend = () => setListening(false);
+    
     recognitionRef.current = recognition;
     recognition.start();
     setListening(true);
+    setError('');
   };
 
   // Automatically run the pipeline whenever a new transcript comes in
@@ -105,82 +140,148 @@ const VoiceAssistant = ({ themeColor = '#1abc9c', activeChildId } = {}) => {
     setTranslatedResponse("");
 
     try {
-      // 1) Detect language (fallbacks to 'en' if key not set)
-      const lang = await detectLanguage(text);
-      setDetectedLang(lang);
+      let detectedIntent = "unknown";
+      let detectedLanguage = "en";
+      let translatedText = text;
+      let entities = {};
 
-      // 2) Translate to English if needed
-      let inputForIntent = text;
-      if (lang !== "en") {
-        inputForIntent = await translateText(text, "en");
+      // Try to use backend API for better accuracy
+      try {
+        const processResponse = await api.post('/voice/process', {
+          text,
+          childId: activeChildId,
+          preferredLanguage: 'en'
+        });
+
+        if (processResponse.data.success) {
+          detectedLanguage = processResponse.data.detectedLanguage;
+          translatedText = processResponse.data.translatedText;
+          detectedIntent = processResponse.data.intent;
+          entities = processResponse.data.entities || {};
+          
+          // If API returns unknown, use fallback
+          if (detectedIntent === 'unknown') {
+            detectedIntent = extractSimpleIntent(text);
+          }
+        }
+      } catch (apiError) {
+        console.log('Using fallback intent extraction:', apiError.message);
+        // Fallback to simple intent extraction
+        detectedIntent = extractSimpleIntent(text);
       }
-      setTranslatedInput(inputForIntent);
 
-      // 3) Intent Understanding
-      const { intent: detectedIntent, params } = extractIntent(inputForIntent);
+      setDetectedLang(detectedLanguage);
+      setTranslatedInput(translatedText);
       setIntent(detectedIntent);
 
-      // 4) Action execution (real modules/APIs where available)
+      // Execute action based on intent
       let result = "";
+      
       if (detectedIntent === "book_doctor") {
         if (!activeChildId) {
           result = "Please select a child first, then try again.";
         } else {
-          const appointmentDate = parseSimpleDate(params?.time || inputForIntent);
-          const appointmentTime = parseSimpleTime(params?.time || inputForIntent);
-          const reason = params?.reason || "Requested via Voice Assistant";
+          try {
+            const appointmentDate = entities.date || parseSimpleDate(entities.time || translatedText);
+            const appointmentTime = entities.time || parseSimpleTime(entities.time || translatedText);
+            const reason = entities.reason || "Requested via Voice Assistant";
 
-          await api.post('/appointments', {
-            childId: activeChildId,
-            appointmentDate,
-            appointmentTime,
-            reason,
-            appointmentType: 'onsite',
-            isEmergency: false
-          });
+            await api.post('/appointments', {
+              childId: activeChildId,
+              appointmentDate,
+              appointmentTime,
+              reason,
+              appointmentType: 'onsite',
+              isEmergency: false
+            });
 
-          result = `Doctor appointment request submitted for ${appointmentTime} on ${appointmentDate}.`;
+            result = `Doctor appointment booked for ${appointmentTime} on ${appointmentDate}.`;
+          } catch (err) {
+            result = `Failed to book appointment: ${err.message}`;
+          }
         }
       } else if (detectedIntent === "check_attendance") {
         if (!activeChildId) {
-          result = "Please select a child first, then ask to check attendance.";
+          result = "Please select a child first.";
         } else {
-          await api.get(`/children/${activeChildId}/attendance`);
-          result = "Attendance loaded successfully for your child.";
+          try {
+            await api.get(`/children/${activeChildId}/attendance`);
+            result = "Attendance loaded successfully for your child.";
+          } catch (err) {
+            result = "Failed to load attendance data.";
+          }
         }
+      } else if (detectedIntent === "view_menu") {
+        result = "Opening today's menu. Please check the meal plan section.";
+      } else if (detectedIntent === "message_teacher") {
+        result = "Opening messaging interface to contact your child's teacher.";
+      } else if (detectedIntent === "check_schedule") {
+        result = "Loading your child's schedule for today.";
       } else if (detectedIntent === "track_delivery") {
         result = "Open 'My Orders' to track delivery status.";
       } else if (detectedIntent === "pay_fees") {
-        result = "Open 'Billing' to pay fees.";
+        result = "Opening billing section to pay fees.";
       } else if (detectedIntent === "book_transport") {
-        result = "Open 'Transport' to submit a transport request.";
+        result = "Opening transport section to book transportation.";
+      } else if (detectedIntent === "report_issue") {
+        result = "Opening feedback form to report your concern.";
+      } else if (detectedIntent === "get_updates") {
+        result = "Loading latest notifications and updates.";
       } else {
-        result = "Sorry, I did not understand your request. Try: 'Book doctor appointment for my child tomorrow at 10 AM'.";
+        result = "Sorry, I didn't understand that. Try commands like: 'Book doctor appointment', 'Check attendance', 'View today's menu'.";
       }
 
       setActionResult(result);
 
-      // 5) Translate response back to user language
+      // Generate conversational response (with fallback and timeout)
       let finalResponse = result;
-      if (lang !== "en") {
-        finalResponse = await translateText(result, lang);
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        const responseGenerated = await api.post('/voice/generate-response', {
+          intent: detectedIntent,
+          actionResult: result,
+          targetLanguage: 'English'
+        }, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (responseGenerated.data && responseGenerated.data.response) {
+          finalResponse = responseGenerated.data.response;
+        }
+      } catch (responseError) {
+        if (responseError.name === 'CanceledError') {
+          console.log('Response generation timeout, using direct result');
+        } else {
+          console.log('Response generation failed, using direct result:', responseError.message);
+        }
+        // Use result directly if API fails or times out
       }
+
       setTranslatedResponse(finalResponse);
 
-      // 6) Text-to-Speech (optional)
+      // Text-to-Speech
       if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
         const utter = new window.SpeechSynthesisUtterance(finalResponse);
-        utter.lang = lang === "en" ? "en-US" : lang;
+        utter.lang = detectedLanguage === "en" ? "en-US" : detectedLanguage;
         window.speechSynthesis.cancel();
         window.speechSynthesis.speak(utter);
       }
+
     } catch (e) {
+      console.error('Pipeline error:', e);
       setError(e?.message || 'Failed to process voice command');
+      // Make sure to show some result even on error
+      if (!actionResult) {
+        setActionResult('An error occurred. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
   };
-
 
   return (
     <Paper elevation={0} sx={{ p: 3, borderRadius: 3, border: '1px solid #eaeaea', bgcolor: '#fff' }}>

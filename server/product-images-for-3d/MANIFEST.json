@@ -1,0 +1,268 @@
+[
+  {
+    "productId": "68f92b916cb414c12151c982",
+    "productName": "Loveli",
+    "category": "Bath",
+    "imageFile": "bath_loveli_68f92b916cb414c12151c982.jpg",
+    "suggestedModelPath": "/models/bath/loveli.glb"
+  },
+  {
+    "productId": "68f92c226cb414c12151c992",
+    "productName": "Aveeno Baby",
+    "category": "baby care",
+    "imageFile": "baby-care_aveeno-baby_68f92c226cb414c12151c992.jpg",
+    "suggestedModelPath": "/models/baby-care/aveeno-baby.glb"
+  },
+  {
+    "productId": "68f92bdb6cb414c12151c98d",
+    "productName": "Johnsons",
+    "category": "baby care",
+    "imageFile": "baby-care_johnsons_68f92bdb6cb414c12151c98d.jpg",
+    "suggestedModelPath": "/models/baby-care/johnsons.glb"
+  },
+  {
+    "productId": "68f92caa6cb414c12151c9a6",
+    "productName": "Noodle & Boo",
+    "category": "baby care",
+    "imageFile": "baby-care_noodle---boo_68f92caa6cb414c12151c9a6.jpg",
+    "suggestedModelPath": "/models/baby-care/noodle---boo.glb"
+  },
+  {
+    "productId": "68f92b5d6cb414c12151c97d",
+    "productName": "Mama & Bird",
+    "category": "bath",
+    "imageFile": "bath_mama---bird_68f92b5d6cb414c12151c97d.jpg",
+    "suggestedModelPath": "/models/bath/mama---bird.glb"
+  },
+  {
+    "productId": "68f930486cb414c12151ca25",
+    "productName": "Hiss",
+    "category": "boy fashion",
+    "imageFile": "boy-fashion_hiss_68f930486cb414c12151ca25.jpg",
+    "suggestedModelPath": "/models/boy-fashion/hiss.glb"
+  },
+  {
+    "productId": "68f92e8b6cb414c12151c9eb",
+    "productName": "Hiss",
+    "category": "boy fashion",
+    "imageFile": "boy-fashion_hiss_68f92e8b6cb414c12151c9eb.jpg",
+    "suggestedModelPath": "/models/boy-fashion/hiss.glb"
+  },
+  {
+    "productId": "68f92e436cb414c12151c9e1",
+    "productName": "Hiss",
+    "category": "boy fashion",
+    "imageFile": "boy-fashion_hiss_68f92e436cb414c12151c9e1.jpg",
+    "suggestedModelPath": "/models/boy-fashion/hiss.glb"
+  },
+  {
+    "productId": "68f92e276cb414c12151c9dc",
+    "productName": "Hiss",
+    "category": "boy fashion",
+    "imageFile": "boy-fashion_hiss_68f92e276cb414c12151c9dc.jpg",
+    "suggestedModelPath": "/models/boy-fashion/hiss.glb"
+  },
+  {
+    "productId": "68f92fed6cb414c12151ca1b",
+    "productName": "Hiss",
+    "category": "boy fashion",
+    "imageFile": "boy-fashion_hiss_68f92fed6cb414c12151ca1b.jpg",
+    "suggestedModelPath": "/models/boy-fashion/hiss.glb"
+  },
+  {
+    "productId": "68f92af96cb414c12151c96e",
+    "productName": "hiss",
+    "category": "boy fashion",
+    "imageFile": "boy-fashion_hiss_68f92af96cb414c12151c96e.jpg",
+    "suggestedModelPath": "/models/boy-fashion/hiss.glb"
+  },
+  {
+    "productId": "68f92b326cb414c12151c978",
+    "productName": "Pampers",
+    "category": "diapering",
+    "imageFile": "diapering_pampers_68f92b326cb414c12151c978.jpg",
+    "suggestedModelPath": "/models/diapering/pampers.glb"
+  },
+  {
+    "productId": "68f92f366cb414c12151ca01",
+    "productName": "frapey",
+    "category": "diapering",
+    "imageFile": "diapering_frapey_68f92f366cb414c12151ca01.jpg",
+    "suggestedModelPath": "/models/diapering/frapey.glb"
+  },
+  {
+    "productId": "68f92e046cb414c12151c9d7",
+    "productName": "feedzz",
+    "category": "feeding",
+    "imageFile": "feeding_feedzz_68f92e046cb414c12151c9d7.jpg",
+    "suggestedModelPath": "/models/feeding/feedzz.glb"
+  },
+  {
+    "productId": "68f92d576cb414c12151c9bd",
+    "productName": "feedzz",
+    "category": "feeding",
+    "imageFile": "feeding_feedzz_68f92d576cb414c12151c9bd.jpg",
+    "suggestedModelPath": "/models/feeding/feedzz.glb"
+  },
+  {
+    "productId": "68f92a396cb414c12151c95a",
+    "productName": "feedzz",
+    "category": "feeding",
+    "imageFile": "feeding_feedzz_68f92a396cb414c12151c95a.jpg",
+    "suggestedModelPath": "/models/feeding/feedzz.glb"
+  },
+  {
+    "productId": "68f92d716cb414c12151c9c2",
+    "productName": "feedzz",
+    "category": "feeding",
+    "imageFile": "feeding_feedzz_68f92d716cb414c12151c9c2.jpg",
+    "suggestedModelPath": "/models/feeding/feedzz.glb"
+  },
+  {
+    "productId": "68f92c716cb414c12151c9a1",
+    "productName": "His walkzz",
+    "category": "footwear",
+    "imageFile": "footwear_his-walkzz_68f92c716cb414c12151c9a1.jpg",
+    "suggestedModelPath": "/models/footwear/his-walkzz.glb"
+  },
+  {
+    "productId": "68f92f766cb414c12151ca0b",
+    "productName": "Hiss",
+    "category": "footwear",
+    "imageFile": "footwear_hiss_68f92f766cb414c12151ca0b.jpg",
+    "suggestedModelPath": "/models/footwear/hiss.glb"
+  },
+  {
+    "productId": "68f9301c6cb414c12151ca20",
+    "productName": "Walkzz",
+    "category": "footwear",
+    "imageFile": "footwear_walkzz_68f9301c6cb414c12151ca20.jpg",
+    "suggestedModelPath": "/models/footwear/walkzz.glb"
+  },
+  {
+    "productId": "68f92b156cb414c12151c973",
+    "productName": "hersss",
+    "category": "footwear",
+    "imageFile": "footwear_hersss_68f92b156cb414c12151c973.jpg",
+    "suggestedModelPath": "/models/footwear/hersss.glb"
+  },
+  {
+    "productId": "68f92d926cb414c12151c9c7",
+    "productName": "walkzz",
+    "category": "footwear",
+    "imageFile": "footwear_walkzz_68f92d926cb414c12151c9c7.jpg",
+    "suggestedModelPath": "/models/footwear/walkzz.glb"
+  },
+  {
+    "productId": "68f92eab6cb414c12151c9f0",
+    "productName": "walkzz",
+    "category": "footwear",
+    "imageFile": "footwear_walkzz_68f92eab6cb414c12151c9f0.jpg",
+    "suggestedModelPath": "/models/footwear/walkzz.glb"
+  },
+  {
+    "productId": "68f92edc6cb414c12151c9f6",
+    "productName": "walkzz",
+    "category": "footwear",
+    "imageFile": "footwear_walkzz_68f92edc6cb414c12151c9f6.jpg",
+    "suggestedModelPath": "/models/footwear/walkzz.glb"
+  },
+  {
+    "productId": "68f92ad66cb414c12151c969",
+    "productName": "walkzz",
+    "category": "footwear",
+    "imageFile": "footwear_walkzz_68f92ad66cb414c12151c969.jpg",
+    "suggestedModelPath": "/models/footwear/walkzz.glb"
+  },
+  {
+    "productId": "68f92d156cb414c12151c9b3",
+    "productName": "Cradle",
+    "category": "gear",
+    "imageFile": "gear_cradle_68f92d156cb414c12151c9b3.jpg",
+    "suggestedModelPath": "/models/gear/cradle.glb"
+  },
+  {
+    "productId": "68f92dd96cb414c12151c9d1",
+    "productName": "Baby hugg",
+    "category": "girl fashion",
+    "imageFile": "girl-fashion_baby-hugg_68f92dd96cb414c12151c9d1.jpg",
+    "suggestedModelPath": "/models/girl-fashion/baby-hugg.glb"
+  },
+  {
+    "productId": "68f92dba6cb414c12151c9cc",
+    "productName": "Babyhugg",
+    "category": "girl fashion",
+    "imageFile": "girl-fashion_babyhugg_68f92dba6cb414c12151c9cc.jpg",
+    "suggestedModelPath": "/models/girl-fashion/babyhugg.glb"
+  },
+  {
+    "productId": "68f929d16cb414c12151c950",
+    "productName": "Her",
+    "category": "girl fashion",
+    "imageFile": "girl-fashion_her_68f929d16cb414c12151c950.jpg",
+    "suggestedModelPath": "/models/girl-fashion/her.glb"
+  },
+  {
+    "productId": "68f92fac6cb414c12151ca11",
+    "productName": "Her",
+    "category": "girl fashion",
+    "imageFile": "girl-fashion_her_68f92fac6cb414c12151ca11.jpg",
+    "suggestedModelPath": "/models/girl-fashion/her.glb"
+  },
+  {
+    "productId": "68f929706cb414c12151c945",
+    "productName": "Herr",
+    "category": "girl fashion",
+    "imageFile": "girl-fashion_herr_68f929706cb414c12151c945.jpg",
+    "suggestedModelPath": "/models/girl-fashion/herr.glb"
+  },
+  {
+    "productId": "68f92fca6cb414c12151ca16",
+    "productName": "Hers",
+    "category": "girl fashion",
+    "imageFile": "girl-fashion_hers_68f92fca6cb414c12151ca16.jpg",
+    "suggestedModelPath": "/models/girl-fashion/hers.glb"
+  },
+  {
+    "productId": "68f92d386cb414c12151c9b8",
+    "productName": "Herss",
+    "category": "girl fashion",
+    "imageFile": "girl-fashion_herss_68f92d386cb414c12151c9b8.jpg",
+    "suggestedModelPath": "/models/girl-fashion/herss.glb"
+  },
+  {
+    "productId": "68f92f566cb414c12151ca06",
+    "productName": "herzss",
+    "category": "girl fashion",
+    "imageFile": "girl-fashion_herzss_68f92f566cb414c12151ca06.jpg",
+    "suggestedModelPath": "/models/girl-fashion/herzss.glb"
+  },
+  {
+    "productId": "68f92a126cb414c12151c955",
+    "productName": "dreamtoys",
+    "category": "toys",
+    "imageFile": "toys_dreamtoys_68f92a126cb414c12151c955.jpg",
+    "suggestedModelPath": "/models/toys/dreamtoys.glb"
+  },
+  {
+    "productId": "68f92a5d6cb414c12151c95f",
+    "productName": "dreamtoys",
+    "category": "toys",
+    "imageFile": "toys_dreamtoys_68f92a5d6cb414c12151c95f.jpg",
+    "suggestedModelPath": "/models/toys/dreamtoys.glb"
+  },
+  {
+    "productId": "68f92aaa6cb414c12151c964",
+    "productName": "dreamtoys",
+    "category": "toys",
+    "imageFile": "toys_dreamtoys_68f92aaa6cb414c12151c964.jpg",
+    "suggestedModelPath": "/models/toys/dreamtoys.glb"
+  },
+  {
+    "productId": "68f92e696cb414c12151c9e6",
+    "productName": "dreamtoyss",
+    "category": "toys",
+    "imageFile": "toys_dreamtoyss_68f92e696cb414c12151c9e6.jpg",
+    "suggestedModelPath": "/models/toys/dreamtoyss.glb"
+  }
+]

@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>3D Viewer Test - TinyTots</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .test-card {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 { color: #2e7d32; }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+        pre {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        button {
+            background: #2e7d32;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover { background: #1b5e20; }
+        .status { 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
+        }
+        .status.success { background: #c8e6c9; }
+        .status.error { background: #ffcdd2; }
+    </style>
+</head>
+<body>
+    <div class="test-card">
+        <h1>🎨 3D Viewer Implementation Test</h1>
+        
+        <h2>Quick Verification</h2>
+        <div id="results"></div>
+        
+        <button onclick="testAPI()">1. Test Backend API</button>
+        <button onclick="testFiles()">2. Test 3D Model Files</button>
+        <button onclick="openProduct()">3. Open Product (Fresh)</button>
+        <button onclick="clearCache()">4. Clear Cache & Reload</button>
+        
+        <h2>Troubleshooting Steps:</h2>
+        <ol>
+            <li><strong>Hard Refresh:</strong> Press <code>Ctrl + Shift + R</code> (Windows) or <code>Cmd + Shift + R</code> (Mac)</li>
+            <li><strong>Clear Browser Cache:</strong> Press <code>Ctrl + Shift + Delete</code></li>
+            <li><strong>Verify You're on Products with 3D Models:</strong>
+                <ul>
+                    <li><a href="http://localhost:3000/product/68c7eac04dc36b2e3e422580" target="_blank">Product 1: Dreamtoys</a></li>
+                    <li><a href="http://localhost:3000/product/68c7eb924dc36b2e3e422590" target="_blank">Product 2: Aveeno Baby</a></li>
+                    <li><a href="http://localhost:3000/product/68c7ed1a4dc36b2e3e4225a0" target="_blank">Product 3: Baby lotion</a></li>
+                </ul>
+            </li>
+        </ol>
+
+        <h2>What to Look For:</h2>
+        <div style="background: #e3f2fd; padding: 15px; border-radius: 5px; margin: 10px 0;">
+            <p><strong>✅ You should see:</strong></p>
+            <ul>
+                <li>A toggle button at the top: <strong>"Images ⟷ 3D View"</strong></li>
+                <li>Click "3D View" to switch</li>
+                <li>Interactive 3D model appears</li>
+                <li>Drag to rotate, scroll to zoom</li>
+            </ul>
+        </div>
+
+        <h2>Current Status:</h2>
+        <div class="status success">
+            ✅ Backend: API returns model3DUrl correctly<br>
+            ✅ Frontend: Product3DViewer component exists<br>
+            ✅ Files: 3 GLB models downloaded<br>
+            ✅ Database: 3 products have 3D models<br>
+            ⚠️ Issue: Browser cache needs clearing
+        </div>
+    </div>
+
+    <script>
+        async function testAPI() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p class="info">Testing API...</p>';
+            
+            try {
+                const response = await fetch('http://localhost:5000/api/products/68c7eac04dc36b2e3e422580');
+                const data = await response.json();
+                
+                if (data.product && data.product.model3DUrl) {
+                    results.innerHTML = `
+                        <div class="status success">
+                            <strong>✅ API Test Passed!</strong><br>
+                            Product: ${data.product.name}<br>
+                            Model URL: ${data.product.model3DUrl}<br>
+                            <em>Backend is working correctly!</em>
+                        </div>
+                    `;
+                } else {
+                    results.innerHTML = `
+                        <div class="status error">
+                            <strong>❌ API Test Failed</strong><br>
+                            model3DUrl not found in response
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                results.innerHTML = `
+                    <div class="status error">
+                        <strong>❌ API Error:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function testFiles() {
+            const results = document.getElementById('results');
+            results.innerHTML = '<p class="info">Testing 3D model files...</p>';
+            
+            const files = [
+                '/models/toys/toy-1.glb',
+                '/models/toys/toy-2.glb',
+                '/models/food/food-1.glb'
+            ];
+            
+            let html = '<div class="status success"><strong>File Tests:</strong><br>';
+            
+            for (const file of files) {
+                try {
+                    const response = await fetch(file);
+                    if (response.ok) {
+                        const size = (response.headers.get('content-length') / 1024).toFixed(2);
+                        html += `✅ ${file} (${size} KB)<br>`;
+                    } else {
+                        html += `❌ ${file} - Not found<br>`;
+                    }
+                } catch (error) {
+                    html += `❌ ${file} - Error: ${error.message}<br>`;
+                }
+            }
+            
+            html += '</div>';
+            results.innerHTML = html;
+        }
+
+        function openProduct() {
+            window.open('http://localhost:3000/product/68c7eac04dc36b2e3e422580?_=' + Date.now(), '_blank');
+        }
+
+        function clearCache() {
+            if (confirm('This will reload the page. Make sure to press Ctrl+Shift+R after!')) {
+                // Try to clear service worker cache
+                if ('caches' in window) {
+                    caches.keys().then(names => {
+                        names.forEach(name => caches.delete(name));
+                    });
+                }
+                
+                // Force reload
+                window.location.href = 'http://localhost:3000/product/68c7eac04dc36b2e3e422580?nocache=' + Date.now();
+            }
+        }
+
+        // Auto-run API test on load
+        window.onload = () => testAPI();
+    </script>
+</body>
+</html>

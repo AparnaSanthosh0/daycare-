@@ -46,6 +46,7 @@ import SmartSearch from '../../components/Common/SmartSearch';
 import TransportManagement from '../../components/Admin/TransportManagement';
 import VaccinationManagement from '../../components/Admin/VaccinationManagement';
 import VoiceAssistant from '../../VoiceAssistant';
+import ReportViewer from '../../components/ReportViewer';
 
 const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
@@ -1050,6 +1051,8 @@ const AdminDashboard = () => {
           <Tab label="AI Predictions" />
           <Tab label="Transport Requests" />
           <Tab label="Vaccination Records" />
+          <Tab label="Payment Management" />
+          <Tab label="Reports & Analytics" />
         </Tabs>
 
         <Box sx={{ mt: 3 }}>
@@ -1477,6 +1480,169 @@ const AdminDashboard = () => {
           {tabValue === 9 && (
             <Box>
               <VaccinationManagement />
+            </Box>
+          )}
+
+          {/* Payment Management Tab */}
+          {tabValue === 10 && (
+            <Box>
+              <Typography variant="h6" gutterBottom>Doctor Appointment Payments (Escrow)</Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                Monitor payments held in escrow for doctor appointments. Payments are released to doctors after service completion and parent confirmation.
+              </Typography>
+              
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Appointment Date</TableCell>
+                      <TableCell>Parent</TableCell>
+                      <TableCell>Doctor</TableCell>
+                      <TableCell>Child</TableCell>
+                      <TableCell>Total Amount</TableCell>
+                      <TableCell>Commission</TableCell>
+                      <TableCell>Doctor Payout</TableCell>
+                      <TableCell>Payment Status</TableCell>
+                      <TableCell>Appointment Status</TableCell>
+                      <TableCell>Paid At</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell colSpan={10} align="center">
+                        <Typography variant="body2" color="text.secondary">
+                          Payment escrow management feature coming soon. Backend routes are ready at /api/appointments/payments/admin/pending
+                        </Typography>
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Box>
+          )}
+
+          {/* Reports & Analytics Tab */}
+          {tabValue === 11 && (
+            <Box>
+              <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
+                📊 AI-Powered Reports & Analytics
+              </Typography>
+
+              <Grid container spacing={3}>
+                {/* Report Generation Section */}
+                <Grid item xs={12}>
+                  <Card>
+                    <CardHeader 
+                      title="🤖 Automated Report Generation" 
+                      subheader="Generate professional reports with AI in seconds"
+                    />
+                    <CardContent>
+                      <ReportViewer />
+                    </CardContent>
+                  </Card>
+                </Grid>
+
+                {/* AI Features Info */}
+                <Grid item xs={12}>
+                  <Card>
+                    <CardHeader title="✨ AI-Powered Analytics Features" />
+                    <CardContent>
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={3}>
+                          <Box sx={{ p: 2, bgcolor: 'primary.light', borderRadius: 2, height: '100%' }}>
+                            <Typography variant="h6" gutterBottom>📈 Daily Reports</Typography>
+                            <Typography variant="body2">
+                              Automated daily activity summaries including attendance, meals, activities, and incidents.
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <Box sx={{ p: 2, bgcolor: 'success.light', borderRadius: 2, height: '100%' }}>
+                            <Typography variant="h6" gutterBottom>📊 Weekly Analysis</Typography>
+                            <Typography variant="body2">
+                              Comprehensive weekly performance reports with trends, feedback analysis, and recommendations.
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <Box sx={{ p: 2, bgcolor: 'warning.light', borderRadius: 2, height: '100%' }}>
+                            <Typography variant="h6" gutterBottom>💼 Monthly Reports</Typography>
+                            <Typography variant="body2">
+                              Management reports covering financials, enrollment, retention, and strategic insights.
+                            </Typography>
+                          </Box>
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <Box sx={{ p: 2, bgcolor: 'info.light', borderRadius: 2, height: '100%' }}>
+                            <Typography variant="h6" gutterBottom>😊 Sentiment Analysis</Typography>
+                            <Typography variant="body2">
+                              AI-powered parent feedback analysis with sentiment detection and actionable insights.
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      </Grid>
+
+                      <Alert severity="info" sx={{ mt: 3 }}>
+                        <Typography variant="body2">
+                          <strong>💡 Pro Tip:</strong> Reports are generated using OpenAI GPT and include data-driven insights, 
+                          trend analysis, and actionable recommendations. All reports can be downloaded as Markdown files.
+                        </Typography>
+                      </Alert>
+
+                      <Box sx={{ mt: 3, p: 2, bgcolor: 'grey.100', borderRadius: 2 }}>
+                        <Typography variant="subtitle1" fontWeight={600} gutterBottom>
+                          Quick Links:
+                        </Typography>
+                        <Grid container spacing={2}>
+                          <Grid item xs={12} sm={6} md={3}>
+                            <Button
+                              fullWidth
+                              variant="outlined"
+                              onClick={() => window.location.href = '/admin/feedback'}
+                              sx={{ textTransform: 'none' }}
+                            >
+                              View All Feedback
+                            </Button>
+                          </Grid>
+                          <Grid item xs={12} sm={6} md={3}>
+                            <Button
+                              fullWidth
+                              variant="outlined"
+                              onClick={() => window.location.href = '/admin/reports'}
+                              sx={{ textTransform: 'none' }}
+                            >
+                              Report History
+                            </Button>
+                          </Grid>
+                          <Grid item xs={12} sm={6} md={3}>
+                            <Button
+                              fullWidth
+                              variant="outlined"
+                              onClick={() => setTabValue(7)}
+                              sx={{ textTransform: 'none' }}
+                            >
+                              AI Predictions
+                            </Button>
+                          </Grid>
+                          <Grid item xs={12} sm={6} md={3}>
+                            <Button
+                              fullWidth
+                              variant="contained"
+                              sx={{ 
+                                bgcolor: '#14B8A6',
+                                '&:hover': { bgcolor: '#0d9488' },
+                                textTransform: 'none'
+                              }}
+                            >
+                              📥 Download Reports
+                            </Button>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              </Grid>
             </Box>
           )}
         </Box>

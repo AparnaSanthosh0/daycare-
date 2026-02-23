@@ -3,12 +3,31 @@ const router = express.Router();
 const Appointment = require('../models/Appointment');
 const Child = require('../models/Child');
 const User = require('../models/User');
+const DoctorEarning = require('../models/DoctorEarning');
 const auth = require('../middleware/auth');
+const { sendMail } = require('../utils/mailer');
 
 // Create appointment (Parent)
 router.post('/', auth, async (req, res) => {
   try {
     const { childId, appointmentDate, appointmentTime, reason, appointmentType, isEmergency } = req.body;
+
+    // Validate appointment date
+    const appointmentDateObj = new Date(appointmentDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Check if appointment is in the past
+    if (appointmentDateObj < today) {
+      return res.status(400).json({ message: 'Cannot book appointments in the past' });
+    }
+    
+    // Check if appointment is more than 3 months in future
+    const maxDate = new Date();
+    maxDate.setMonth(maxDate.getMonth() + 3);
+    if (appointmentDateObj > maxDate) {
+      return res.status(400).json({ message: 'Appointments can only be booked up to 3 months in advance' });
+    }
 
     // Verify child belongs to parent
     const child = await Child.findById(childId);
@@ -241,6 +260,79 @@ router.patch('/:id/status', auth, async (req, res) => {
 
     if (status === 'completed') {
       appointment.completedAt = new Date();
+      
+      // Handle payment release to doctor when appointment is completed
+      if (appointment.payment && appointment.payment.status === 'payment_held') {
+        try {
+          const DoctorPayment = require('../models/DoctorPayment');
+          const DoctorEarning = require('../models/DoctorEarning');
+          const { sendMail } = require('../utils/mailer');
+          
+          // Find the payment record
+          const paymentRecord = await DoctorPayment.findOne({ 
+            appointment: appointment._id,
+            status: 'payment_held'
+          });
+          
+          if (paymentRecord) {
+            // Update payment status to released
+            paymentRecord.status = 'released';
+            paymentRecord.releasedAt = new Date();
+            await paymentRecord.save();
+            
+            // Update appointment payment status
+            appointment.payment.status = 'released';
+            appointment.payment.releasedAt = new Date();
+            
+            // Create earning record for doctor
+            const earning = new DoctorEarning({
+              doctor: appointment.doctor,
+              appointment: appointment._id,
+              child: appointment.child,
+              parent: appointment.parent,
+              consultationFee: paymentRecord.totalAmount,
+              commissionRate: paymentRecord.commissionRate,
+              commissionAmount: paymentRecord.commissionAmount,
+              netEarning: paymentRecord.payoutAmount,
+              status: 'credited',
+              consultationDate: appointment.appointmentDate,
+              creditedAt: new Date(),
+              notes: `Consultation fee for appointment on ${new Date(appointment.appointmentDate).toLocaleDateString()}`
+            });
+            await earning.save();
+            
+            // Send email notification to doctor
+            await appointment.populate('doctor parent');
+            const doctorEmail = appointment.doctor?.email;
+            if (doctorEmail) {
+              await sendMail({
+                to: doctorEmail,
+                subject: 'Payment Released - TinyTots',
+                html: `
+                  <h2>Payment Released</h2>
+                  <p>Dear Dr. ${appointment.doctor?.firstName} ${appointment.doctor?.lastName},</p>
+                  <p>Your consultation fee has been released to your account.</p>
+                  <h3>Payment Details:</h3>
+                  <ul>
+                    <li><strong>Total Amount:</strong> ₹${paymentRecord.totalAmount}</li>
+                    <li><strong>Platform Commission:</strong> ₹${paymentRecord.commissionAmount}</li>
+                    <li><strong>Your Payout:</strong> ₹${paymentRecord.payoutAmount}</li>
+                    <li><strong>Appointment Date:</strong> ${new Date(appointment.appointmentDate).toLocaleDateString()}</li>
+                  </ul>
+                  <p>The amount has been credited to your earnings and will be paid out according to the payout schedule.</p>
+                  <p>Thank you for using TinyTots!</p>
+                `
+              });
+              console.log('Payment release email sent to doctor:', doctorEmail);
+            }
+            
+            console.log('Payment released to doctor:', appointment.doctor, 'Amount:', paymentRecord.payoutAmount);
+          }
+        } catch (paymentError) {
+          console.error('Error releasing payment to doctor:', paymentError);
+          // Don't fail the entire request if payment release fails
+        }
+      }
     }
 
     await appointment.save();
@@ -277,7 +369,133 @@ router.patch('/:id/consultation', auth, async (req, res) => {
     await appointment.save();
     await appointment.populate('child parent doctor');
 
-    res.json({ message: 'Consultation details saved successfully', appointment });
+    // Credit payment to doctor's account
+    const consultationFee = appointment.payment?.consultationFee || 500;
+    const commissionRate = appointment.payment?.commissionRate || 10;
+    const commissionAmount = (consultationFee * commissionRate) / 100;
+    const netEarning = consultationFee - commissionAmount;
+
+    // Update doctor's wallet
+    const doctor = await User.findById(appointment.doctor._id);
+    if (doctor && doctor.role === 'doctor') {
+      if (!doctor.doctor) {
+        doctor.doctor = {};
+      }
+      doctor.doctor.walletBalance = (doctor.doctor.walletBalance || 0) + netEarning;
+      doctor.doctor.totalEarnings = (doctor.doctor.totalEarnings || 0) + netEarning;
+      doctor.doctor.totalConsultations = (doctor.doctor.totalConsultations || 0) + 1;
+      await doctor.save();
+
+      // Create earning record
+      const earning = new DoctorEarning({
+        doctor: doctor._id,
+        appointment: appointment._id,
+        child: appointment.child._id,
+        parent: appointment.parent._id,
+        consultationFee,
+        commissionRate,
+        commissionAmount,
+        netEarning,
+        consultationDate: appointment.completedAt,
+        status: 'credited'
+      });
+      await earning.save();
+
+      // Update appointment payment status
+      if (!appointment.payment) {
+        appointment.payment = {};
+      }
+      appointment.payment.status = 'paid_to_doctor';
+      appointment.payment.paidToDoctorAt = new Date();
+      appointment.payment.commissionAmount = commissionAmount;
+      appointment.payment.doctorPayoutAmount = netEarning;
+      await appointment.save();
+
+      // Send email notification to doctor
+      try {
+        const childName = appointment.child ? `${appointment.child.firstName} ${appointment.child.lastName}` : 'Patient';
+        const emailSubject = '💰 Consultation Payment Credited - TinyTots';
+        const emailHtml = `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #4CAF50;">Payment Credited Successfully!</h2>
+            <p>Dear Dr. ${doctor.firstName} ${doctor.lastName},</p>
+            <p>Your consultation fee has been credited to your account.</p>
+            
+            <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">Consultation Details:</h3>
+              <p><strong>Patient:</strong> ${childName}</p>
+              <p><strong>Date:</strong> ${new Date(appointment.completedAt).toLocaleDateString()}</p>
+              <p><strong>Consultation Fee:</strong> ₹${consultationFee}</p>
+              <p><strong>Platform Commission (${commissionRate}%):</strong> -₹${commissionAmount.toFixed(2)}</p>
+              <p><strong>Net Earning:</strong> <span style="color: #4CAF50; font-size: 18px; font-weight: bold;">₹${netEarning.toFixed(2)}</span></p>
+            </div>
+            
+            <div style="background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0;">Wallet Summary:</h3>
+              <p><strong>Current Balance:</strong> ₹${doctor.doctor.walletBalance.toFixed(2)}</p>
+              <p><strong>Total Earnings:</strong> ₹${doctor.doctor.totalEarnings.toFixed(2)}</p>
+              <p><strong>Total Consultations:</strong> ${doctor.doctor.totalConsultations}</p>
+            </div>
+            
+            <p>You can view your complete earnings history in your dashboard.</p>
+            
+            <p style="margin-top: 30px;">
+              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/doctor/dashboard" 
+                 style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
+                View Dashboard
+              </a>
+            </p>
+            
+            <p style="color: #666; font-size: 12px; margin-top: 30px;">
+              Thank you for your service!<br/>
+              TinyTots Team
+            </p>
+          </div>
+        `;
+        const emailText = `
+Payment Credited Successfully!
+
+Dear Dr. ${doctor.firstName} ${doctor.lastName},
+
+Your consultation fee has been credited to your account.
+
+Consultation Details:
+- Patient: ${childName}
+- Date: ${new Date(appointment.completedAt).toLocaleDateString()}
+- Consultation Fee: ₹${consultationFee}
+- Platform Commission (${commissionRate}%): -₹${commissionAmount.toFixed(2)}
+- Net Earning: ₹${netEarning.toFixed(2)}
+
+Wallet Summary:
+- Current Balance: ₹${doctor.doctor.walletBalance.toFixed(2)}
+- Total Earnings: ₹${doctor.doctor.totalEarnings.toFixed(2)}
+- Total Consultations: ${doctor.doctor.totalConsultations}
+
+You can view your complete earnings history in your dashboard.
+
+Thank you for your service!
+TinyTots Team
+        `;
+
+        await sendMail({
+          to: doctor.email,
+          subject: emailSubject,
+          html: emailHtml,
+          text: emailText
+        });
+        console.log(`✅ Payment notification email sent to ${doctor.email}`);
+      } catch (emailError) {
+        console.error('Error sending email notification:', emailError);
+        // Don't fail the request if email fails
+      }
+    }
+
+    res.json({ 
+      message: 'Consultation details saved successfully', 
+      appointment,
+      paymentCredited: true,
+      netEarning: netEarning.toFixed(2)
+    });
   } catch (error) {
     console.error('Error saving consultation:', error);
     res.status(500).json({ message: 'Server error' });

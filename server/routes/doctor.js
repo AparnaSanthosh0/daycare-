@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Child = require('../models/Child');
 const Appointment = require('../models/Appointment');
 const Attendance = require('../models/Attendance');
+const DoctorEarning = require('../models/DoctorEarning');
 
 const ENFORCE_DOCTOR_ASSIGNMENTS = false; // Set to true if doctors should be restricted to assigned children only
 
@@ -258,6 +259,92 @@ router.get('/statistics', doctorOnly, async (req, res) => {
   } catch (error) {
     console.error('Get statistics error:', error);
     res.status(500).json({ message: 'Server error fetching statistics' });
+  }
+});
+
+// Get doctor earnings and wallet information
+router.get('/earnings', doctorOnly, async (req, res) => {
+  try {
+    const doctor = await User.findById(req.user.userId);
+    if (!doctor || doctor.role !== 'doctor') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    // Get wallet summary
+    const walletSummary = {
+      walletBalance: doctor.doctor?.walletBalance || 0,
+      totalEarnings: doctor.doctor?.totalEarnings || 0,
+      totalConsultations: doctor.doctor?.totalConsultations || 0,
+      pendingPayout: doctor.doctor?.pendingPayout || 0
+    };
+
+    // Get recent earnings
+    const recentEarnings = await DoctorEarning.find({ doctor: doctor._id })
+      .populate('child', 'firstName lastName')
+      .populate('parent', 'firstName lastName email')
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    // Calculate monthly earnings
+    const currentMonth = new Date();
+    currentMonth.setDate(1);
+    currentMonth.setHours(0, 0, 0, 0);
+
+    const monthlyEarnings = await DoctorEarning.aggregate([
+      {
+        $match: {
+          doctor: doctor._id,
+          createdAt: { $gte: currentMonth }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalEarnings: { $sum: '$netEarning' },
+          totalConsultations: { $sum: 1 },
+          totalFees: { $sum: '$consultationFee' },
+          totalCommission: { $sum: '$commissionAmount' }
+        }
+      }
+    ]);
+
+    // Calculate weekly earnings
+    const lastWeek = new Date();
+    lastWeek.setDate(lastWeek.getDate() - 7);
+
+    const weeklyEarnings = await DoctorEarning.aggregate([
+      {
+        $match: {
+          doctor: doctor._id,
+          createdAt: { $gte: lastWeek }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalEarnings: { $sum: '$netEarning' },
+          totalConsultations: { $sum: 1 }
+        }
+      }
+    ]);
+
+    res.json({
+      wallet: walletSummary,
+      recentEarnings,
+      monthlyStats: monthlyEarnings[0] || {
+        totalEarnings: 0,
+        totalConsultations: 0,
+        totalFees: 0,
+        totalCommission: 0
+      },
+      weeklyStats: weeklyEarnings[0] || {
+        totalEarnings: 0,
+        totalConsultations: 0
+      }
+    });
+  } catch (error) {
+    console.error('Get earnings error:', error);
+    res.status(500).json({ message: 'Server error fetching earnings' });
   }
 });
 

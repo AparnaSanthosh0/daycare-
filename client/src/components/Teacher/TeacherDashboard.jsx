@@ -53,6 +53,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import api from '../../config/api';
 import SmartSearch from '../Common/SmartSearch';
 import VoiceAssistant from '../../VoiceAssistant';
+import BlockchainAttendanceCapture from '../BlockchainAttendanceCapture';
+import BlockchainAttendanceHistory from '../BlockchainAttendanceHistory';
 
 // (Removed duplicate Dialog import if present)
 
@@ -94,6 +96,12 @@ const TeacherDashboard = () => {
     purpose: 'Parent Meeting',
     purposeDetails: ''
   });
+  
+  // Blockchain attendance state
+  const [blockchainCheckInOpen, setBlockchainCheckInOpen] = useState(false);
+  const [blockchainCheckOutOpen, setBlockchainCheckOutOpen] = useState(false);
+  const [viewBlockchainHistory, setViewBlockchainHistory] = useState(false);
+  const [selectedChildForBlockchain, setSelectedChildForBlockchain] = useState(null);
 
   const menuItems = [
     { label: 'Dashboard', icon: <SchoolIcon />, path: '/teacher' },
@@ -703,6 +711,137 @@ const TeacherDashboard = () => {
               </Button>
             </Grid>
           </Grid>
+        </Box>
+      </Paper>
+
+      {/* Blockchain Attendance for Teachers */}
+      <Paper elevation={0} sx={{ border: '2px solid #3b82f6', borderRadius: 2, overflow: 'hidden', mt: 4, bgcolor: '#f0f9ff' }}>
+        <Box sx={{ p: 3, borderBottom: '1px solid #3b82f6', backgroundColor: '#dbeafe' }}>
+          <Typography variant="h6" sx={{ fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+            🔒 Blockchain Attendance
+            <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+              (Immutable GPS & Photo Verified Records)
+            </Typography>
+          </Typography>
+        </Box>
+        <Box sx={{ p: 3 }}>
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2">
+              <strong>Blockchain attendance</strong> creates immutable records with GPS location and photo verification. 
+              These records cannot be altered or deleted, providing legal protection for staff and facility.
+            </Typography>
+          </Alert>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              {students.length > 0 ? (
+                <TextField
+                  select
+                  label="Select Child for Blockchain"
+                  fullWidth
+                  value={selectedChildForBlockchain?._id || ''}
+                  onChange={(e) => {
+                    const child = students.find(c => c._id === e.target.value);
+                    setSelectedChildForBlockchain(child);
+                  }}
+                  disabled={loading}
+                >
+                  <MenuItem value="">
+                    <em>Select a child</em>
+                  </MenuItem>
+                  {students.map((child) => (
+                    <MenuItem key={child._id} value={child._id}>
+                      {child.firstName} {child.lastName}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              ) : (
+                <TextField
+                  label="Loading children..."
+                  fullWidth
+                  disabled
+                  value=""
+                />
+              )}
+            </Grid>
+            
+            <Grid item xs={12} md={8} sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                size="large"
+                color="success"
+                onClick={() => {
+                  if (selectedChildForBlockchain) {
+                    setBlockchainCheckInOpen(true);
+                  }
+                }}
+                disabled={!selectedChildForBlockchain}
+                sx={{ 
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 3,
+                  py: 1.5,
+                  minWidth: '180px'
+                }}
+              >
+                🔒 Blockchain Check-In
+              </Button>
+              
+              <Button
+                variant="contained"
+                size="large"
+                color="error"
+                onClick={() => {
+                  if (selectedChildForBlockchain) {
+                    setBlockchainCheckOutOpen(true);
+                  }
+                }}
+                disabled={!selectedChildForBlockchain}
+                sx={{ 
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 3,
+                  py: 1.5,
+                  minWidth: '180px'
+                }}
+              >
+                🔒 Blockchain Check-Out
+              </Button>
+              
+              <Button
+                variant="outlined"
+                size="large"
+                color="primary"
+                onClick={() => {
+                  if (selectedChildForBlockchain) {
+                    setViewBlockchainHistory(true);
+                  }
+                }}
+                disabled={!selectedChildForBlockchain}
+                sx={{ 
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 3,
+                  py: 1.5,
+                  minWidth: '180px'
+                }}
+              >
+                📊 View History
+              </Button>
+            </Grid>
+          </Grid>
+          
+          {!selectedChildForBlockchain && students.length > 0 && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              Please select a child to enable blockchain attendance actions.
+            </Alert>
+          )}
+          
+          {students.length === 0 && !loading && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              No children found in the system. Add children to use blockchain attendance.
+            </Alert>
+          )}
         </Box>
       </Paper>
 
@@ -2691,6 +2830,66 @@ const TeacherDashboard = () => {
         {currentTab === 8 && renderTransportTab()}
         {currentTab === 9 && renderFeedbackTab()}
       </Box>
+      
+      {/* Voice Assistant */}
+      <VoiceAssistant open={vaOpen} onClose={handleVaClose} />
+      
+      {/* Blockchain Attendance Dialogs */}
+      {selectedChildForBlockchain && (
+        <>
+          <BlockchainAttendanceCapture
+            open={blockchainCheckInOpen}
+            onClose={() => setBlockchainCheckInOpen(false)}
+            entityType="child"
+            entityId={selectedChildForBlockchain._id}
+            entityName={`${selectedChildForBlockchain.firstName} ${selectedChildForBlockchain.lastName}`}
+            actionType="check-in"
+            onSuccess={(result) => {
+              console.log('Blockchain check-in recorded:', result);
+              setBlockchainCheckInOpen(false);
+              fetchTodayAttendance(); // Refresh attendance data
+            }}
+          />
+          
+          <BlockchainAttendanceCapture
+            open={blockchainCheckOutOpen}
+            onClose={() => setBlockchainCheckOutOpen(false)}
+            entityType="child"
+            entityId={selectedChildForBlockchain._id}
+            entityName={`${selectedChildForBlockchain.firstName} ${selectedChildForBlockchain.lastName}`}
+            actionType="check-out"
+            onSuccess={(result) => {
+              console.log('Blockchain check-out recorded:', result);
+              setBlockchainCheckOutOpen(false);
+              fetchTodayAttendance();
+            }}
+          />
+          
+          <Dialog 
+            open={viewBlockchainHistory} 
+            onClose={() => setViewBlockchainHistory(false)} 
+            maxWidth="lg" 
+            fullWidth
+          >
+            <DialogTitle>
+              🔒 Blockchain Attendance History
+              <Typography variant="body2" color="text.secondary">
+                Immutable records with GPS & photo verification for {selectedChildForBlockchain.firstName} {selectedChildForBlockchain.lastName}
+              </Typography>
+            </DialogTitle>
+            <DialogContent>
+              <BlockchainAttendanceHistory
+                entityType="child"
+                entityId={selectedChildForBlockchain._id}
+                entityName={`${selectedChildForBlockchain.firstName} ${selectedChildForBlockchain.lastName}`}
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setViewBlockchainHistory(false)}>Close</Button>
+            </DialogActions>
+          </Dialog>
+        </>
+      )}
     </Box>
   );
 };

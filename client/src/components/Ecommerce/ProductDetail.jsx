@@ -18,13 +18,16 @@ import {
   CardMedia,
   Snackbar,
 } from '@mui/material';
-import { Favorite, FavoriteBorder, ShoppingCart, ArrowBack } from '@mui/icons-material';
+import { Favorite, FavoriteBorder, ShoppingCart, ArrowBack, ViewInAr, Image, QrCode2 } from '@mui/icons-material';
 import { Fab, Badge } from '@mui/material';
 import ShopHeader from './ShopHeader';
 import api, { API_BASE_URL } from '../../config/api';
 import { useShop } from '../../contexts/ShopContext';
 import { recommendForProduct, recommendForUser, collectSignalsFromContext } from '../../utils/recommendations';
 import { deriveSizeOptions } from '../../utils/sizes';
+import Product3DViewer from '../Product3DViewer';
+import Image3DViewer from '../Image3DViewer';
+import QRCodeGenerator from '../AR/QRCodeGenerator';
 
 function toAbsoluteImageUrl(maybePath) {
   if (!maybePath) return null;
@@ -56,6 +59,8 @@ export default function ProductDetail() {
   const [images, setImages] = React.useState([]);
   const [allProducts, setAllProducts] = React.useState([]);
   const [snack, setSnack] = React.useState('');
+  const [view3D, setView3D] = React.useState(false); // Toggle for 3D view
+  const [qrGeneratorOpen, setQrGeneratorOpen] = React.useState(false);
   const sizeOptions = deriveSizeOptions(product?.category, product?.sizeBasis || null);
 
   React.useEffect(() => {
@@ -91,6 +96,7 @@ export default function ProductDetail() {
             stockQty: p.stockQty ?? 0,
             inStock: (p.stockQty ?? 0) > 0 && (p.inStock !== false),
             description: p.description || '',
+            model3DUrl: p.model3DUrl || null, // 3D model URL if available
           };
           setProduct(normalized);
           setImages(gallery.length ? gallery : [image || '/logo192.svg']);
@@ -132,6 +138,7 @@ export default function ProductDetail() {
               reviews: found.reviews || 0,
               inStock: found.inStock !== false,
               description: found.description || '',
+              model3DUrl: found.model3DUrl || null, // 3D model URL if available
             };
             setProduct(normalized);
             setImages(gallery.length ? gallery : [image || '/logo192.svg']);
@@ -182,22 +189,72 @@ export default function ProductDetail() {
         ) : (
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
-              <Grid container spacing={1}>
-                <Grid item xs={2}>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {images.map((img, idx) => (
-                      <Box key={idx} onClick={() => setActiveImage(idx)} sx={{ p: 0.5, border: idx === activeImage ? '2px solid #ff6f00' : '1px solid #eee', borderRadius: 1, cursor: 'pointer' }}>
-                        <img src={img} alt={`thumb-${idx}`} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} onError={(e)=>{e.currentTarget.src='/logo192.svg';}} />
-                      </Box>
-                    ))}
-                  </Box>
+              {/* Toggle between 2D and 3D view - Available for ALL products */}
+              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
+                <ToggleButtonGroup
+                  value={view3D ? '3d' : '2d'}
+                  exclusive
+                  onChange={(e, newValue) => {
+                    if (newValue !== null) {
+                      setView3D(newValue === '3d');
+                    }
+                  }}
+                  size="small"
+                  sx={{ backgroundColor: 'white', borderRadius: 2 }}
+                >
+                  <ToggleButton value="2d" sx={{ px: 3 }}>
+                    <Image sx={{ mr: 1 }} />
+                    Images
+                  </ToggleButton>
+                  <ToggleButton value="3d" sx={{ px: 3 }}>
+                    <ViewInAr sx={{ mr: 1 }} />
+                    3D View
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Box>
+
+              {/* 3D Viewer or Image Gallery */}
+              {view3D ? (
+                <Box sx={{ height: 500 }}>
+                  {product.model3DUrl ? (
+                    <Product3DViewer
+                      modelUrl={product.model3DUrl}
+                      autoRotate={true}
+                      cameraControls={true}
+                      height={500}
+                      scale={1}
+                      backgroundColor="#f3f4f6"
+                      showControls={true}
+                      environment="city"
+                    />
+                  ) : (
+                    <Image3DViewer
+                      imageUrl={toAbsoluteImageUrl(product.image)}
+                      autoRotate={true}
+                      height={500}
+                      backgroundColor="#f3f4f6"
+                      showControls={true}
+                    />
+                  )}
+                </Box>
+              ) : (
+                <Grid container spacing={1}>
+                  <Grid item xs={2}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {images.map((img, idx) => (
+                        <Box key={idx} onClick={() => setActiveImage(idx)} sx={{ p: 0.5, border: idx === activeImage ? '2px solid #ff6f00' : '1px solid #eee', borderRadius: 1, cursor: 'pointer' }}>
+                          <img src={img} alt={`thumb-${idx}`} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} onError={(e)=>{e.currentTarget.src='/logo192.svg';}} />
+                        </Box>
+                      ))}
+                    </Box>
+                  </Grid>
+                  <Grid item xs={10}>
+                    <Box sx={{ bgcolor: '#f3f4f6', borderRadius: 2, p: 1 }}>
+                      <img src={images[activeImage] || product.image} alt={product.name} style={{ width: '100%', maxHeight: 520, objectFit: 'contain' }} onError={(e)=>{e.currentTarget.src='/logo192.svg';}} />
+                    </Box>
+                  </Grid>
                 </Grid>
-                <Grid item xs={10}>
-                  <Box sx={{ bgcolor: '#f3f4f6', borderRadius: 2, p: 1 }}>
-                    <img src={images[activeImage] || product.image} alt={product.name} style={{ width: '100%', maxHeight: 520, objectFit: 'contain' }} onError={(e)=>{e.currentTarget.src='/logo192.svg';}} />
-                  </Box>
-                </Grid>
-              </Grid>
+              )}
             </Grid>
             <Grid item xs={12} md={6}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -255,6 +312,19 @@ export default function ProductDetail() {
               >
                 {product.inStock ? 'ADD TO CART' : 'OUT OF STOCK'}
               </Button>
+              
+              {/* AR QR Code Feature - Always show, works even without 3D model */}
+              <Button
+                fullWidth
+                variant="outlined"
+                color="primary"
+                startIcon={<QrCode2 />}
+                onClick={() => setQrGeneratorOpen(true)}
+                sx={{ borderRadius: '25px', py: 1, mt: 2 }}
+              >
+                Generate AR QR Code
+              </Button>
+              
               <Divider sx={{ my: 3 }} />
               <Typography variant="caption" color="text.secondary">7 days Return/Exchange · Fast Delivery</Typography>
             </Grid>
@@ -329,6 +399,19 @@ export default function ProductDetail() {
           message={snack}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         />
+        
+        {/* QR Code Generator Dialog */}
+        {product && (
+          <QRCodeGenerator
+            open={qrGeneratorOpen}
+            onClose={() => setQrGeneratorOpen(false)}
+            productId={product.id}
+            productName={product.name}
+            model3DUrl={product.model3DUrl || `/models/${product.category?.toLowerCase() || 'product'}.glb`}
+          />
+        )}
+        
+        
         {/* Floating Cart Button */}
         <Fab color="success" sx={{ position: 'fixed', bottom: 24, right: 24 }} onClick={() => navigate('/cart')}>
           <Badge badgeContent={cartCount} color="error">

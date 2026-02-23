@@ -6,6 +6,7 @@ const Attendance = require('../models/Attendance');
 const User = require('../models/User');
 const Child = require('../models/Child');
 const mongoose = require('mongoose');
+const AttendanceBlockchainService = require('../services/attendanceBlockchainService');
 
 // Normalize date to start of day
 function startOfDay(d = new Date()) {
@@ -67,7 +68,7 @@ async function resolveEntity(entityType, entityIdRaw) {
 // Check-in
 router.post('/check-in', auth, async (req, res) => {
   try {
-    const { entityType, entityId, when, notes } = req.body || {};
+    const { entityType, entityId, when, notes, gpsLocation } = req.body || {};
     const entity = await resolveEntity(entityType, entityId);
     if (!entity.ok) return res.status(entity.status).json({ message: entity.message });
 
@@ -83,17 +84,51 @@ router.post('/check-in', auth, async (req, res) => {
       { upsert: true, new: true }
     );
 
-    return res.status(200).json({ message: 'Checked in', attendance: doc });
-  } catch (e) {
-    console.error('Check-in error:', e);
-    return res.status(500).json({ message: 'Server error during check-in' });
+    // 🔒 Record to blockchain for immutable proof (cannot be altered or deleted)
+    try {
+      const entityName = entityType === 'child' 
+        ? `${entity.doc.firstName} ${entity.doc.lastName}`
+        : `${entity.doc.firstName} ${entity.doc.lastName}`;
+
+      const deviceInfo = {
+        userAgent: req.headers['user-agent'],
+        ipAddress: req.ip || req.connection.remoteAddress,
+        deviceId: req.body.deviceId
+      };
+
+      const gpsLocation = req.body.gpsLocation || null;
+
+      await AttendanceBlockchainService.recordAttendance({
+        entityType,
+        entityId: entity.doc._id,
+        entityName,
+        actionType: 'check-in',
+        actionTime: now,
+        gpsLocation,
+        photoBuffer: null,
+        photoUrl: null,
+        deviceInfo,
+        performedBy: req.user.userId,
+        notes: notes || ''
+      });
+
+      console.log(`✅ Blockchain: Check-in recorded for ${entityName} (${entityType})`);
+    } catch (blockchainError) {
+      console.error('⚠️ Blockchain recording failed:', blockchainError.message);
+    }
+
+    res.json({ message: 'Checked in', attendance: doc });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Check-out
+// POST /api/attendance/check-out
 router.post('/check-out', auth, async (req, res) => {
   try {
-    const { entityType, entityId, when, notes } = req.body || {};
+    const { entityType, entityId, when, notes, gpsLocation } = req.body || {};
+    
     const entity = await resolveEntity(entityType, entityId);
     if (!entity.ok) return res.status(entity.status).json({ message: entity.message });
 
@@ -116,14 +151,45 @@ router.post('/check-out', auth, async (req, res) => {
       // TODO: send parent notification (email/whatsapp) via utils when configured
     }
 
-    return res.status(200).json({ message: 'Checked out', attendance: doc });
-  } catch (e) {
-    console.error('Check-out error:', e);
-    return res.status(500).json({ message: 'Server error during check-out' });
+    // 🔒 Record to blockchain for immutable proof (cannot be altered or deleted)
+    try {
+      const entityName = entityType === 'child' 
+        ? `${entity.doc.firstName} ${entity.doc.lastName}`
+        : `${entity.doc.firstName} ${entity.doc.lastName}`;
+
+      const deviceInfo = {
+        userAgent: req.headers['user-agent'],
+        ipAddress: req.ip || req.connection.remoteAddress,
+        deviceId: req.body.deviceId
+      };
+
+      await AttendanceBlockchainService.recordAttendance({
+        entityType,
+        entityId: entity.doc._id,
+        entityName,
+        actionType: 'check-out',
+        actionTime: now,
+        gpsLocation: gpsLocation || null,
+        photoBuffer: null,
+        photoUrl: null,
+        deviceInfo,
+        performedBy: req.user.userId,
+        notes: notes || ''
+      });
+
+      console.log(`✅ Blockchain: Check-out recorded for ${entityName} (${entityType})`);
+    } catch (blockchainError) {
+      console.error('⚠️ Blockchain recording failed:', blockchainError.message);
+    }
+
+    res.json({ message: 'Checked out', attendance: doc });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Mark absence for a date
+// POST /api/attendance/mark-absence
 router.post('/mark-absence', auth, async (req, res) => {
   try {
     const { entityType, entityId, date, notes } = req.body || {};

@@ -24,6 +24,7 @@ const productSchema = new mongoose.Schema(
     rejectionReason: { type: String, default: '' }, // Why discount was rejected
     image: { type: String, default: null }, // URL to image
     images: [{ type: String }],
+    model3DUrl: { type: String, default: null }, // URL to 3D model file (GLB/GLTF format)
     // Image presentation options
     imageFit: { type: String, enum: ['cover', 'contain', 'fill', 'scale-down', 'none'], default: 'cover' },
     imageFocalX: { type: Number, min: 0, max: 100, default: 50 },

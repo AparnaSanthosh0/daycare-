@@ -35,6 +35,34 @@ const blockchainSchema = new mongoose.Schema({
     },
     notes: String,
     
+    // Attendance specific fields (immutable check-in/check-out)
+    entityType: { type: String, enum: ['child', 'staff'] },
+    entityId: { type: mongoose.Schema.Types.ObjectId },
+    entityName: String,
+    actionType: { type: String, enum: ['check-in', 'check-out'] },
+    actionTime: Date,
+    
+    // GPS Location proof (tamper-proof)
+    gpsLocation: {
+      latitude: Number,
+      longitude: Number,
+      accuracy: Number,
+      timestamp: Date,
+      address: String
+    },
+    
+    // Photo verification (with cryptographic hash)
+    photoHash: String,
+    photoUrl: String,
+    photoTimestamp: Date,
+    
+    // Device/system info for audit trail
+    deviceInfo: {
+      userAgent: String,
+      ipAddress: String,
+      deviceId: String
+    },
+    
     // General fields for other data types
     description: String,
     amount: Number,

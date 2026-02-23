@@ -18,7 +18,8 @@ import {
 import {
   ShoppingCart as ShoppingCartIcon,
   Add,
-  Favorite
+  Favorite,
+  ViewInAr
 } from '@mui/icons-material';
 import { styled } from '@mui/material/styles';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -202,6 +203,7 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
             isNew: !!p.isNew,
             isBestseller: !!p.isBestseller,
             description: p.description || '',
+            model3DUrl: p.model3DUrl || null, // Include 3D model URL
           };
         });
         setProducts(mapped);
@@ -679,6 +681,18 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                       onError={(e) => { e.currentTarget.src = '/logo192.svg'; }}
                       onClick={() => navigate(`/product/${product.id}`)}
                     />
+                    {/* 3D Badge for Recommended Products */}
+                    {product.model3DUrl && (
+                      <Box sx={{ position: 'absolute', top: 12, left: 12 }}>
+                        <Chip 
+                          icon={<ViewInAr sx={{ fontSize: '1rem' }} />}
+                          label="3D View" 
+                          color="primary" 
+                          size="small" 
+                          sx={{ fontWeight: 600, backgroundColor: '#1976d2', color: 'white' }} 
+                        />
+                      </Box>
+                    )}
                     <IconButton
                       onClick={() => toggleWishlist(product.id)}
                       sx={{ position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(255,255,255,0.9)', '&:hover': { backgroundColor: 'white' } }}
@@ -884,6 +898,15 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                     )}
                     {product.stockQty > 0 && product.stockQty <= 5 && (
                       <Chip label={`Only ${product.stockQty} left`} color="warning" size="small" sx={{ fontWeight: 600 }} />
+                    )}
+                    {product.model3DUrl && (
+                      <Chip 
+                        icon={<ViewInAr sx={{ fontSize: '1rem' }} />}
+                        label="3D View" 
+                        color="primary" 
+                        size="small" 
+                        sx={{ fontWeight: 600, backgroundColor: '#1976d2', color: 'white' }} 
+                      />
                     )}
                   </Box>
                   

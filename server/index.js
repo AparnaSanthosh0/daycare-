@@ -181,6 +181,14 @@ app.use('/api/purchase-prediction', requireDb, require('./routes/purchasePredict
 // Demand Prediction (BPNN ML)
 app.use('/api/demand-prediction', requireDb, require('./routes/demandPrediction'));
 
+// AI/NLP Features (OpenAI GPT Integration)
+app.use('/api/chatbot', requireDb, require('./routes/chatbot'));
+app.use('/api/sentiment', requireDb, require('./routes/sentimentAnalysis'));
+app.use('/api/automated-reports', requireDb, require('./routes/automatedReports'));
+
+// Voice Assistant (Multilingual Voice Processing)
+app.use('/api/voice', require('./routes/voice'));
+
 // Visitor Management
 app.use('/api/visitors', requireDb, require('./routes/visitors'));
 

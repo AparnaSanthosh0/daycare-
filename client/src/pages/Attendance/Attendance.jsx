@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { Typography, Box, Paper, Grid, Button, TextField, MenuItem, Alert, Divider, Card, CardContent } from '@mui/material';
+import { Typography, Box, Paper, Grid, Button, TextField, MenuItem, Alert, Divider, Card, CardContent, Dialog, DialogTitle, DialogContent, DialogActions } from '@mui/material';
 import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import api from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
+import BlockchainAttendanceCapture from '../../components/BlockchainAttendanceCapture';
+import BlockchainAttendanceHistory from '../../components/BlockchainAttendanceHistory';
 
 
 const Attendance = () => {
@@ -18,6 +20,12 @@ const Attendance = () => {
   const [adminView, setAdminView] = useState(false);
   const [assignedChildren, setAssignedChildren] = useState([]);
   const [childrenLoading, setChildrenLoading] = useState(false);
+  
+  // Blockchain attendance state
+  const [blockchainCheckInOpen, setBlockchainCheckInOpen] = useState(false);
+  const [blockchainCheckOutOpen, setBlockchainCheckOutOpen] = useState(false);
+  const [viewBlockchainHistory, setViewBlockchainHistory] = useState(false);
+  const [selectedChildForBlockchain, setSelectedChildForBlockchain] = useState(null);
 
   // Fetch assigned children for staff
   const fetchAssignedChildren = React.useCallback(async () => {
@@ -385,6 +393,138 @@ const Attendance = () => {
         </Paper>
       )}
 
+      {/* Blockchain Attendance for Staff */}
+      {user?.role === 'staff' && (
+        <Paper sx={{ p: 3, mb: 3, bgcolor: '#f0f9ff', border: '2px solid #3b82f6' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ display: 'flex', alignItems: 'center', fontWeight: 600 }}>
+              🔒 Blockchain Attendance
+              <Typography variant="caption" sx={{ ml: 1, color: 'text.secondary' }}>
+                (Immutable GPS & Photo Verified Records)
+              </Typography>
+            </Typography>
+          </Box>
+          
+          <Alert severity="info" sx={{ mb: 3 }}>
+            <Typography variant="body2">
+              <strong>Blockchain attendance</strong> creates immutable records with GPS location and photo verification. 
+              These records cannot be altered or deleted, providing legal protection for staff and facility.
+            </Typography>
+          </Alert>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              {assignedChildren.length > 0 ? (
+                <TextField
+                  select
+                  label="Select Child for Blockchain"
+                  fullWidth
+                  value={selectedChildForBlockchain?._id || ''}
+                  onChange={(e) => {
+                    const child = assignedChildren.find(c => c._id === e.target.value);
+                    setSelectedChildForBlockchain(child);
+                  }}
+                  disabled={childrenLoading}
+                >
+                  <MenuItem value="">
+                    <em>Select a child</em>
+                  </MenuItem>
+                  {assignedChildren.map((child) => (
+                    <MenuItem key={child._id} value={child._id}>
+                      {child.firstName} {child.lastName}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              ) : (
+                <TextField
+                  label="Loading children..."
+                  fullWidth
+                  disabled
+                  value=""
+                />
+              )}
+            </Grid>
+            
+            <Grid item xs={12} md={8} sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+              <Button
+                variant="contained"
+                size="large"
+                color="success"
+                onClick={() => {
+                  if (selectedChildForBlockchain) {
+                    setBlockchainCheckInOpen(true);
+                  }
+                }}
+                disabled={!selectedChildForBlockchain}
+                sx={{ 
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 3,
+                  py: 1.5,
+                  minWidth: '180px'
+                }}
+              >
+                🔒 Blockchain Check-In
+              </Button>
+              
+              <Button
+                variant="contained"
+                size="large"
+                color="error"
+                onClick={() => {
+                  if (selectedChildForBlockchain) {
+                    setBlockchainCheckOutOpen(true);
+                  }
+                }}
+                disabled={!selectedChildForBlockchain}
+                sx={{ 
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 3,
+                  py: 1.5,
+                  minWidth: '180px'
+                }}
+              >
+                🔒 Blockchain Check-Out
+              </Button>
+              
+              <Button
+                variant="outlined"
+                size="large"
+                color="primary"
+                onClick={() => {
+                  if (selectedChildForBlockchain) {
+                    setViewBlockchainHistory(true);
+                  }
+                }}
+                disabled={!selectedChildForBlockchain}
+                sx={{ 
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 3,
+                  py: 1.5,
+                  minWidth: '180px'
+                }}
+              >
+                📊 View History
+              </Button>
+            </Grid>
+          </Grid>
+          
+          {!selectedChildForBlockchain && assignedChildren.length > 0 && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              Please select a child to enable blockchain attendance actions.
+            </Alert>
+          )}
+          
+          {assignedChildren.length === 0 && !childrenLoading && (
+            <Alert severity="warning" sx={{ mt: 2 }}>
+              No assigned children found. Contact admin to assign children to your account.
+            </Alert>
+          )}
+        </Paper>
+      )}
+
       {/* Show read-only message for Parents */}
       {user?.role === 'parent' && (
         <Paper sx={{ p: 3, mb: 3, bgcolor: 'info.50', border: '1px solid', borderColor: 'info.main' }}>
@@ -467,6 +607,63 @@ const Attendance = () => {
         </Box>
 
       </Paper>
+      
+      {/* Blockchain Attendance Dialogs */}
+      {selectedChildForBlockchain && (
+        <>
+          <BlockchainAttendanceCapture
+            open={blockchainCheckInOpen}
+            onClose={() => setBlockchainCheckInOpen(false)}
+            entityType="child"
+            entityId={selectedChildForBlockchain._id}
+            entityName={`${selectedChildForBlockchain.firstName} ${selectedChildForBlockchain.lastName}`}
+            actionType="check-in"
+            onSuccess={(result) => {
+              console.log('Blockchain check-in recorded:', result);
+              setBlockchainCheckInOpen(false);
+              loadReport(); // Refresh attendance data
+            }}
+          />
+          
+          <BlockchainAttendanceCapture
+            open={blockchainCheckOutOpen}
+            onClose={() => setBlockchainCheckOutOpen(false)}
+            entityType="child"
+            entityId={selectedChildForBlockchain._id}
+            entityName={`${selectedChildForBlockchain.firstName} ${selectedChildForBlockchain.lastName}`}
+            actionType="check-out"
+            onSuccess={(result) => {
+              console.log('Blockchain check-out recorded:', result);
+              setBlockchainCheckOutOpen(false);
+              loadReport();
+            }}
+          />
+          
+          <Dialog 
+            open={viewBlockchainHistory} 
+            onClose={() => setViewBlockchainHistory(false)} 
+            maxWidth="lg" 
+            fullWidth
+          >
+            <DialogTitle>
+              🔒 Blockchain Attendance History
+              <Typography variant="body2" color="text.secondary">
+                Immutable records with GPS & photo verification for {selectedChildForBlockchain.firstName} {selectedChildForBlockchain.lastName}
+              </Typography>
+            </DialogTitle>
+            <DialogContent>
+              <BlockchainAttendanceHistory
+                entityType="child"
+                entityId={selectedChildForBlockchain._id}
+                entityName={`${selectedChildForBlockchain.firstName} ${selectedChildForBlockchain.lastName}`}
+              />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setViewBlockchainHistory(false)}>Close</Button>
+            </DialogActions>
+          </Dialog>
+        </>
+      )}
     </Box>
   );
 };

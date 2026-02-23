@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Image Display - Baby Bottles</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            max-width: 900px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+
+        .upload-section {
+            text-align: center;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 10px;
+            margin-bottom: 30px;
+        }
+
+        .upload-btn {
+            background: #667eea;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .upload-btn:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .viewer-container {
+            position: relative;
+            width: 100%;
+            height: 600px;
+            background: #ffffff;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            perspective: 1000px;
+            cursor: grab;
+            user-select: none;
+        }
+
+        .viewer-container:active {
+            cursor: grabbing;
+        }
+
+        .image-wrapper {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform-style: preserve-3d;
+            transition: transform 0.1s ease-out;
+            width: 80%;
+            height: 80%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .product-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            filter: drop-shadow(0 15px 30px rgba(0,0,0,0.3));
+            pointer-events: none;
+        }
+
+        .controls {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            display: flex;
+            gap: 10px;
+            z-index: 10;
+        }
+
+        .control-btn {
+            background: rgba(255,255,255,0.95);
+            border: none;
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            transition: all 0.2s;
+            font-size: 20px;
+        }
+
+        .control-btn:hover {
+            background: white;
+            transform: scale(1.1);
+        }
+
+        .instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 25px;
+            font-size: 14px;
+            z-index: 10;
+        }
+
+        .info-panel {
+            position: absolute;
+            top: 15px;
+            left: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 10;
+        }
+
+        .info-badge {
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 30px;
+        }
+
+        .feature-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 10px;
+        }
+
+        .feature-title {
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+        }
+
+        .feature-desc {
+            font-size: 14px;
+            color: #666;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🍼 3D Product Display</h1>
+        <p class="subtitle">Drag to rotate 360° • Scroll to zoom • Upload your own image!</p>
+
+        <div class="upload-section">
+            <label for="imageUpload" class="upload-btn">
+                📤 Upload Your Image (JPG, PNG)
+            </label>
+            <input type="file" id="imageUpload" accept="image/*">
+            <p style="margin-top: 10px; color: #666; font-size: 14px;">
+                Or using demo baby bottle image
+            </p>
+        </div>
+
+        <div class="viewer-container" id="viewer">
+            <div class="info-panel">
+                <div class="info-badge" id="rotationDisplay">0°</div>
+                <div class="info-badge" id="zoomDisplay">100%</div>
+            </div>
+
+            <div class="controls">
+                <button class="control-btn" id="zoomIn" title="Zoom In">➕</button>
+                <button class="control-btn" id="zoomOut" title="Zoom Out">➖</button>
+                <button class="control-btn" id="reset" title="Reset">↻</button>
+                <button class="control-btn" id="fullscreen" title="Fullscreen">⛶</button>
+            </div>
+
+            <div class="image-wrapper" id="imageWrapper">
+                <img src="https://images.unsplash.com/photo-1596461404969-9ae70f2830c1?w=600" 
+                     alt="Product" 
+                     class="product-image" 
+                     id="productImage">
+            </div>
+
+            <div class="instructions">
+                🖱️ Drag to rotate • 🔍 Scroll to zoom • 🎮 Auto-rotating
+            </div>
+        </div>
+
+        <div class="features">
+            <div class="feature-card">
+                <div class="feature-icon">🔄</div>
+                <div class="feature-title">360° Rotation</div>
+                <div class="feature-desc">Smooth drag rotation</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🔍</div>
+                <div class="feature-title">Zoom Control</div>
+                <div class="feature-desc">Scroll or buttons</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">✨</div>
+                <div class="feature-title">3D Illusion</div>
+                <div class="feature-desc">No 3D models needed</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📸</div>
+                <div class="feature-title">Any Image</div>
+                <div class="feature-desc">Upload your photos</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const viewer = document.getElementById('viewer');
+        const imageWrapper = document.getElementById('imageWrapper');
+        const productImage = document.getElementById('productImage');
+        const rotationDisplay = document.getElementById('rotationDisplay');
+        const zoomDisplay = document.getElementById('zoomDisplay');
+        const imageUpload = document.getElementById('imageUpload');
+
+        let rotation = 0;
+        let zoom = 1;
+        let tiltX = 0;
+        let tiltY = 0;
+        let isDragging = false;
+        let startX = 0;
+        let startRotation = 0;
+        let autoRotateInterval = null;
+
+        // Update transform
+        function updateTransform() {
+            imageWrapper.style.transform = `
+                translate(-50%, -50%)
+                rotateY(${rotation}deg)
+                rotateX(${tiltX}deg)
+                rotateZ(${tiltY}deg)
+                scale(${zoom})
+            `;
+            rotationDisplay.textContent = `${Math.round(rotation)}°`;
+            zoomDisplay.textContent = `${Math.round(zoom * 100)}%`;
+        }
+
+        // Auto-rotate
+        function startAutoRotate() {
+            autoRotateInterval = setInterval(() => {
+                if (!isDragging) {
+                    rotation = (rotation + 0.5) % 360;
+                    updateTransform();
+                }
+            }, 30);
+        }
+
+        // Mouse down
+        viewer.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX;
+            startRotation = rotation;
+            clearInterval(autoRotateInterval);
+        });
+
+        // Mouse move
+        viewer.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const delta = e.clientX - startX;
+                rotation = (startRotation + delta * 0.5) % 360;
+                updateTransform();
+            } else {
+                // Tilt effect on hover
+                const rect = viewer.getBoundingClientRect();
+                const x = (e.clientX - rect.left) / rect.width - 0.5;
+                const y = (e.clientY - rect.top) / rect.height - 0.5;
+                tiltX = y * 10;
+                tiltY = -x * 10;
+                updateTransform();
+            }
+        });
+
+        // Mouse up
+        document.addEventListener('mouseup', () => {
+            if (isDragging) {
+                isDragging = false;
+                startAutoRotate();
+            }
+        });
+
+        // Mouse leave
+        viewer.addEventListener('mouseleave', () => {
+            tiltX = 0;
+            tiltY = 0;
+            updateTransform();
+        });
+
+        // Wheel zoom
+        viewer.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            zoom = Math.max(0.5, Math.min(3, zoom + delta));
+            updateTransform();
+        });
+
+        // Control buttons
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            zoom = Math.min(zoom + 0.2, 3);
+            updateTransform();
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            zoom = Math.max(zoom - 0.2, 0.5);
+            updateTransform();
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+            rotation = 0;
+            zoom = 1;
+            tiltX = 0;
+            tiltY = 0;
+            updateTransform();
+        });
+
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                viewer.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        // Image upload
+        imageUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    productImage.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Initialize
+        startAutoRotate();
+        updateTransform();
+    </script>
+</body>
+</html>
