@@ -18,7 +18,7 @@ import {
   CardMedia,
   Snackbar,
 } from '@mui/material';
-import { Favorite, FavoriteBorder, ShoppingCart, ArrowBack, ViewInAr, Image, QrCode2 } from '@mui/icons-material';
+import { Favorite, FavoriteBorder, ShoppingCart, ArrowBack, ViewInAr, Image } from '@mui/icons-material';
 import { Fab, Badge } from '@mui/material';
 import ShopHeader from './ShopHeader';
 import api, { API_BASE_URL } from '../../config/api';
@@ -27,7 +27,7 @@ import { recommendForProduct, recommendForUser, collectSignalsFromContext } from
 import { deriveSizeOptions } from '../../utils/sizes';
 import Product3DViewer from '../Product3DViewer';
 import Image3DViewer from '../Image3DViewer';
-import QRCodeGenerator from '../AR/QRCodeGenerator';
+import Product3DImageViewer from '../Product3DImageViewer';
 
 function toAbsoluteImageUrl(maybePath) {
   if (!maybePath) return null;
@@ -49,6 +49,14 @@ function toAbsoluteImageUrl(maybePath) {
   }
 }
 
+// Check if category is fashion/clothing (uses Image3DViewer instead of generic 3D models)
+function isFashionCategory(category) {
+  if (!category) return false;
+  const fashionKeywords = ['fashion', 'clothing', 'clothes', 'dress', 'shirt', 'romper', 'onesie', 'bodysuit', 'pants', 'shorts', 'skirt', 'jacket', 'sweater', 'coat'];
+  const lowerCategory = category.toLowerCase();
+  return fashionKeywords.some(keyword => lowerCategory.includes(keyword));
+}
+
 export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -60,7 +68,6 @@ export default function ProductDetail() {
   const [allProducts, setAllProducts] = React.useState([]);
   const [snack, setSnack] = React.useState('');
   const [view3D, setView3D] = React.useState(false); // Toggle for 3D view
-  const [qrGeneratorOpen, setQrGeneratorOpen] = React.useState(false);
   const sizeOptions = deriveSizeOptions(product?.category, product?.sizeBasis || null);
 
   React.useEffect(() => {
@@ -216,26 +223,15 @@ export default function ProductDetail() {
               {/* 3D Viewer or Image Gallery */}
               {view3D ? (
                 <Box sx={{ height: 500 }}>
-                  {product.model3DUrl ? (
-                    <Product3DViewer
-                      modelUrl={product.model3DUrl}
-                      autoRotate={true}
-                      cameraControls={true}
-                      height={500}
-                      scale={1}
-                      backgroundColor="#f3f4f6"
-                      showControls={true}
-                      environment="city"
-                    />
-                  ) : (
-                    <Image3DViewer
-                      imageUrl={toAbsoluteImageUrl(product.image)}
-                      autoRotate={true}
-                      height={500}
-                      backgroundColor="#f3f4f6"
-                      showControls={true}
-                    />
-                  )}
+                  {/* Use enhanced Product3DImageViewer for all products - shows actual product image with 3D effects */}
+                  <Product3DImageViewer
+                    imageUrl={toAbsoluteImageUrl(product.image)}
+                    productName={product.name}
+                    autoRotate={true}
+                    height={500}
+                    backgroundColor="#f8f9fa"
+                    showControls={true}
+                  />
                 </Box>
               ) : (
                 <Grid container spacing={1}>
@@ -300,6 +296,46 @@ export default function ProductDetail() {
                 </IconButton>
                 <Typography variant="body2" color="text.secondary">Shortlist</Typography>
               </Box>
+
+              {/* AR Try-On Banner for applicable products */}
+              {(product.category?.toLowerCase().includes('accessory') || 
+                product.category?.toLowerCase().includes('hat') || 
+                product.category?.toLowerCase().includes('glasses') ||
+                product.name?.toLowerCase().includes('face paint') ||
+                product.name?.toLowerCase().includes('makeup')) && (
+                <Box
+                  sx={{
+                    mb: 2,
+                    p: 2,
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    borderRadius: 2,
+                    color: 'white',
+                  }}
+                >
+                  <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                    ✨ Try It On in AR!
+                  </Typography>
+                  <Typography variant="caption" display="block" mb={1}>
+                    See how this product looks on you using your camera
+                  </Typography>
+                  <Button
+                    variant="contained"
+                    size="small"
+                    fullWidth
+                    onClick={() => navigate(`/face-ar?productId=${product.id}`)}
+                    sx={{
+                      bgcolor: 'white',
+                      color: '#667eea',
+                      fontWeight: 'bold',
+                      '&:hover': {
+                        bgcolor: 'rgba(255, 255, 255, 0.9)',
+                      },
+                    }}
+                  >
+                    Try Face AR Now
+                  </Button>
+                </Box>
+              )}
               <Button
                 fullWidth
                 variant="contained"
@@ -311,18 +347,6 @@ export default function ProductDetail() {
                 sx={{ borderRadius: '25px', py: 1.5, fontWeight: 700 }}
               >
                 {product.inStock ? 'ADD TO CART' : 'OUT OF STOCK'}
-              </Button>
-              
-              {/* AR QR Code Feature - Always show, works even without 3D model */}
-              <Button
-                fullWidth
-                variant="outlined"
-                color="primary"
-                startIcon={<QrCode2 />}
-                onClick={() => setQrGeneratorOpen(true)}
-                sx={{ borderRadius: '25px', py: 1, mt: 2 }}
-              >
-                Generate AR QR Code
               </Button>
               
               <Divider sx={{ my: 3 }} />
@@ -399,17 +423,6 @@ export default function ProductDetail() {
           message={snack}
           anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
         />
-        
-        {/* QR Code Generator Dialog */}
-        {product && (
-          <QRCodeGenerator
-            open={qrGeneratorOpen}
-            onClose={() => setQrGeneratorOpen(false)}
-            productId={product.id}
-            productName={product.name}
-            model3DUrl={product.model3DUrl || `/models/${product.category?.toLowerCase() || 'product'}.glb`}
-          />
-        )}
         
         
         {/* Floating Cart Button */}

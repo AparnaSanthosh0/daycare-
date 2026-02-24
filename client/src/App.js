@@ -62,7 +62,9 @@ import StaffLocationDashboard from './components/Staff/StaffLocationDashboard';
 import Product3DViewerDemo from './components/Product3DViewerDemo';
 import BabyBottle3DTest from './components/BabyBottle3DTest';
 import ARViewerPage from './pages/ARViewerPage';
-import AdminQRManagement from './components/Admin/AdminQRManagement';
+import FaceARPage from './pages/FaceARPage';
+import CameraDiagnosticsPage from './pages/CameraDiagnosticsPage';
+import MilestoneTrackerPage from './pages/MilestoneTrackerPage';
 const InventoryPage = React.lazy(() => import('./pages/Admin/Inventory'));
 const AboutLazy = React.lazy(() => import('./pages/About/About'));
 const ApproachLazy = React.lazy(() => import('./pages/About/Approach'));
@@ -195,6 +197,24 @@ function App() {
           <Route 
             path="/ar-viewer" 
             element={<ARViewerPage />} 
+          />
+
+          {/* Face AR - Public Route (face accessories & makeup) */}
+          <Route 
+            path="/face-ar" 
+            element={<FaceARPage />} 
+          />
+
+          {/* Camera Diagnostics - Public Route */}
+          <Route 
+            path="/camera-diagnostics" 
+            element={<CameraDiagnosticsPage />} 
+          />
+
+          {/* Milestone Tracker - Child Development Tracker */}
+          <Route 
+            path="/milestones" 
+            element={<MilestoneTrackerPage />} 
           />
 
           {/* Track Order - Public Route */}
@@ -428,10 +448,6 @@ function App() {
           <Route 
             path="/admin/doctors" 
             element={user?.role === 'admin' ? <Layout><DoctorManagement /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
-          />
-          <Route 
-            path="/admin/qr-codes" 
-            element={user?.role === 'admin' ? <Layout><AdminQRManagement /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
           />
           <Route 
             path="/vendor/orders" 

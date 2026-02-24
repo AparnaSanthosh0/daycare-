@@ -661,6 +661,46 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
       {/* Personalized Recommendations (top) - hidden for fashion selections and image search) */}
       {!isFashionKey && !searchImage && personalized.length > 0 && (
         <Container maxWidth="lg" sx={{ pt: 4 }}>
+          {/* AR Feature Banner */}
+          <Box
+            sx={{
+              mb: 4,
+              p: 3,
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              borderRadius: 3,
+              color: 'white',
+              display: 'flex',
+              flexDirection: { xs: 'column', sm: 'row' },
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 2,
+            }}
+          >
+            <Box>
+              <Typography variant="h5" fontWeight="bold" gutterBottom>
+                ✨ New: Virtual Try-On!
+              </Typography>
+              <Typography variant="body2">
+                Try face accessories & makeup using AR - See how products look on you!
+              </Typography>
+            </Box>
+            <Button
+              variant="contained"
+              size="large"
+              onClick={() => navigate('/face-ar')}
+              sx={{
+                bgcolor: 'white',
+                color: '#667eea',
+                fontWeight: 'bold',
+                '&:hover': {
+                  bgcolor: 'rgba(255, 255, 255, 0.9)',
+                },
+              }}
+            >
+              Try Face AR
+            </Button>
+          </Box>
+
           <Typography variant="h5" fontWeight={800} gutterBottom>
             Recommended for You
           </Typography>
