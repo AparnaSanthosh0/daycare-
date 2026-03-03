@@ -66,6 +66,11 @@ import FaceARPage from './pages/FaceARPage';
 import CameraDiagnosticsPage from './pages/CameraDiagnosticsPage';
 import MilestoneTrackerPage from './pages/MilestoneTrackerPage';
 import MilestoneCelebrationPage from './pages/MilestoneCelebrationPage';
+import LearningGamesPage from './pages/LearningGamesPage';
+import DragMatchGamePage from './pages/DragMatchGamePage';
+import VirtualBodyLearningPage from './pages/VirtualBodyLearningPage';
+import VRStoryExperiencePage from './pages/VRStoryExperiencePage';
+import VR360ExplorerPage from './pages/VR360ExplorerPage';
 const InventoryPage = React.lazy(() => import('./pages/Admin/Inventory'));
 const AboutLazy = React.lazy(() => import('./pages/About/About'));
 const ApproachLazy = React.lazy(() => import('./pages/About/Approach'));
@@ -97,8 +102,8 @@ function App() {
 
   return (
     <ShopProvider>
-    <Box sx={{ minHeight: '100vh' }}>
-      <Routes>
+      <Box sx={{ minHeight: '100vh' }}>
+        <Routes>
           {/* Landing Page */}
           <Route 
             path="/" 
@@ -224,15 +229,24 @@ function App() {
             element={<MilestoneCelebrationPage />} 
           />
 
+          {/* Learning Games - Educational drag and match games */}
+          <Route path="/learning-games" element={<LearningGamesPage />} />
+
+          {/* Drag & Match Game - Educational matching game */}
+          <Route path="/drag-match" element={<DragMatchGamePage />} />
+
+          {/* Virtual Body Learning - Interactive 3D body parts education */}
+          <Route path="/virtual-body-learning" element={<VirtualBodyLearningPage />} />
+
+          {/* VR Story Experience - Immersive storytelling adventures */}
+          <Route path="/vr-story" element={<VRStoryExperiencePage />} />
+
+          {/* Interactive Explorer - 2D & 360° learning environments */}
+          <Route path="/vr-360" element={<VR360ExplorerPage />} />
+
           {/* Track Order - Public Route */}
-          <Route
-            path="/track-order"
-            element={<TrackOrder />}
-          />
-          <Route
-            path="/track-order/:orderNumber"
-            element={<TrackOrder />}
-          />
+          <Route path="/track-order" element={<TrackOrder />} />
+          <Route path="/track-order/:orderNumber" element={<TrackOrder />} />
 
           {/* Stores & Preschools - Public Route */}
           <Route
@@ -467,7 +481,7 @@ function App() {
             element={user ? <Navigate to={user.role === 'customer' ? '/shop' : '/dashboard'} replace /> : <Navigate to="/" replace />}
           />
         </Routes>
-    </Box>
+      </Box>
     </ShopProvider>
   );
 }

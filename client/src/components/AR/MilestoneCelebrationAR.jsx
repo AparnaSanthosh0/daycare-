@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -20,7 +20,6 @@ import {
 } from '@mui/material';
 import {
   Close,
-  CameraAlt,
   FlipCameraIos,
   PhotoCamera,
   Download,
@@ -60,7 +59,6 @@ const MilestoneCelebrationAR = ({ milestone, child, onClose, onSavePhoto }) => {
   const [facingMode, setFacingMode] = useState('user');
   const [capturedImage, setCapturedImage] = useState(null);
   const [showCaptureDialog, setShowCaptureDialog] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
 
   // Celebration themes
   const celebrationTypes = [
@@ -214,7 +212,7 @@ const MilestoneCelebrationAR = ({ milestone, child, onClose, onSavePhoto }) => {
   }
 
   // Initialize camera
-  const initCamera = async () => {
+  const initCamera = useCallback(async () => {
     try {
       console.log('🎥 Initializing camera for milestone celebration...');
       setError(null);
@@ -244,7 +242,8 @@ const MilestoneCelebrationAR = ({ milestone, child, onClose, onSavePhoto }) => {
       setError('Camera access denied. Please enable camera permissions.');
       setLoading(false);
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facingMode]);
 
   // Start celebration animation
   const startAnimation = () => {
@@ -373,7 +372,7 @@ const MilestoneCelebrationAR = ({ milestone, child, onClose, onSavePhoto }) => {
   useEffect(() => {
     initCamera();
     return () => stopCamera();
-  }, [facingMode]);
+  }, [facingMode, initCamera]);
 
   // Handle close
   const handleClose = () => {

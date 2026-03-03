@@ -58,12 +58,13 @@ import {
   Logout as LogoutIcon,
   DirectionsCar,
   Payment,
-  EmojiEvents
+  EmojiEvents,
+  SportsEsports
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
 import { RAZORPAY_CONFIG } from '../../config/razorpay';
 import { useAuth } from '../../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import MealRecommendation from '../../components/MealRecommendation';
 import NannyServicesTab from '../../components/NannyServicesTab';
 import TransportTracking from '../../components/TransportTracking';
@@ -110,7 +111,19 @@ const toAbsoluteUrl = (maybePath) => {
 const ParentDashboard = ({ initialTab }) => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [tab, setTab] = useState(0);
+  const location = useLocation();
+  
+  // Get tab from URL query parameter or location state or initialTab prop
+  const getInitialTab = () => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    if (tabParam) return parseInt(tabParam, 10);
+    if (location.state?.initialTab !== undefined) return location.state.initialTab;
+    if (initialTab !== undefined) return initialTab;
+    return 0;
+  };
+  
+  const [tab, setTab] = useState(getInitialTab());
   const [, setLoading] = useState(false);
   const [children, setChildren] = useState([]);
   const [activeChildId, setActiveChildId] = useState('');
@@ -280,6 +293,17 @@ const ParentDashboard = ({ initialTab }) => {
   useEffect(() => {
     loadChildren();
   }, [loadChildren]);
+
+  // Update tab when location changes (e.g., from back button navigation)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const tabParam = params.get('tab');
+    if (tabParam) {
+      setTab(parseInt(tabParam, 10));
+    } else if (location.state?.initialTab !== undefined) {
+      setTab(location.state.initialTab);
+    }
+  }, [location]);
 
   // Handle Add New Child
   const handleAddChild = async () => {
@@ -1697,6 +1721,7 @@ const ParentDashboard = ({ initialTab }) => {
             <Tab icon={<Assessment />} label="Feedback" iconPosition="start" />
             <Tab icon={<KeyboardVoice />} label="AI Assistant" iconPosition="start" />
             <Tab icon={<EmojiEvents />} label="Milestones" iconPosition="start" />
+            <Tab icon={<SportsEsports />} label="Learning Games" iconPosition="start" />
           </Tabs>
         </Box>
       </Box>
@@ -4209,6 +4234,147 @@ const ParentDashboard = ({ initialTab }) => {
                   Please select a child from the dropdown above to view their milestones and celebrate achievements!
                 </Typography>
               </Paper>
+            )}
+
+            {/* Tab 11: Learning Games - Direct Access to Each Game */}
+            {tab === 11 && (
+              <Box>
+                <Card
+                  sx={{
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white',
+                    mb: 3,
+                  }}
+                >
+                  <CardContent sx={{ p: 4 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                      <SportsEsports sx={{ fontSize: 48, mr: 2 }} />
+                      <Box>
+                        <Typography variant="h4" fontWeight="bold">
+                          🎮 Learning Games
+                        </Typography>
+                        <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>
+                          Fun educational games for {profile?.firstName || 'your child'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Typography variant="body1" sx={{ opacity: 0.95 }}>
+                      Choose from our collection of interactive learning experiences - click any game below to start!
+                    </Typography>
+                  </CardContent>
+                </Card>
+
+                {/* Quick Preview Grid */}
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={6}>
+                    <Card 
+                      sx={{ 
+                        cursor: 'pointer',
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        '&:hover': {
+                          transform: 'translateY(-4px)',
+                          boxShadow: 4,
+                        }
+                      }}
+                      onClick={() => navigate('/drag-match')}
+                    >
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                          <Avatar sx={{ bgcolor: '#ff6b6b', mr: 2 }}>🧩</Avatar>
+                          <Typography variant="h6" fontWeight="bold">
+                            Drag & Match Game
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" color="text.secondary" mb={2}>
+                          Match shapes, colors, and objects to learn!
+                        </Typography>
+                        <Chip label="3-5 years" size="small" color="primary" />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Card 
+                      sx={{ 
+                        cursor: 'pointer',
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        '&:hover': {
+                          transform: 'translateY(-4px)',
+                          boxShadow: 4,
+                        }
+                      }}
+                      onClick={() => navigate('/virtual-body-learning')}
+                    >
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                          <Avatar sx={{ bgcolor: '#667eea', mr: 2 }}>🫁</Avatar>
+                          <Typography variant="h6" fontWeight="bold">
+                            Virtual Body Learning
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" color="text.secondary" mb={2}>
+                          Explore body parts in 3D and learn their functions!
+                        </Typography>
+                        <Chip label="4-6 years" size="small" color="primary" />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Card 
+                      sx={{ 
+                        cursor: 'pointer',
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        '&:hover': {
+                          transform: 'translateY(-4px)',
+                          boxShadow: 4,
+                        }
+                      }}
+                      onClick={() => navigate('/vr-360')}
+                    >
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                          <Avatar sx={{ bgcolor: '#764ba2', mr: 2 }}>🔍</Avatar>
+                          <Typography variant="h6" fontWeight="bold">
+                            Interactive Explorer
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" color="text.secondary" mb={2}>
+                          Explore in 2D or 360°! Zoom, rotate, and click objects to learn.
+                        </Typography>
+                        <Chip label="3-7 years" size="small" color="primary" />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Card 
+                      sx={{ 
+                        cursor: 'pointer',
+                        transition: 'transform 0.2s, box-shadow 0.2s',
+                        '&:hover': {
+                          transform: 'translateY(-4px)',
+                          boxShadow: 4,
+                        }
+                      }}
+                      onClick={() => navigate('/vr-story')}
+                    >
+                      <CardContent>
+                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                          <Avatar sx={{ bgcolor: '#1abc9c', mr: 2 }}>📖</Avatar>
+                          <Typography variant="h6" fontWeight="bold">
+                            VR Story Experience
+                          </Typography>
+                        </Box>
+                        <Typography variant="body2" color="text.secondary" mb={2}>
+                          Immersive storytelling adventures in 360°!
+                        </Typography>
+                        <Chip label="3-6 years" size="small" color="primary" />
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                </Grid>
+              </Box>
             )}
 
             {/* Tab 6: Doctor Appointments */}

@@ -36,10 +36,9 @@ const ConfettiCelebration = ({ milestone, child, onClose, onSavePhoto }) => {
   const animationRef = useRef(null);
   const particlesRef = useRef([]);
   const containerRef = useRef(null);
-  const audioRef = useRef(null);
 
   const [celebrationType, setCelebrationType] = useState('confetti');
-  const [isAnimating, setIsAnimating] = useState(true);
+  const [isAnimating] = useState(true);
 
   const childName = child?.name || 'Champion';
   const milestoneName = milestone?.milestone || 'Great Achievement';
@@ -266,6 +265,7 @@ const ConfettiCelebration = ({ milestone, child, onClose, onSavePhoto }) => {
       }
       window.removeEventListener('resize', handleResize);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [celebrationType, isAnimating]);
 
   // Create burst of particles from center
@@ -323,23 +323,165 @@ const ConfettiCelebration = ({ milestone, child, onClose, onSavePhoto }) => {
 
   // Capture screenshot
   const handleCapture = () => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    // Use html2canvas or simple canvas toDataURL
     const canvas = canvasRef.current;
-    if (canvas) {
-      const imageData = canvas.toDataURL('image/png');
-      if (onSavePhoto) {
-        onSavePhoto(imageData, milestone, child);
-      }
-      
-      // Download image
-      const link = document.createElement('a');
-      link.download = `milestone-${milestone?.milestone?.replace(/\s+/g, '-')}-celebration.png`;
-      link.href = imageData;
-      link.click();
+    if (!canvas) return;
+
+    // Create a new canvas for the composite image
+    const compositeCanvas = document.createElement('canvas');
+    const ctx = compositeCanvas.getContext('2d');
+    
+    // Set canvas size (use smaller size for better file size)
+    const width = 800;
+    const height = 600;
+    compositeCanvas.width = width;
+    compositeCanvas.height = height;
+
+    // 1. Draw background gradient
+    const gradient = ctx.createLinearGradient(0, 0, 0, height);
+    gradient.addColorStop(0, '#667eea');
+    gradient.addColorStop(1, '#764ba2');
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, width, height);
+
+    // 2. Draw confetti particles from the original canvas (scaled)
+    ctx.globalAlpha = 0.8;
+    ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, 0, 0, width, height);
+    ctx.globalAlpha = 1.0;
+
+    // 3. Draw celebration card background
+    const cardWidth = 500;
+    const cardHeight = 400;
+    const cardX = (width - cardWidth) / 2;
+    const cardY = (height - cardHeight) / 2;
+
+    // Card shadow
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.3)';
+    ctx.shadowBlur = 20;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 10;
+
+    // Card background (rounded rectangle)
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+    ctx.beginPath();
+    
+    // Polyfill for roundRect (not supported in all browsers)
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(cardX, cardY, cardWidth, cardHeight, 16);
+    } else {
+      // Fallback: draw rounded rectangle manually
+      const radius = 16;
+      ctx.moveTo(cardX + radius, cardY);
+      ctx.lineTo(cardX + cardWidth - radius, cardY);
+      ctx.quadraticCurveTo(cardX + cardWidth, cardY, cardX + cardWidth, cardY + radius);
+      ctx.lineTo(cardX + cardWidth, cardY + cardHeight - radius);
+      ctx.quadraticCurveTo(cardX + cardWidth, cardY + cardHeight, cardX + cardWidth - radius, cardY + cardHeight);
+      ctx.lineTo(cardX + radius, cardY + cardHeight);
+      ctx.quadraticCurveTo(cardX, cardY + cardHeight, cardX, cardY + cardHeight - radius);
+      ctx.lineTo(cardX, cardY + radius);
+      ctx.quadraticCurveTo(cardX, cardY, cardX + radius, cardY);
+      ctx.closePath();
     }
+    ctx.fill();
+
+    // Reset shadow
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    // 4. Draw celebration emoji
+    ctx.font = 'bold 80px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('🎉', width / 2, cardY + 100);
+
+    // 5. Draw "Amazing Work!" title
+    ctx.font = 'bold 36px Arial';
+    const titleGradient = ctx.createLinearGradient(0, cardY + 130, 0, cardY + 170);
+    titleGradient.addColorStop(0, '#667eea');
+    titleGradient.addColorStop(1, '#764ba2');
+    ctx.fillStyle = titleGradient;
+    ctx.fillText(`Amazing Work, ${childName}!`, width / 2, cardY + 155);
+
+    // 6. Draw "Milestone Achieved"
+    ctx.font = '24px Arial';
+    ctx.fillStyle = '#666';
+    ctx.fillText('✨ Milestone Achieved ✨', width / 2, cardY + 195);
+
+    // 7. Draw milestone name
+    ctx.font = 'bold 20px Arial';
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(cardX + 100, cardY + 220, cardWidth - 200, 50);
+    ctx.fillStyle = '#4caf50';
+    ctx.fillRect(cardX + 100, cardY + 220, cardWidth - 200, 50);
+    
+    ctx.fillStyle = '#fff';
+    ctx.font = '18px Arial';
+    // Wrap milestone text if too long
+    const milestoneText = milestoneName;
+    const maxWidth = cardWidth - 220;
+    const words = milestoneText.split(' ');
+    let line = '';
+    let y = cardY + 248;
+    
+    for (let n = 0; n < words.length; n++) {
+      const testLine = line + words[n] + ' ';
+      const metrics = ctx.measureText(testLine);
+      if (metrics.width > maxWidth && n > 0) {
+        ctx.fillText(line, width / 2, y);
+        line = words[n] + ' ';
+        y += 20;
+      } else {
+        line = testLine;
+      }
+    }
+    ctx.fillText(line, width / 2, y);
+
+    // 8. Draw category
+    if (milestone?.category) {
+      ctx.font = '16px Arial';
+      ctx.fillStyle = '#999';
+      ctx.fillText(`Category: ${milestone.category.toUpperCase()}`, width / 2, cardY + 310);
+    }
+
+    // 9. Draw critical badge if applicable
+    if (milestone?.critical) {
+      ctx.font = 'bold 14px Arial';
+      ctx.fillStyle = '#ff9800';
+      ctx.fillText('⭐ Critical Milestone', width / 2, cardY + 340);
+    }
+
+    // 10. Draw date
+    ctx.font = '14px Arial';
+    ctx.fillStyle = '#999';
+    const date = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    ctx.fillText(date, width / 2, cardY + 370);
+
+    // 11. Draw TinyTots logo/text at bottom
+    ctx.font = 'bold 16px Arial';
+    ctx.fillStyle = '#667eea';
+    ctx.fillText('TinyTots Development Tracker', width / 2, height - 30);
+
+    // Convert to image
+    const imageData = compositeCanvas.toDataURL('image/png', 0.95);
+    
+    // Call parent callback
+    if (onSavePhoto) {
+      onSavePhoto(imageData, milestone, child);
+    }
+    
+    // Download image
+    const link = document.createElement('a');
+    const fileName = `milestone-${milestone?.milestone?.replace(/\s+/g, '-') || 'achievement'}-${Date.now()}.png`;
+    link.download = fileName;
+    link.href = imageData;
+    link.click();
+    
+    // Show success message
+    alert('🎉 Celebration photo saved successfully!');
   };
 
   // Change celebration type
