@@ -10,6 +10,9 @@ import {
   IconButton,
   Chip,
   Paper,
+  Tab,
+  Tabs,
+  CircularProgress,
 } from '@mui/material';
 import {
   NavigateBefore,
@@ -18,7 +21,10 @@ import {
   Replay,
   ArrowBack,
   AutoStories,
+  VideoLibrary,
+  PlayArrow,
 } from '@mui/icons-material';
+import api from '../../config/api';
 
 /**
  * Story data with scenes
@@ -177,6 +183,27 @@ const VRStoryExperience = () => {
   const [isNarrating, setIsNarrating] = useState(false);
   const speechRef = useRef(null);
 
+  // Video stories state
+  const [activeTab, setActiveTab] = useState(0);
+  const [videoStories, setVideoStories] = useState([]);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [selectedVideoStory, setSelectedVideoStory] = useState(null);
+
+  // Fetch uploaded video stories
+  const fetchVideoStories = useCallback(async () => {
+    try {
+      setVideoLoading(true);
+      const res = await api.get('/stories');
+      if (res.data.success) setVideoStories(res.data.stories);
+    } catch {
+      // silently fail — video stories are optional
+    } finally {
+      setVideoLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchVideoStories(); }, [fetchVideoStories]);
+
   // Cancel any ongoing narration when component unmounts
   useEffect(() => {
     return () => {
@@ -240,8 +267,47 @@ const VRStoryExperience = () => {
   const handleBackToMenu = () => {
     window.speechSynthesis.cancel();
     setSelectedStory(null);
+    setSelectedVideoStory(null);
     setCurrentScene(0);
   };
+
+  // Video story player screen
+  if (selectedVideoStory) {
+    return (
+      <Box sx={{ minHeight: '100vh', bgcolor: '#000', display: 'flex', flexDirection: 'column' }}>
+        {/* Top Bar */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, p: 2, bgcolor: 'rgba(0,0,0,0.8)' }}>
+          <IconButton onClick={handleBackToMenu} sx={{ color: 'white' }}>
+            <ArrowBack />
+          </IconButton>
+          <Typography variant="h6" color="white" flex={1}>
+            🎬 {selectedVideoStory.title}
+          </Typography>
+          <Stack direction="row" spacing={1}>
+            <Chip label={selectedVideoStory.ageGroup} size="small" sx={{ bgcolor: '#667eea', color: 'white' }} />
+            <Chip label={selectedVideoStory.category} size="small" sx={{ bgcolor: '#764ba2', color: 'white' }} />
+          </Stack>
+        </Box>
+        {/* Video Player */}
+        <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <video
+            src={`http://localhost:5000${selectedVideoStory.videoUrl}`}
+            controls
+            autoPlay
+            style={{ width: '100%', maxHeight: 'calc(100vh - 130px)', background: '#000' }}
+          />
+        </Box>
+        {/* Description */}
+        {selectedVideoStory.description && (
+          <Box sx={{ p: 2, bgcolor: 'rgba(0,0,0,0.8)' }}>
+            <Typography variant="body2" color="grey.300">
+              {selectedVideoStory.description}
+            </Typography>
+          </Box>
+        )}
+      </Box>
+    );
+  }
 
   // Story selection screen
   if (!selectedStory) {
@@ -289,9 +355,21 @@ const VRStoryExperience = () => {
                 </Typography>
               </Box>
             </Stack>
+
+            {/* Tabs */}
+            <Tabs
+              value={activeTab}
+              onChange={(_, v) => setActiveTab(v)}
+              sx={{ mt: 2 }}
+              indicatorColor="primary"
+            >
+              <Tab label={`📖 Built-in Stories (${Object.keys(STORIES).length})`} />
+              <Tab label={`🎬 Video Stories (${videoStories.length})`} icon={<VideoLibrary />} iconPosition="start" />
+            </Tabs>
           </Paper>
 
-          {/* Story Selection */}
+          {/* Built-in Stories Tab */}
+          {activeTab === 0 && (
           <Stack spacing={3}>
             {Object.entries(STORIES).map(([key, story]) => (
               <Card
@@ -346,6 +424,72 @@ const VRStoryExperience = () => {
               </Card>
             ))}
           </Stack>
+          )}
+
+          {/* Video Stories Tab */}
+          {activeTab === 1 && (
+            <Box>
+              {videoLoading ? (
+                <Box textAlign="center" py={6}><CircularProgress sx={{ color: 'white' }} /></Box>
+              ) : videoStories.length === 0 ? (
+                <Paper sx={{ p: 4, textAlign: 'center', background: 'rgba(255,255,255,0.9)', borderRadius: 3 }}>
+                  <VideoLibrary sx={{ fontSize: 64, opacity: 0.3, mb: 1 }} />
+                  <Typography variant="h6" color="text.secondary">No video stories uploaded yet</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Ask an admin to upload video stories via the Admin Dashboard → Video Stories.
+                  </Typography>
+                </Paper>
+              ) : (
+                <Stack spacing={3}>
+                  {videoStories.map(vs => (
+                    <Card
+                      key={vs._id}
+                      onClick={() => setSelectedVideoStory(vs)}
+                      sx={{
+                        cursor: 'pointer',
+                        transition: 'all 0.3s ease',
+                        '&:hover': { transform: 'translateY(-8px)', boxShadow: 6 },
+                      }}
+                    >
+                      <CardContent>
+                        <Stack direction="row" spacing={3} alignItems="center">
+                          <Box
+                            sx={{
+                              width: 80,
+                              height: 80,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: 'linear-gradient(135deg, #667eea33, #764ba233)',
+                              borderRadius: 2,
+                            }}
+                          >
+                            <PlayArrow sx={{ fontSize: 40, color: '#667eea' }} />
+                          </Box>
+                          <Box flex={1}>
+                            <Typography variant="h5" fontWeight="bold" gutterBottom>
+                              {vs.title}
+                            </Typography>
+                            {vs.description && (
+                              <Typography variant="body2" color="text.secondary" noWrap>
+                                {vs.description}
+                              </Typography>
+                            )}
+                            <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                              <Chip label={vs.ageGroup} size="small" sx={{ bgcolor: '#667eea33', color: '#667eea' }} />
+                              <Chip label={vs.category} size="small" sx={{ bgcolor: '#764ba233', color: '#764ba2' }} />
+                              <Chip label={`${vs.views} views`} size="small" variant="outlined" />
+                            </Stack>
+                          </Box>
+                          <NavigateNext sx={{ fontSize: 40, color: '#667eea' }} />
+                        </Stack>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </Stack>
+              )}
+            </Box>
+          )}
 
           {/* Instructions */}
           <Paper

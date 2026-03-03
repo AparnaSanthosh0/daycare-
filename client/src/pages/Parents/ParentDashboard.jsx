@@ -229,6 +229,11 @@ const ParentDashboard = ({ initialTab }) => {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState('');
 
+  // Teacher-assigned games & stories (Learning Games tab)
+  const [assignedGames, setAssignedGames] = useState([]);
+  const [teacherStories, setTeacherStories] = useState([]);
+  const [teacherContentLoading, setTeacherContentLoading] = useState(false);
+
   // AI Recommendations state (kept for future use)
   // const [socialRecommendations, setSocialRecommendations] = useState(null);
   // const [nutritionRecommendations, setNutritionRecommendations] = useState(null);
@@ -298,6 +303,33 @@ const ParentDashboard = ({ initialTab }) => {
   useEffect(() => {
     loadChildren();
   }, [loadChildren]);
+
+  // Fetch teacher-assigned games + stories when Learning Games tab is active
+  useEffect(() => {
+    if (tab === 11 && activeChildId) {
+      const fetchTeacherContent = async () => {
+        setTeacherContentLoading(true);
+        try {
+          const [storiesRes, gamesRes] = await Promise.allSettled([
+            api.get('/stories'),
+            api.get(`/games/assigned/${activeChildId}`)
+          ]);
+          if (storiesRes.status === 'fulfilled' && storiesRes.value.data?.success) {
+            setTeacherStories(storiesRes.value.data.stories || []);
+          }
+          if (gamesRes.status === 'fulfilled' && gamesRes.value.data?.success) {
+            setAssignedGames(gamesRes.value.data.assignments || []);
+          }
+        } catch (err) {
+          // silent
+        } finally {
+          setTeacherContentLoading(false);
+        }
+      };
+      fetchTeacherContent();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, activeChildId]);
 
   // Update tab when location changes (e.g., from back button navigation)
   useEffect(() => {
@@ -4278,6 +4310,85 @@ const ParentDashboard = ({ initialTab }) => {
                     </Typography>
                   </CardContent>
                 </Card>
+
+                {/* Teacher Assigned Content */}
+                {teacherContentLoading ? (
+                  <Box textAlign="center" py={2}><CircularProgress size={28} /></Box>
+                ) : (
+                  <>
+                    {assignedGames.length > 0 && (
+                      <Box mb={3}>
+                        <Typography variant="h6" fontWeight="bold" gutterBottom>
+                          🎯 Assigned by Teacher ({assignedGames.length})
+                        </Typography>
+                        <Grid container spacing={2}>
+                          {assignedGames.map(({ assignmentId, game, assignedBy, playCount }) => (
+                            <Grid item xs={12} sm={6} md={4} key={assignmentId}>
+                              <Card
+                                sx={{ cursor: 'pointer', border: '2px solid #667eea', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 4 } }}
+                                onClick={() => {
+                                  api.put(`/games/play/${assignmentId}`).catch(() => {});
+                                  navigate(game?.gameRoute || '/dashboard');
+                                }}
+                              >
+                                <CardContent>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
+                                    <Typography variant="h4">{game?.emoji || '🎮'}</Typography>
+                                    <Box>
+                                      <Typography variant="subtitle1" fontWeight="bold">{game?.title}</Typography>
+                                      <Chip label={game?.ageGroup} size="small" color="primary" />
+                                    </Box>
+                                  </Box>
+                                  <Typography variant="caption" color="text.secondary" display="block">{game?.description}</Typography>
+                                  <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                                    <Chip label={`By ${assignedBy}`} size="small" sx={{ bgcolor: '#667eea11', color: '#667eea' }} />
+                                    <Chip label={`Played ${playCount || 0}×`} size="small" color={playCount > 0 ? 'success' : 'default'} />
+                                  </Box>
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          ))}
+                        </Grid>
+                      </Box>
+                    )}
+
+                    {teacherStories.length > 0 && (
+                      <Box mb={3}>
+                        <Typography variant="h6" fontWeight="bold" gutterBottom>
+                          📚 Teacher's Video Stories ({teacherStories.length})
+                        </Typography>
+                        <Grid container spacing={2}>
+                          {teacherStories.map(story => (
+                            <Grid item xs={12} sm={6} md={4} key={story._id}>
+                              <Card
+                                sx={{ cursor: 'pointer', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 4 } }}
+                                onClick={() => navigate('/vr-story')}
+                              >
+                                <Box sx={{ bgcolor: '#000', height: 110, overflow: 'hidden' }}>
+                                  <video
+                                    src={`http://localhost:5000${story.videoUrl}`}
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    preload="metadata"
+                                  />
+                                </Box>
+                                <CardContent sx={{ pb: 1 }}>
+                                  <Typography variant="subtitle1" fontWeight="bold" noWrap>{story.title}</Typography>
+                                  <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5 }}>
+                                    <Chip label={story.ageGroup} size="small" color="primary" />
+                                    <Chip label={story.category} size="small" variant="outlined" />
+                                  </Box>
+                                </CardContent>
+                              </Card>
+                            </Grid>
+                          ))}
+                        </Grid>
+                      </Box>
+                    )}
+                  </>
+                )}
+
+                <Divider sx={{ my: 2 }} />
+                <Typography variant="h6" fontWeight="bold" gutterBottom>🎮 All Available Games</Typography>
 
                 {/* Quick Preview Grid */}
                 <Grid container spacing={3}>

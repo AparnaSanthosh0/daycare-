@@ -89,7 +89,18 @@ suggest they contact the staff directly.`;
  * Provides helpful guidance on all parent needs
  */
 const buildFallbackResponse = (query) => {
-  const queryLower = (query || '').toLowerCase();
+  // Normalize query - remove common question words and clean up
+  const queryLower = (query || '').toLowerCase()
+    .replace(/\?/g, '')  // Remove question marks
+    .replace(/how (do|can|to|should|would)/gi, '')  // Remove "how do", "how can", "how to", etc.
+    .replace(/what (is|are|about)/gi, '')  // Remove "what is", "what are"
+    .replace(/when (is|are|do|does|can)/gi, '')  // Remove "when is", "when can"
+    .replace(/where (is|are|can|do)/gi, '')  // Remove "where is", "where can"
+    .replace(/can i/gi, '')  // Remove "can I"
+    .replace(/do i/gi, '')  // Remove "do I"
+    .replace(/\bi\b/g, '')  // Remove standalone "I"
+    .trim();
+  
   let answer;
 
   // OPERATING HOURS & SCHEDULE

@@ -7,6 +7,7 @@ import {
   Grid,
   Card,
   CardContent,
+  CardActions,
   TextField,
   MenuItem,
   Divider,
@@ -26,7 +27,14 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Alert
+  Alert,
+  Stack,
+  CircularProgress,
+  Select,
+  FormControl,
+  InputLabel,
+  LinearProgress,
+  Tooltip
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -46,7 +54,9 @@ import {
   DirectionsBus as TransportIcon,
   Chat as ChatIcon,
   Feedback as FeedbackIcon,
-  AccountCircle as ProfileIcon
+  AccountCircle as ProfileIcon,
+  SportsEsports,
+  AutoStories
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -55,6 +65,7 @@ import SmartSearch from '../Common/SmartSearch';
 import VoiceAssistant from '../../VoiceAssistant';
 import BlockchainAttendanceCapture from '../BlockchainAttendanceCapture';
 import BlockchainAttendanceHistory from '../BlockchainAttendanceHistory';
+import VideoStoryUpload from '../../pages/Admin/VideoStoryUpload';
 
 // (Removed duplicate Dialog import if present)
 
@@ -103,10 +114,20 @@ const TeacherDashboard = () => {
   const [viewBlockchainHistory, setViewBlockchainHistory] = useState(false);
   const [selectedChildForBlockchain, setSelectedChildForBlockchain] = useState(null);
 
+  // ── Stories & Games tab state ──────────────────────────────────────────────
+  const [gamesList, setGamesList] = useState([]);
+  const [gamesLoading, setGamesLoading] = useState(false);
+  const [gameAssignSuccess, setGameAssignSuccess] = useState('');
+  const [gameAssignError, setGameAssignError] = useState('');
+  const [selectedChildForGame, setSelectedChildForGame] = useState('');
+  const [selectedGameForAssign, setSelectedGameForAssign] = useState('');
+  const [teacherAssignments, setTeacherAssignments] = useState([]);
+
   const menuItems = [
     { label: 'Dashboard', icon: <SchoolIcon />, path: '/teacher' },
     { label: 'Attendance', icon: <CalendarIcon />, path: '/attendance' },
     { label: 'Staff', icon: <PeopleIcon />, path: '/staff' },
+    { label: 'Story Management', icon: <span>🎬</span>, path: '/teacher/stories' },
     { label: 'Profile', icon: <ProfileIcon />, path: '/profile' }
   ];
 
@@ -177,6 +198,58 @@ const TeacherDashboard = () => {
     // Fetch visitors when visitor tab is selected
     if (newValue === 6) {
       fetchVisitors();
+    }
+    // Fetch games when games tab is selected
+    if (newValue === 11) {
+      fetchGames();
+    }
+  };
+
+  const fetchGames = async () => {
+    try {
+      setGamesLoading(true);
+      const [gamesRes, assignRes] = await Promise.allSettled([
+        api.get('/games'),
+        api.get('/games/assignments')
+      ]);
+      if (gamesRes.status === 'fulfilled' && gamesRes.value.data.success) {
+        setGamesList(gamesRes.value.data.games);
+      }
+      if (assignRes.status === 'fulfilled' && assignRes.value.data.success) {
+        setTeacherAssignments(assignRes.value.data.assignments);
+      }
+    } catch (err) {
+      // silent
+    } finally {
+      setGamesLoading(false);
+    }
+  };
+
+  const handleAssignGame = async () => {
+    if (!selectedChildForGame || !selectedGameForAssign) return;
+    try {
+      const child = students.find(s => s._id === selectedChildForGame);
+      await api.post('/games/assign', {
+        gameId: selectedGameForAssign,
+        childId: selectedChildForGame,
+        childName: child ? `${child.firstName} ${child.lastName}` : ''
+      });
+      setGameAssignSuccess('Game assigned successfully!');
+      setSelectedChildForGame('');
+      setSelectedGameForAssign('');
+      fetchGames();
+    } catch (err) {
+      setGameAssignError(err.response?.data?.message || 'Assignment failed');
+    }
+  };
+
+  const handleRemoveAssignment = async (assignmentId) => {
+    try {
+      await api.delete(`/games/assign/${assignmentId}`);
+      setTeacherAssignments(prev => prev.filter(a => a._id !== assignmentId));
+      setGameAssignSuccess('Assignment removed');
+    } catch (err) {
+      setGameAssignError('Remove failed');
     }
   };
 
@@ -454,6 +527,27 @@ const TeacherDashboard = () => {
             </Typography>
             <Typography variant="h4" sx={{ color: '#1abc9c', fontWeight: 600 }}>
               {attendanceRate}%
+            </Typography>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <Paper
+            elevation={0}
+            onClick={() => navigate('/teacher/stories')}
+            sx={{
+              p: 3, border: '2px solid #764ba2', borderRadius: 2,
+              cursor: 'pointer', transition: 'all 0.2s',
+              '&:hover': { bgcolor: '#764ba211', transform: 'translateY(-2px)', boxShadow: 3 }
+            }}
+          >
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              Story Management
+            </Typography>
+            <Typography variant="h4" sx={{ color: '#764ba2', fontWeight: 600 }}>
+              🎬
+            </Typography>
+            <Typography variant="caption" sx={{ color: '#764ba2', fontWeight: 500 }}>
+              Upload &amp; manage videos
             </Typography>
           </Paper>
         </Grid>
@@ -2591,8 +2685,143 @@ const TeacherDashboard = () => {
     </Box>
   );
 
-  return (
-    <Box sx={{ minHeight: '100vh', backgroundColor: '#f8f9fa' }}>
+  // ── Tab 10: Stories (inline VideoStoryUpload) ────────────────────────
+  const renderStoriesTab = () => (
+    <VideoStoryUpload embedded={true} />
+  );
+
+  // ── Tab 11: Games (manage + assign) ─────────────────────────────
+  const renderGamesTab = () => (
+    <Box>
+      {/* Header */}
+      <Paper sx={{ p: 3, mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', borderRadius: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <SportsEsports sx={{ fontSize: 40 }} />
+          <Box>
+            <Typography variant="h5" fontWeight="bold">🎮 Game Management</Typography>
+            <Typography variant="body2" sx={{ opacity: 0.9 }}>Assign educational games to children for home practice & learning</Typography>
+          </Box>
+        </Box>
+      </Paper>
+
+      {gameAssignSuccess && <Alert severity="success" onClose={() => setGameAssignSuccess('')} sx={{ mb: 2 }}>{gameAssignSuccess}</Alert>}
+      {gameAssignError   && <Alert severity="error"   onClose={() => setGameAssignError('')}   sx={{ mb: 2 }}>{gameAssignError}</Alert>}
+
+      <Grid container spacing={3}>
+        {/* Assign Panel */}
+        <Grid item xs={12} md={5}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight="bold" gutterBottom>➕ Assign Game to Child</Typography>
+            <Stack spacing={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Select Child</InputLabel>
+                <Select value={selectedChildForGame} label="Select Child" onChange={e => setSelectedChildForGame(e.target.value)}>
+                  {students.map(s => (
+                    <MenuItem key={s._id} value={s._id}>{s.firstName} {s.lastName}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth size="small">
+                <InputLabel>Select Game</InputLabel>
+                <Select value={selectedGameForAssign} label="Select Game" onChange={e => setSelectedGameForAssign(e.target.value)}>
+                  {gamesList.map(g => (
+                    <MenuItem key={g._id} value={g._id}>{g.emoji} {g.title}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Button
+                variant="contained"
+                disabled={!selectedChildForGame || !selectedGameForAssign}
+                onClick={handleAssignGame}
+                sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5a6fd6' } }}
+              >
+                Assign Game
+              </Button>
+            </Stack>
+          </Paper>
+        </Grid>
+
+        {/* Game Library */}
+        <Grid item xs={12} md={7}>
+          <Typography variant="h6" fontWeight="bold" gutterBottom>
+            📚 Game Library ({gamesList.length} games)
+          </Typography>
+          {gamesLoading ? (
+            <Box textAlign="center" py={3}><CircularProgress /></Box>
+          ) : (
+            <Grid container spacing={2}>
+              {gamesList.map(game => (
+                <Grid item xs={12} sm={6} key={game._id}>
+                  <Card sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
+                    <CardContent sx={{ pb: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <Typography variant="h4">{game.emoji}</Typography>
+                        <Box>
+                          <Typography variant="subtitle1" fontWeight="bold">{game.title}</Typography>
+                          <Chip label={game.ageGroup} size="small" color="primary" />
+                        </Box>
+                      </Box>
+                      <Typography variant="caption" color="text.secondary">{game.description}</Typography>
+                    </CardContent>
+                    <CardActions sx={{ pt: 0 }}>
+                      <Chip
+                        label={game.isBuiltIn ? 'Built-in' : 'Custom'}
+                        size="small" variant="outlined"
+                        color={game.isBuiltIn ? 'success' : 'secondary'}
+                      />
+                      <Chip label={game.category} size="small" variant="outlined" />
+                    </CardActions>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          )}
+        </Grid>
+
+        {/* Assignments Table */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" fontWeight="bold" gutterBottom>
+              📋 My Assignments ({teacherAssignments.length})
+            </Typography>
+            {teacherAssignments.length === 0 ? (
+              <Box textAlign="center" py={3}>
+                <Typography color="text.secondary">No assignments yet. Use the panel above to assign games to children!</Typography>
+              </Box>
+            ) : (
+              <Box sx={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ background: '#f5f5f5' }}>
+                      {['Game', 'Child', 'Assigned On', 'Last Played', 'Times Played', 'Action'].map(h => (
+                        <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '2px solid #e0e0e0' }}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {teacherAssignments.map((a, i) => (
+                      <tr key={a._id || i} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                        <td style={{ padding: '10px 12px' }}>{a.gameId?.emoji} {a.gameId?.title || '—'}</td>
+                        <td style={{ padding: '10px 12px' }}>{a.childName || '—'}</td>
+                        <td style={{ padding: '10px 12px' }}>{a.assignedAt ? new Date(a.assignedAt).toLocaleDateString() : '—'}</td>
+                        <td style={{ padding: '10px 12px' }}>{a.lastPlayedAt ? new Date(a.lastPlayedAt).toLocaleDateString() : <em style={{ color: '#999' }}>Not yet</em>}</td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <Chip label={a.playCount || 0} size="small" color={a.playCount > 0 ? 'success' : 'default'} />
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          <Button size="small" color="error" onClick={() => handleRemoveAssignment(a._id)}>Remove</Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </Box>
+            )}
+          </Paper>
+        </Grid>
+      </Grid>
+    </Box>
+  );
       {/* Attendance Marking Dialog */}
       <Dialog open={attendanceDialogOpen} onClose={handleCloseAttendanceDialog}>
         <DialogTitle sx={{ backgroundColor: '#1abc9c', color: 'white' }}>
@@ -2814,6 +3043,8 @@ const TeacherDashboard = () => {
           <Tab icon={<EmergencyIcon />} iconPosition="start" label="Emergency" />
           <Tab icon={<TransportIcon />} iconPosition="start" label="Transport" />
           <Tab icon={<FeedbackIcon />} iconPosition="start" label="Feedback" />
+          <Tab icon={<AutoStories />} iconPosition="start" label="Stories" />
+          <Tab icon={<SportsEsports />} iconPosition="start" label="Games" />
         </Tabs>
       </Paper>
 
@@ -2829,6 +3060,8 @@ const TeacherDashboard = () => {
         {currentTab === 7 && renderEmergencyTab()}
         {currentTab === 8 && renderTransportTab()}
         {currentTab === 9 && renderFeedbackTab()}
+        {currentTab === 10 && renderStoriesTab()}
+        {currentTab === 11 && renderGamesTab()}
       </Box>
       
       {/* Voice Assistant */}

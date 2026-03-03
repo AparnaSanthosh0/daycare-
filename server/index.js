@@ -52,6 +52,7 @@ app.use(helmet({
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:"],
       scriptSrc: ["'self'"],
+      mediaSrc: ["'self'"],
       connectSrc: ["'self'", "https://api.twilio.com", "https://api.sendgrid.com"]
     }
   },
@@ -153,6 +154,10 @@ app.use('/api/customers', requireDb, require('./routes/customers'));
 app.use('/api/purchase-orders', requireDb, require('./routes/purchaseOrders'));
 // Payments (Razorpay integration)
 app.use('/api/payments', requireDb, require('./routes/payments'));
+// Stories (video storytelling upload/playback)
+app.use('/api/stories', requireDb, require('./routes/stories'));
+// Games (library, assignments, progress)
+app.use('/api/games', requireDb, require('./routes/games'));
 // Orders (customer → admin → vendor flow)
 // Add request logging middleware for debugging
 app.use('/api/orders', requireDb, (req, res, next) => {

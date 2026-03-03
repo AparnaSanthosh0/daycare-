@@ -52,6 +52,8 @@ import UserManagement from './pages/Admin/UserManagement';
 import StaffConsole from './pages/Admin/StaffConsole';
 import AdminOrders from './pages/Admin/AdminOrders';
 import DoctorManagement from './pages/Admin/DoctorManagement';
+import FeedbackManagement from './pages/Admin/FeedbackManagement';
+import VideoStoryUpload from './pages/Admin/VideoStoryUpload';
 import VendorOrders from './pages/Vendor/VendorOrders';
 import Families from './pages/Families/Families';
 import SupportCenter from './pages/Support/SupportCenter';
@@ -469,6 +471,18 @@ function App() {
           <Route 
             path="/admin/doctors" 
             element={user?.role === 'admin' ? <Layout><DoctorManagement /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
+          />
+          <Route 
+            path="/admin/feedback" 
+            element={user?.role === 'admin' ? <Layout><FeedbackManagement /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
+          />
+          <Route 
+            path="/admin/stories" 
+            element={user?.role === 'admin' || user?.role === 'staff' ? <Layout><VideoStoryUpload /></Layout> : <Navigate to={user ? '/dashboard' : '/'} replace />} 
+          />
+          <Route 
+            path="/teacher/stories" 
+            element={user?.role === 'staff' && user?.staff?.staffType === 'teacher' ? <VideoStoryUpload /> : <Navigate to={user ? '/teacher' : '/'} replace />} 
           />
           <Route 
             path="/vendor/orders" 

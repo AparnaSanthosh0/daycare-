@@ -37,6 +37,7 @@ const Chatbot = () => {
   // Load chat session on mount
   useEffect(() => {
     loadSession();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadSession = async () => {

@@ -616,30 +616,43 @@ router.post('/notifications/:id/respond', [
     notification.respondedBy = req.user.userId;
     notification.respondedAt = new Date();
     notification.read = true;
-    await notification.save();
-
-    // Update feedback status
-    const feedback = await Feedback.findById(notification.feedbackId);
-    if (feedback) {
-      feedback.status = 'resolved';
-      feedback.adminNotes = response;
-      feedback.resolvedBy = req.user.userId;
-      feedback.resolvedAt = new Date();
-      await feedback.save();
+    try {
+      await notification.save();
+    } catch (saveErr) {
+      console.error('Failed to save notification response:', saveErr.message);
+      return res.status(500).json({ message: 'Failed to save response', error: saveErr.message });
     }
 
-    // Add response to user's communications
-    const user = await User.findById(notification.userId);
-    if (user) {
-      user.communications = Array.isArray(user.communications) ? user.communications : [];
-      user.communications.push({
-        channel: 'admin_response',
-        subject: `Re: ${notification.subject}`,
-        notes: response,
-        by: req.user.userId,
-        date: new Date()
-      });
-      await user.save();
+    // Update feedback status (non-critical — don't fail if this errors)
+    try {
+      const feedback = await Feedback.findById(notification.feedbackId);
+      if (feedback) {
+        feedback.status = 'resolved';
+        feedback.adminNotes = response;
+        feedback.resolvedBy = req.user.userId;
+        feedback.resolvedAt = new Date();
+        await feedback.save();
+      }
+    } catch (feedbackErr) {
+      console.error('Failed to update feedback status (non-critical):', feedbackErr.message);
+    }
+
+    // Add response to user's communications (non-critical — don't fail if this errors)
+    try {
+      const user = await User.findById(notification.userId);
+      if (user) {
+        user.communications = Array.isArray(user.communications) ? user.communications : [];
+        user.communications.push({
+          channel: 'admin_response',
+          subject: `Re: ${notification.subject}`,
+          notes: response,
+          by: req.user.userId,
+          date: new Date()
+        });
+        await user.save();
+      }
+    } catch (userErr) {
+      console.error('Failed to update user communications (non-critical):', userErr.message);
     }
 
     res.json({

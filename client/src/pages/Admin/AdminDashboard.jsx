@@ -29,7 +29,8 @@ import {
   Select,
   MenuItem,
   CircularProgress,
-  CardHeader
+  CardHeader,
+  Badge
 } from '@mui/material';
 import {
   Assignment,
@@ -76,6 +77,9 @@ const AdminDashboard = () => {
   const [allStaff, setAllStaff] = useState([]);
   const [staffAssignments, setStaffAssignments] = useState([]);
   
+  // Unread feedback count
+  const [unreadFeedbackCount, setUnreadFeedbackCount] = useState(0);
+
   // Detailed data for comprehensive views
   const [allUsers, setAllUsers] = useState([]);
   const [userDetailsDialog, setUserDetailsDialog] = useState({ open: false, user: null });
@@ -152,6 +156,19 @@ const AdminDashboard = () => {
       setError('Failed to load dashboard data');
     } finally {
       setLoading(false);
+    }
+    fetchUnreadFeedbackCount();
+  };
+
+  // Fetch unread feedback count
+  const fetchUnreadFeedbackCount = async () => {
+    try {
+      const response = await api.get('/sentiment/notifications?read=false');
+      if (response.data.success) {
+        setUnreadFeedbackCount(response.data.count || 0);
+      }
+    } catch (error) {
+      // Silent fail - not critical
     }
   };
 
@@ -235,6 +252,7 @@ const AdminDashboard = () => {
     fetchAllUsersData();
     fetchNannyData();
     fetchPendingPayments();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Handle approve/reject actions
@@ -566,6 +584,52 @@ const AdminDashboard = () => {
               sx={{ py: 1.5 }}
             >
               🚗 Transport Requests
+            </Button>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Badge badgeContent={unreadFeedbackCount} color="error" sx={{ width: '100%' }}>
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={() => window.location.href = '/admin/feedback'}
+                sx={{
+                  bgcolor: '#7C3AED',
+                  '&:hover': { bgcolor: '#6D28D9' },
+                  py: 1.5
+                }}
+              >
+                📝 View Feedback
+              </Button>
+            </Badge>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => window.location.href = '/admin/users'}
+              sx={{ py: 1.5 }}
+            >
+              👥 User Management
+            </Button>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => window.location.href = '/admin/staff-console'}
+              sx={{ py: 1.5 }}
+            >
+              👨‍💼 Staff Console
+            </Button>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              fullWidth
+              variant="outlined"
+              onClick={() => window.location.href = '/admin/stories'}
+              sx={{ py: 1.5, borderColor: '#764ba2', color: '#764ba2', '&:hover': { borderColor: '#5a3a8a', bgcolor: '#764ba211' } }}
+            >
+              🎬 Video Stories
             </Button>
           </Grid>
         </Grid>
