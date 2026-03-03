@@ -94,18 +94,13 @@ router.post('/query', [
     // Process query using NLP service
     const response = await nlpService.processParentQuery(query, context);
 
-    if (!response.success) {
-      return res.status(500).json({ 
-        message: 'Failed to process query',
-        error: response.error,
-        fallbackAnswer: response.fallbackAnswer
-      });
-    }
+    // Use fallback answer if AI processing failed
+    const answer = response.success ? response.answer : (response.fallbackAnswer || "I'm currently unable to help with that. Please contact our staff.");
 
     // Update conversation history
     session.conversationHistory.push(
       { role: 'user', content: query },
-      { role: 'assistant', content: response.answer }
+      { role: 'assistant', content: answer }
     );
 
     // Keep only last 20 messages
@@ -115,17 +110,95 @@ router.post('/query', [
 
     res.json({
       success: true,
-      answer: response.answer,
+      answer: answer,
       sessionId: session.sessionId,
-      timestamp: response.timestamp,
-      usage: response.usage
+      timestamp: response.timestamp || new Date(),
+      usage: response.usage || null
     });
 
   } catch (error) {
     console.error('Chatbot query error:', error);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: error.message 
+    console.error('ERROR STACK:', error.stack);
+    
+    // Always provide helpful 24/7 assistance even on errors
+    res.json({
+      success: true,
+      answer: "👋 I'm your 24/7 TinyTots Assistant!\n\n" +
+        "I'm here to help with:\n\n" +
+        "🕐 **Operating Hours:** Mon-Fri, 7 AM - 6 PM\n" +
+        "🍎 **Meals & Nutrition:** Check Dashboard → Meals\n" +
+        "💳 **Billing:** Dashboard → Billing tab\n" +
+        "🏥 **Doctor Appointments:** Dashboard → Doctor Appointments\n" +
+        "🚌 **Transportation:** Dashboard → Transport\n" +
+        "🎯 **Milestones:** Dashboard → Milestones\n" +
+        "🛒 **Shop Products:** Dashboard → Shop (header)\n" +
+        "💬 **Contact Staff:** Dashboard → Messages\n\n" +
+        "**Quick Contacts:**\n" +
+        "• 📧 info@tinytots.com\n" +
+        "• 📞 (555) 123-4567\n" +
+        "• 🚨 Emergency: (555) 911-TOTS\n\n" +
+        "**Ask me about:** hours, meals, billing, appointments, transport, milestones, activities, safety, shopping, or anything else!\n\n" +
+        "How can I assist you today? 😊",
+      sessionId: `session_${req.user.userId}`,
+      timestamp: new Date(),
+      usage: null,
+      fallback: true
+    });
+  }
+});
+
+// @route   GET /api/chatbot/welcome
+// @desc    Get welcome message for chatbot
+// @access  Private
+router.get('/welcome', auth, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const user = await User.findById(userId);
+    
+    let userName = 'there';
+    if (user) {
+      userName = user.firstName || user.name || 'there';
+    }
+    
+    const welcomeMessage = `👋 **Hello ${userName}! Welcome to TinyTots 24/7 Assistant!**\n\n` +
+      "I'm here to help you anytime with all your childcare needs!\n\n" +
+      "**What I can help you with:**\n\n" +
+      "🕐 Operating Hours & Schedule\n" +
+      "🍎 Meals & Nutrition Plans\n" +
+      "💳 Billing & Payments\n" +
+      "🏥 Doctor Appointments & Medical\n" +
+      "🚌 Transportation & Pickup/Drop-off\n" +
+      "🎯 Milestones & Development\n" +
+      "🎨 Daily Activities & Programs\n" +
+      "🔒 Safety & Security\n" +
+      "💉 Vaccinations & Health Records\n" +
+      "👶 Nanny Services\n" +
+      "💬 Communication with Staff\n" +
+      "🛒 Shop Baby Products (3D AR Preview!)\n" +
+      "📦 Track Orders & Deliveries\n" +
+      "📝 Submit Feedback & Suggestions\n" +
+      "🥽 AR/VR Features\n\n" +
+      "**I'm available 24/7!** Just ask me anything - whether it's about your child's day, upcoming activities, bills, or how to use our features.\n\n" +
+      "💡 **Try asking:**\n" +
+      "• \"What are your hours?\"\n" +
+      "• \"What's for lunch today?\"\n" +
+      "• \"How do I schedule a doctor appointment?\"\n" +
+      "• \"Track my order\"\n" +
+      "• \"What milestones should I track?\"\n\n" +
+      "How can I help you today? 😊";
+    
+    res.json({
+      success: true,
+      message: welcomeMessage,
+      timestamp: new Date()
+    });
+    
+  } catch (error) {
+    console.error('Welcome message error:', error);
+    res.json({
+      success: true,
+      message: "👋 Welcome to TinyTots 24/7 Assistant! I'm here to help with all your childcare needs. Ask me anything! 😊",
+      timestamp: new Date()
     });
   }
 });

@@ -1,7 +1,15 @@
-// React component example for Feedback Submission with Sentiment Analysis
 import React, { useState } from 'react';
+import {
+  TextField,
+  Button,
+  MenuItem,
+  Rating,
+  Typography,
+  Alert,
+  Paper,
+  Stack,
+} from '@mui/material';
 import api from '../config/api';
-import './Chatbot.css';
 
 const FeedbackForm = () => {
   const [formData, setFormData] = useState({
@@ -10,18 +18,17 @@ const FeedbackForm = () => {
     text: '',
     rating: 0
   });
-  const [hoverRating, setHoverRating] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState(null);
 
   const categories = [
-    { value: 'general', label: 'General' },
-    { value: 'meal', label: 'Meals' },
-    { value: 'activity', label: 'Activities' },
+    { value: 'general', label: 'General Feedback' },
+    { value: 'meal', label: 'Meals & Nutrition' },
+    { value: 'activity', label: 'Activities & Learning' },
     { value: 'communication', label: 'Communication' },
-    { value: 'staff', label: 'Staff' },
-    { value: 'facility', label: 'Facility' },
-    { value: 'safety', label: 'Safety' }
+    { value: 'staff', label: 'Staff & Care' },
+    { value: 'facility', label: 'Facility & Environment' },
+    { value: 'safety', label: 'Safety & Security' }
   ];
 
   const handleChange = (e) => {
@@ -31,42 +38,53 @@ const FeedbackForm = () => {
     });
   };
 
-  const handleRating = (rating) => {
-    setFormData({ ...formData, rating });
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!formData.text.trim()) {
+      setResult({
+        success: false,
+        message: 'Please enter your feedback message'
+      });
+      return;
+    }
+
     setSubmitting(true);
     setResult(null);
 
     try {
-      const response = await api.post(
-        '/sentiment/feedback',
-        formData
-      );
-
-      if (response.data.success) {
-        setResult({
-          success: true,
-          message: response.data.message,
-          sentiment: response.data.feedback.sentiment,
-          confidence: response.data.feedback.confidence
-        });
-
-        // Reset form
-        setFormData({
-          category: 'general',
-          subject: '',
-          text: '',
-          rating: 0
-        });
+      // Send feedback to sentiment analysis endpoint
+      const payload = {
+        category: formData.category,
+        subject: formData.subject,
+        text: formData.text
+      };
+      
+      // Only include rating if it's been set (greater than 0)
+      if (formData.rating > 0) {
+        payload.rating = formData.rating;
       }
+
+      await api.post('/sentiment/feedback', payload);
+
+      setResult({
+        success: true,
+        message: 'Thank you! Your feedback has been sent to the administration.'
+      });
+
+      // Reset form
+      setFormData({
+        category: 'general',
+        subject: '',
+        text: '',
+        rating: 0
+      });
+
     } catch (error) {
       console.error('Failed to submit feedback:', error);
       setResult({
         success: false,
-        message: error.response?.data?.message || 'Failed to submit feedback'
+        message: error.response?.data?.message || 'Failed to submit feedback. Please try again.'
       });
     } finally {
       setSubmitting(false);
@@ -74,85 +92,95 @@ const FeedbackForm = () => {
   };
 
   return (
-    <div className="feedback-form">
-      <h2>Share Your Feedback</h2>
+    <Paper elevation={3} sx={{ p: 3 }}>
+      <Stack spacing={1} sx={{ mb: 3, textAlign: 'center' }}>
+        <Typography variant="h5" fontWeight="bold" gutterBottom>
+          Share Your Feedback
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          We value your opinion and use it to improve our services
+        </Typography>
+      </Stack>
 
       <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label>Category</label>
-          <select
+        <Stack spacing={3}>
+          {/* Category */}
+          <TextField
+            select
             name="category"
+            label="Category"
             value={formData.category}
             onChange={handleChange}
+            fullWidth
             required
           >
-            {categories.map(cat => (
-              <option key={cat.value} value={cat.value}>{cat.label}</option>
+            {categories.map((cat) => (
+              <MenuItem key={cat.value} value={cat.value}>
+                {cat.label}
+              </MenuItem>
             ))}
-          </select>
-        </div>
+          </TextField>
 
-        <div className="form-group">
-          <label>Subject (Optional)</label>
-          <input
-            type="text"
+          {/* Subject */}
+          <TextField
             name="subject"
+            label="Subject (Optional)"
             value={formData.subject}
             onChange={handleChange}
             placeholder="Brief subject..."
+            fullWidth
           />
-        </div>
 
-        <div className="form-group">
-          <label>Your Feedback</label>
-          <textarea
+          {/* Message */}
+          <TextField
             name="text"
+            label="Your Feedback"
             value={formData.text}
             onChange={handleChange}
+            multiline
+            rows={4}
             placeholder="Tell us what you think..."
+            fullWidth
             required
           />
-        </div>
 
-        <div className="form-group">
-          <label>Rating</label>
-          <div className="rating-stars">
-            {[1, 2, 3, 4, 5].map(star => (
-              <span
-                key={star}
-                className={`star ${star <= (hoverRating || formData.rating) ? 'filled' : 'empty'}`}
-                onClick={() => handleRating(star)}
-                onMouseEnter={() => setHoverRating(star)}
-                onMouseLeave={() => setHoverRating(0)}
-              >
-                ★
-              </span>
-            ))}
-          </div>
-        </div>
+          {/* Rating */}
+          <Stack spacing={1}>
+            <Typography variant="body2" gutterBottom>
+              Rate Your Experience
+            </Typography>
+            <Rating
+              name="rating"
+              value={formData.rating}
+              onChange={(event, newValue) => {
+                setFormData({ ...formData, rating: newValue || 0 });
+              }}
+              size="large"
+            />
+          </Stack>
 
-        <button type="submit" disabled={submitting} className="submit-btn">
-          {submitting ? 'Submitting...' : 'Submit Feedback'}
-        </button>
-      </form>
+          {/* Submit Button */}
+          <Button
+            type="submit"
+            variant="contained"
+            size="large"
+            disabled={submitting}
+            fullWidth
+          >
+            {submitting ? 'Submitting...' : 'Submit Feedback'}
+          </Button>
 
-      {result && (
-        <div className={`sentiment-result ${result.sentiment || ''}`}>
-          {result.success ? (
-            <>
-              <h4>✓ {result.message}</h4>
-              <p>
-                <strong>Sentiment:</strong> {result.sentiment} 
-                ({(result.confidence * 100).toFixed(0)}% confidence)
-              </p>
-            </>
-          ) : (
-            <h4>✗ {result.message}</h4>
+          {/* Result */}
+          {result && (
+            <Alert severity={result.success ? 'success' : 'error'}>
+              {result.message}
+            </Alert>
           )}
-        </div>
-      )}
-    </div>
+        </Stack>
+      </form>
+    </Paper>
   );
 };
 
 export default FeedbackForm;
+

@@ -1,7 +1,23 @@
-// React component example for Chatbot integration
 import React, { useState, useEffect, useRef } from 'react';
+import {
+  Box,
+  Paper,
+  TextField,
+  IconButton,
+  Typography,
+  Stack,
+  Avatar,
+  CircularProgress,
+  Divider,
+  Tooltip,
+} from '@mui/material';
+import {
+  Send,
+  DeleteOutline,
+  SmartToy,
+  Person,
+} from '@mui/icons-material';
 import api from '../config/api';
-import './Chatbot.css';
 
 const Chatbot = () => {
   const [messages, setMessages] = useState([]);
@@ -28,13 +44,41 @@ const Chatbot = () => {
       const response = await api.get('/chatbot/session');
 
       if (response.data.success) {
-        setMessages(response.data.conversationHistory.map(msg => ({
+        const sessionHistory = response.data.conversationHistory.map(msg => ({
           role: msg.role,
           content: msg.content
-        })));
+        }));
+        
+        // If empty session, show welcome message
+        if (sessionHistory.length === 0) {
+          loadWelcomeMessage();
+        } else {
+          setMessages(sessionHistory);
+        }
       }
     } catch (error) {
       console.error('Failed to load session:', error);
+      // Show welcome message on error too
+      loadWelcomeMessage();
+    }
+  };
+
+  const loadWelcomeMessage = async () => {
+    try {
+      const response = await api.get('/chatbot/welcome');
+      if (response.data.success) {
+        setMessages([{
+          role: 'assistant',
+          content: response.data.message
+        }]);
+      }
+    } catch (error) {
+      console.error('Failed to load welcome message:', error);
+      // Fallback welcome message
+      setMessages([{
+        role: 'assistant',
+        content: '👋 Welcome to TinyTots 24/7 Assistant! I\'m here to help with all your childcare needs. Ask me anything! 😊'
+      }]);
     }
   };
 
@@ -79,40 +123,132 @@ const Chatbot = () => {
   };
 
   return (
-    <div className="chatbot-container">
-      <div className="chatbot-header">
-        <h3>TinyTots Assistant</h3>
-        <button onClick={clearSession} className="clear-btn">Clear Chat</button>
-      </div>
+    <Paper elevation={0} sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Header */}
+      <Box sx={{ 
+        p: 2, 
+        bgcolor: 'primary.main', 
+        color: 'white',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        borderRadius: '4px 4px 0 0'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <SmartToy />
+          <Typography variant="h6" fontWeight="bold">
+            TinyTots 24/7 Assistant
+          </Typography>
+        </Box>
+        <Tooltip title="Clear Chat">
+          <IconButton onClick={clearSession} size="small" sx={{ color: 'white' }}>
+            <DeleteOutline />
+          </IconButton>
+        </Tooltip>
+      </Box>
 
-      <div className="chatbot-messages">
-        {messages.map((msg, idx) => (
-          <div key={idx} className={`message ${msg.role}`}>
-            <div className="message-content">{msg.content}</div>
-          </div>
-        ))}
-        {loading && (
-          <div className="message assistant">
-            <div className="message-content typing">Thinking...</div>
-          </div>
+      {/* Messages */}
+      <Box sx={{ 
+        flex: 1, 
+        overflow: 'auto', 
+        p: 2, 
+        bgcolor: 'grey.50',
+        minHeight: 400,
+        maxHeight: 500
+      }}>
+        {messages.length === 0 && !loading && (
+          <Box sx={{ textAlign: 'center', py: 4, color: 'text.secondary' }}>
+            <SmartToy sx={{ fontSize: 60, mb: 2, opacity: 0.3 }} />
+            <Typography variant="h6" gutterBottom>
+              TinyTots 24/7 Assistant
+            </Typography>
+            <Typography variant="body2">
+              Getting your personalized welcome message...
+            </Typography>
+          </Box>
         )}
+        
+        <Stack spacing={2}>
+          {messages.map((msg, idx) => (
+            <Box
+              key={idx}
+              sx={{
+                display: 'flex',
+                gap: 1,
+                alignItems: 'flex-start',
+                flexDirection: msg.role === 'user' ? 'row-reverse' : 'row'
+              }}
+            >
+              <Avatar 
+                sx={{ 
+                  bgcolor: msg.role === 'user' ? 'primary.main' : 'secondary.main',
+                  width: 32,
+                  height: 32
+                }}
+              >
+                {msg.role === 'user' ? <Person fontSize="small" /> : <SmartToy fontSize="small" />}
+              </Avatar>
+              <Paper
+                elevation={1}
+                sx={{
+                  p: 1.5,
+                  maxWidth: '75%',
+                  bgcolor: msg.role === 'user' ? 'primary.light' : 'white',
+                  color: msg.role === 'user' ? 'primary.contrastText' : 'text.primary'
+                }}
+              >
+                <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap' }}>
+                  {msg.content}
+                </Typography>
+              </Paper>
+            </Box>
+          ))}
+          {loading && (
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Avatar sx={{ bgcolor: 'secondary.main', width: 32, height: 32 }}>
+                <SmartToy fontSize="small" />
+              </Avatar>
+              <Paper elevation={1} sx={{ p: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CircularProgress size={16} />
+                  <Typography variant="body2" color="text.secondary">
+                    Thinking...
+                  </Typography>
+                </Box>
+              </Paper>
+            </Box>
+          )}
+        </Stack>
         <div ref={messagesEndRef} />
-      </div>
+      </Box>
 
-      <form onSubmit={sendMessage} className="chatbot-input-form">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask me anything..."
-          disabled={loading}
-          className="chatbot-input"
-        />
-        <button type="submit" disabled={loading || !input.trim()} className="send-btn">
-          Send
-        </button>
-      </form>
-    </div>
+      <Divider />
+
+      {/* Input */}
+      <Box sx={{ p: 2, bgcolor: 'background.paper' }}>
+        <form onSubmit={sendMessage}>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField
+              fullWidth
+              size="small"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask me anything..."
+              disabled={loading}
+              variant="outlined"
+            />
+            <IconButton 
+              type="submit" 
+              disabled={loading || !input.trim()}
+              color="primary"
+              sx={{ bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } }}
+            >
+              <Send />
+            </IconButton>
+          </Box>
+        </form>
+      </Box>
+    </Paper>
   );
 };
 

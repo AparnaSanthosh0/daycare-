@@ -42,7 +42,37 @@ const feedbackSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now }
 });
 
+if (mongoose.models.Feedback) {
+  delete mongoose.models['Feedback'];
+}
 const Feedback = mongoose.model('Feedback', feedbackSchema);
+
+// Admin Notification Schema for feedback
+const adminNotificationSchema = new mongoose.Schema({
+  type: { 
+    type: String, 
+    enum: ['meal', 'activity', 'communication', 'staff', 'facility', 'safety', 'general', 'feedback', 'complaint', 'suggestion'], 
+    default: 'feedback'
+  },
+  feedbackId: { type: mongoose.Schema.Types.ObjectId, ref: 'Feedback', required: true },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  userName: String,
+  category: String,
+  subject: String,
+  message: String,
+  priority: { type: String, enum: ['low', 'medium', 'high'], default: 'medium' },
+  read: { type: Boolean, default: false },
+  respondedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  response: String,
+  respondedAt: Date,
+  createdAt: { type: Date, default: Date.now }
+});
+
+// Force redefine to avoid stale cached schema
+if (mongoose.models.AdminNotification) {
+  delete mongoose.models['AdminNotification'];
+}
+const AdminNotification = mongoose.model('AdminNotification', adminNotificationSchema);
 
 // @route   POST /api/sentiment/analyze
 // @desc    Analyze sentiment of feedback using OpenAI
@@ -120,43 +150,93 @@ router.post('/feedback', [
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Analyze sentiment
-    const analysis = await nlpService.analyzeSentiment(text, rating);
+    // Build full name safely from firstName/lastName or fallback to email
+    const userName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 
+                     user.name || 
+                     user.email || 
+                     'Anonymous';
+
+    // Analyze sentiment using fallback (rule-based, no OpenAI needed)
+    let analysis;
+    try {
+      analysis = await nlpService.analyzeSentiment(text, rating);
+    } catch (sentimentErr) {
+      console.error('Sentiment analysis failed, using fallback:', sentimentErr.message);
+    }
+    
+    // If sentiment analysis failed or returned nothing, use a simple rule-based fallback
+    if (!analysis || !analysis.sentiment) {
+      const lowerText = (text || '').toLowerCase();
+      const negativeWords = ['bad', 'poor', 'terrible', 'unhappy', 'disappointed', 'complaint', 'issue', 'problem', 'wrong', 'worse'];
+      const positiveWords = ['good', 'great', 'excellent', 'happy', 'love', 'wonderful', 'amazing', 'perfect', 'best', 'thank'];
+      const negCount = negativeWords.filter(w => lowerText.includes(w)).length;
+      const posCount = positiveWords.filter(w => lowerText.includes(w)).length;
+      analysis = {
+        sentiment: negCount > posCount ? 'negative' : posCount > negCount ? 'positive' : 'neutral',
+        confidence: 0.6,
+        keyTopics: [],
+        actionableItems: [],
+        summary: 'Feedback received.',
+        fallback: true
+      };
+    }
 
     // Create feedback entry
     const feedback = new Feedback({
       userId: userId,
-      userName: user.name,
+      userName: userName,
       userRole: user.role,
       category: category,
       subject: subject || 'General Feedback',
       text: text,
-      rating: rating,
+      rating: rating || undefined,
       sentimentAnalysis: {
         sentiment: analysis.sentiment,
-        confidence: analysis.confidence,
-        keyTopics: analysis.keyTopics,
-        actionableItems: analysis.actionableItems,
-        summary: analysis.summary,
+        confidence: analysis.confidence || 0.5,
+        keyTopics: analysis.keyTopics || [],
+        actionableItems: analysis.actionableItems || [],
+        summary: analysis.summary || 'Feedback received',
         analyzedAt: new Date(),
         fallback: analysis.fallback || false
       },
-      status: analysis.sentiment === 'negative' ? 'pending' : 'pending'
+      status: 'pending'
     });
 
     await feedback.save();
 
-    // Also store in user communications for backward compatibility
-    user.communications = Array.isArray(user.communications) ? user.communications : [];
-    user.communications.push({ 
-      channel: 'feedback', 
+    // Create admin notification
+    const priority = category === 'complaint' ? 'high' : 
+                    analysis.sentiment === 'negative' ? 'medium' : 'low';
+
+    const notification = new AdminNotification({
+      type: category || 'feedback',
+      feedbackId: feedback._id,
+      userId: userId,
+      userName: userName,
+      category: category,
       subject: subject || 'General Feedback',
-      notes: text, 
-      by: userId, 
-      date: new Date(),
-      sentiment: analysis.sentiment
+      message: text,
+      priority: priority,
+      read: false
     });
-    await user.save();
+
+    await notification.save();
+
+    // Also store in user communications for backward compatibility
+    try {
+      user.communications = Array.isArray(user.communications) ? user.communications : [];
+      user.communications.push({ 
+        channel: 'feedback', 
+        subject: subject || 'General Feedback',
+        notes: text, 
+        by: userId, 
+        date: new Date(),
+        sentiment: analysis.sentiment
+      });
+      await user.save();
+    } catch (commErr) {
+      console.error('Failed to store communication, but feedback was saved:', commErr.message);
+    }
 
     res.status(201).json({
       success: true,
@@ -463,5 +543,152 @@ router.post('/summarize', [
   }
 });
 
+// @route   GET /api/sentiment/notifications
+// @desc    Get admin notifications for feedback
+// @access  Private (Admin/Staff)
+router.get('/notifications', auth, async (req, res) => {
+  try {
+    if (!['admin', 'staff'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Admin or staff access required' });
+    }
+
+    const { read, priority } = req.query;
+    const filter = {};
+    
+    if (read !== undefined) {
+      filter.read = read === 'true';
+    }
+    if (priority) {
+      filter.priority = priority;
+    }
+
+    const notifications = await AdminNotification.find(filter)
+      .populate('userId', 'name email')
+      .populate('feedbackId')
+      .sort({ createdAt: -1 })
+      .limit(100);
+
+    res.json({
+      success: true,
+      notifications: notifications,
+      count: notifications.length
+    });
+
+  } catch (error) {
+    console.error('Notifications fetch error:', error);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message 
+    });
+  }
+});
+
+// @route   POST /api/sentiment/notifications/:id/respond
+// @desc    Admin respond to feedback
+// @access  Private (Admin/Staff)
+router.post('/notifications/:id/respond', [
+  auth,
+  body('response').notEmpty().withMessage('Response is required')
+], async (req, res) => {
+  try {
+    if (!['admin', 'staff'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Admin or staff access required' });
+    }
+
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ 
+        message: 'Validation failed', 
+        errors: errors.array() 
+      });
+    }
+
+    const { response } = req.body;
+    const notificationId = req.params.id;
+
+    const notification = await AdminNotification.findById(notificationId);
+    if (!notification) {
+      return res.status(404).json({ message: 'Notification not found' });
+    }
+
+    // Update notification with response
+    notification.response = response;
+    notification.respondedBy = req.user.userId;
+    notification.respondedAt = new Date();
+    notification.read = true;
+    await notification.save();
+
+    // Update feedback status
+    const feedback = await Feedback.findById(notification.feedbackId);
+    if (feedback) {
+      feedback.status = 'resolved';
+      feedback.adminNotes = response;
+      feedback.resolvedBy = req.user.userId;
+      feedback.resolvedAt = new Date();
+      await feedback.save();
+    }
+
+    // Add response to user's communications
+    const user = await User.findById(notification.userId);
+    if (user) {
+      user.communications = Array.isArray(user.communications) ? user.communications : [];
+      user.communications.push({
+        channel: 'admin_response',
+        subject: `Re: ${notification.subject}`,
+        notes: response,
+        by: req.user.userId,
+        date: new Date()
+      });
+      await user.save();
+    }
+
+    res.json({
+      success: true,
+      message: 'Response sent successfully',
+      notification: notification
+    });
+
+  } catch (error) {
+    console.error('Response send error:', error);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message 
+    });
+  }
+});
+
+// @route   GET /api/sentiment/feedback/responses
+// @desc    Get feedback responses for parent
+// @access  Private (Parent)
+router.get('/feedback/responses', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'parent') {
+      return res.status(403).json({ message: 'Parent access required' });
+    }
+
+    const responses = await AdminNotification.find({
+      userId: req.user.userId,
+      response: { $exists: true, $ne: null }
+    })
+      .populate('respondedBy', 'name role')
+      .sort({ respondedAt: -1 })
+      .limit(50);
+
+    res.json({
+      success: true,
+      responses: responses,
+      count: responses.length
+    });
+
+  } catch (error) {
+    console.error('Responses fetch error:', error);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: error.message 
+    });
+  }
+});
+
 module.exports = router;
 module.exports.Feedback = Feedback;
+module.exports.AdminNotification = AdminNotification;

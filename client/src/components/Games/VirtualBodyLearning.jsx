@@ -18,7 +18,6 @@ import {
   Zoom,
 } from '@mui/material';
 import {
-  Close,
   VolumeUp,
   Quiz,
   School,

@@ -34,7 +34,8 @@ import {
   ListItemIcon,
   Badge,
   Snackbar,
-  CardActions
+  CardActions,
+  Stack
 } from '@mui/material';
 import {
   Person,
@@ -196,6 +197,10 @@ const ParentDashboard = ({ initialTab }) => {
     notes: ''
   });
 
+  // Feedback responses state
+  const [feedbackResponses, setFeedbackResponses] = useState([]);
+  const [loadingResponses, setLoadingResponses] = useState(false);
+
   // Add Child Dialog State
   const [addChildDialog, setAddChildDialog] = useState(false);
   const [addChildForm, setAddChildForm] = useState({
@@ -304,6 +309,26 @@ const ParentDashboard = ({ initialTab }) => {
       setTab(location.state.initialTab);
     }
   }, [location]);
+
+  // Fetch feedback responses when on AI Assistant tab
+  useEffect(() => {
+    const fetchFeedbackResponses = async () => {
+      if (tab === 9) {
+        setLoadingResponses(true);
+        try {
+          const response = await api.get('/sentiment/feedback/responses');
+          if (response.data.success) {
+            setFeedbackResponses(response.data.responses || []);
+          }
+        } catch (error) {
+          console.error('Failed to fetch feedback responses:', error);
+        } finally {
+          setLoadingResponses(false);
+        }
+      }
+    };
+    fetchFeedbackResponses();
+  }, [tab]);
 
   // Handle Add New Child
   const handleAddChild = async () => {
@@ -3942,112 +3967,45 @@ const ParentDashboard = ({ initialTab }) => {
             )}
 
 
-            {/* Tab 8: Feedback & Complaints with AI Classification */}
+            {/* Tab 8: AI Sentiment Analysis */}
             {tab === 8 && (
               <Box>
-                <Card key="feedback-card-2024">
+                <Card>
                   <CardHeader 
-                    title="🧠 Feedback & AI Analysis" 
-                    subheader="Share your feedback and get instant AI-powered sentiment analysis"
+                    title="🧠 AI Sentiment Analysis" 
+                    subheader="Analyze feedback sentiment in real-time"
                   />
                   <CardContent>
-                    <Grid container spacing={3}>
-                      {/* Left Side - Submit Feedback */}
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="h6" gutterBottom color="primary">Submit Feedback</Typography>
-                        <Grid container spacing={2}>
-                          <Grid item xs={12} md={6}>
-                            <FormControl fullWidth>
-                              <InputLabel>Category</InputLabel>
-                              <Select 
-                                value={editFields.fbCategory || 'feedback'} 
-                                onChange={(e) => setEditFields(f => ({ ...f, fbCategory: e.target.value }))}
-                                label="Category"
-                              >
-                                <MenuItem value="feedback">Feedback</MenuItem>
-                                <MenuItem value="complaint">Complaint</MenuItem>
-                                <MenuItem value="suggestion">Suggestion</MenuItem>
-                              </Select>
-                            </FormControl>
-                          </Grid>
-                          <Grid item xs={12} md={6}>
-                            <TextField 
-                              fullWidth 
-                              label="Subject" 
-                              value={editFields.fbSubject || ''} 
-                              onChange={(e) => setEditFields(f => ({ ...f, fbSubject: e.target.value }))} 
-                            />
-                          </Grid>
-                          <Grid item xs={12}>
-                            <TextField 
-                              fullWidth 
-                              multiline 
-                              minRows={4} 
-                              label="Details" 
-                              value={editFields.fbDetails || ''} 
-                              onChange={(e) => setEditFields(f => ({ ...f, fbDetails: e.target.value }))} 
-                            />
-                          </Grid>
-                          <Grid item xs={12}>
-                            <Button 
-                              variant="contained" 
-                              color="primary"
-                              fullWidth
-                              onClick={async () => {
-                                try {
-                                  const payload = { 
-                                    category: editFields.fbCategory || 'feedback', 
-                                    subject: editFields.fbSubject || '', 
-                                    details: editFields.fbDetails || '' 
-                                  };
-                                  if (!payload.subject || !payload.details) return;
-                                  await api.post('/parents/me/feedback', payload);
-                                  setEditFields(f => ({ ...f, fbSubject: '', fbDetails: '' }));
-                                  alert('Feedback submitted successfully!');
-                                } catch (e) { 
-                                  console.error('Feedback submit error:', e);
-                                  alert('Error submitting feedback. Please try again.');
-                                }
-                              }}
+                    <Stack spacing={3}>
+                      {/* Analysis Input */}
+                      <TextField
+                        fullWidth
+                        multiline
+                        minRows={4}
+                        label="Feedback Text"
+                        placeholder="Enter feedback text to analyze..."
+                        value={editFields.aiFeedbackText || ''}
+                        onChange={(e) => setEditFields(f => ({ ...f, aiFeedbackText: e.target.value }))}
+                      />
+                      
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <FormControl fullWidth>
+                            <InputLabel>Service Category</InputLabel>
+                            <Select
+                              value={editFields.aiServiceCategory || 'meal'}
+                              onChange={(e) => setEditFields(f => ({ ...f, aiServiceCategory: e.target.value }))}
+                              label="Service Category"
                             >
-                              Submit Feedback
-                            </Button>
-                          </Grid>
+                              <MenuItem value="meal">Meal</MenuItem>
+                              <MenuItem value="activity">Activity</MenuItem>
+                              <MenuItem value="communication">Communication</MenuItem>
+                              <MenuItem value="safety">Safety</MenuItem>
+                              <MenuItem value="general">General</MenuItem>
+                            </Select>
+                          </FormControl>
                         </Grid>
-                      </Grid>
-
-                      {/* Right Side - AI Sentiment Analysis */}
-                      <Grid item xs={12} md={6}>
-                        <Typography variant="h6" gutterBottom color="secondary">AI Sentiment Analysis</Typography>
-                        <Grid container spacing={2}>
-                          <Grid item xs={12}>
-                            <TextField
-                              fullWidth
-                              multiline
-                              minRows={3}
-                              label="Feedback Text"
-                              placeholder="Enter feedback text to analyze..."
-                              value={editFields.aiFeedbackText || ''}
-                              onChange={(e) => setEditFields(f => ({ ...f, aiFeedbackText: e.target.value }))}
-                            />
-                          </Grid>
-                          <Grid item xs={12} md={6}>
-                            <FormControl fullWidth>
-                              <InputLabel>Service Category</InputLabel>
-                              <Select
-                                value={editFields.aiServiceCategory || 'meal'}
-                                onChange={(e) => setEditFields(f => ({ ...f, aiServiceCategory: e.target.value }))}
-                                label="Service Category"
-                              >
-                                <MenuItem value="meal">Meal</MenuItem>
-                                <MenuItem value="activity">Activity</MenuItem>
-                                <MenuItem value="communication">Communication</MenuItem>
-                                <MenuItem value="safety">Safety</MenuItem>
-                                <MenuItem value="general">General</MenuItem>
-                              </Select>
-                            </FormControl>
-                          </Grid>
-                          <Grid item xs={12} md={6}>
+                        <Grid item xs={12} md={6}>
                             <FormControl fullWidth>
                               <InputLabel>Rating (1-5)</InputLabel>
                               <Select
@@ -4062,13 +4020,13 @@ const ParentDashboard = ({ initialTab }) => {
                                 <MenuItem value={5}>5 - Excellent</MenuItem>
                               </Select>
                             </FormControl>
-                          </Grid>
-                          <Grid item xs={12}>
-                            <Button 
-                              variant="contained" 
-                              color="secondary"
-                              fullWidth
-                              onClick={async () => {
+                        </Grid>
+                        <Grid item xs={12}>
+                          <Button 
+                            variant="contained" 
+                            color="secondary"
+                            fullWidth
+                            onClick={async () => {
                                 try {
                                   if (!editFields.aiFeedbackText) {
                                     alert('Please enter feedback text to analyze');
@@ -4129,12 +4087,11 @@ const ParentDashboard = ({ initialTab }) => {
                             </Grid>
                           )}
                         </Grid>
-                      </Grid>
-                    </Grid>
-                  </CardContent>
-                </Card>
-              </Box>
-            )}
+                      </Stack>
+                    </CardContent>
+                  </Card>
+                </Box>
+              )}
 
 
             {/* Tab 9: AI Assistant - Chatbot & Feedback */}
@@ -4206,6 +4163,64 @@ const ParentDashboard = ({ initialTab }) => {
                         </Box>
                       </Grid>
                     </Grid>
+                  </CardContent>
+                </Card>
+
+                {/* Feedback Responses from Admin */}
+                <Card sx={{ mt: 3 }}>
+                  <CardHeader 
+                    title="💬 Admin Responses" 
+                    subheader="Replies to your feedback and questions"
+                  />
+                  <CardContent>
+                    {loadingResponses ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                        <CircularProgress />
+                      </Box>
+                    ) : feedbackResponses.length === 0 ? (
+                      <Alert severity="info">
+                        No responses yet. Submit feedback above and admin will respond to you!
+                      </Alert>
+                    ) : (
+                      <Stack spacing={2}>
+                        {feedbackResponses.map((resp, idx) => (
+                          <Card key={idx} variant="outlined">
+                            <CardContent>
+                              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                                <Typography variant="subtitle1" fontWeight="bold">
+                                  {resp.subject}
+                                </Typography>
+                                <Chip 
+                                  label={resp.priority} 
+                                  size="small"
+                                  color={resp.priority === 'high' ? 'error' : resp.priority === 'medium' ? 'warning' : 'default'}
+                                />
+                              </Box>
+                              
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                <strong>Your Feedback:</strong> {resp.message}
+                              </Typography>
+                              
+                              <Divider sx={{ my: 1.5 }} />
+                              
+                              <Box sx={{ bgcolor: 'success.light', p: 2, borderRadius: 1 }}>
+                                <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+                                  Admin Response ({new Date(resp.respondedAt).toLocaleDateString()}):
+                                </Typography>
+                                <Typography variant="body2">
+                                  {resp.response}
+                                </Typography>
+                                {resp.respondedBy && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                                    — {resp.respondedBy.name} ({resp.respondedBy.role})
+                                  </Typography>
+                                )}
+                              </Box>
+                            </CardContent>
+                          </Card>
+                        ))}
+                      </Stack>
+                    )}
                   </CardContent>
                 </Card>
               </Box>

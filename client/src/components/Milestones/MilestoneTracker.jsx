@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Paper,
@@ -51,6 +52,7 @@ import {
 import ConfettiCelebration from './ConfettiCelebration';
 
 const MilestoneTracker = ({ child }) => {
+  const navigate = useNavigate();
   const [completedMilestones, setCompletedMilestones] = useState([]);
   const [currentMilestones, setCurrentMilestones] = useState([]);
   const [analysis, setAnalysis] = useState(null);
@@ -396,7 +398,11 @@ const MilestoneTracker = ({ child }) => {
             </Typography>
           </Box>
         </Box>
-        <Button variant="contained" startIcon={<Info />}>
+        <Button 
+          variant="contained" 
+          startIcon={<Info />}
+          onClick={() => navigate('/milestone-celebration', { state: { child } })}
+        >
           Learn More
         </Button>
       </Paper>
