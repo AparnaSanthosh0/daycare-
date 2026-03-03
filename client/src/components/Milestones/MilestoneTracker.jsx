@@ -35,6 +35,7 @@ import {
   Share,
   Print,
   Info,
+  Celebration,
 } from '@mui/icons-material';
 import {
   milestoneCategories,
@@ -47,6 +48,7 @@ import {
   generateDailyTip,
   predictConcerns,
 } from '../../services/milestoneAI';
+import ConfettiCelebration from './ConfettiCelebration';
 
 const MilestoneTracker = ({ child }) => {
   const [completedMilestones, setCompletedMilestones] = useState([]);
@@ -54,6 +56,8 @@ const MilestoneTracker = ({ child }) => {
   const [analysis, setAnalysis] = useState(null);
   const [insights, setInsights] = useState(null);
   const [dailyTip, setDailyTip] = useState('');
+  const [showCelebration, setShowCelebration] = useState(false);
+  const [celebratingMilestone, setCelebratingMilestone] = useState(null);
 
   const childAge = child?.dateOfBirth ? calculateAgeInMonths(child.dateOfBirth) : 12;
   const childName = child?.name || 'Your child';
@@ -92,12 +96,26 @@ const MilestoneTracker = ({ child }) => {
       updated = completedMilestones.filter(m => m.milestone !== milestone.milestone);
     } else {
       updated = [...completedMilestones, { ...milestone, completedDate: new Date().toISOString() }];
+      // Show celebration for newly completed milestone
+      setCelebratingMilestone(milestone);
+      setShowCelebration(true);
     }
     
     setCompletedMilestones(updated);
     
     // Save to localStorage (in real app, save to backend)
     localStorage.setItem(`milestones_${child?.id || 'demo'}`, JSON.stringify(updated));
+  };
+
+  const handleCelebrate = (milestone) => {
+    setCelebratingMilestone(milestone);
+    setShowCelebration(true);
+  };
+
+  const handleSavePhoto = (imageData, milestone, childData) => {
+    console.log('Saving celebration photo...', { milestone, child: childData });
+    // In real app, save to backend
+    // await api.post('/api/milestones/celebration-photos', { imageData, milestoneId, childId });
   };
 
   const getMilestonesByCategory = () => {
@@ -283,7 +301,23 @@ const MilestoneTracker = ({ child }) => {
                     const isCompleted = completedMilestones.some(m => m.milestone === milestone.milestone);
                     
                     return (
-                      <ListItem key={index} sx={{ py: 1 }}>
+                      <ListItem 
+                        key={index} 
+                        sx={{ py: 1 }}
+                        secondaryAction={
+                          isCompleted && (
+                            <Tooltip title="Celebrate this achievement!">
+                              <IconButton 
+                                edge="end" 
+                                color="primary"
+                                onClick={() => handleCelebrate(milestone)}
+                              >
+                                <Celebration />
+                              </IconButton>
+                            </Tooltip>
+                          )
+                        }
+                      >
                         <FormControlLabel
                           control={
                             <Checkbox
@@ -366,6 +400,16 @@ const MilestoneTracker = ({ child }) => {
           Learn More
         </Button>
       </Paper>
+
+      {/* Milestone Celebration */}
+      {showCelebration && celebratingMilestone && (
+        <ConfettiCelebration
+          milestone={celebratingMilestone}
+          child={child}
+          onClose={() => setShowCelebration(false)}
+          onSavePhoto={handleSavePhoto}
+        />
+      )}
     </Box>
   );
 };

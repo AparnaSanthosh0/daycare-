@@ -65,6 +65,7 @@ import ARViewerPage from './pages/ARViewerPage';
 import FaceARPage from './pages/FaceARPage';
 import CameraDiagnosticsPage from './pages/CameraDiagnosticsPage';
 import MilestoneTrackerPage from './pages/MilestoneTrackerPage';
+import MilestoneCelebrationPage from './pages/MilestoneCelebrationPage';
 const InventoryPage = React.lazy(() => import('./pages/Admin/Inventory'));
 const AboutLazy = React.lazy(() => import('./pages/About/About'));
 const ApproachLazy = React.lazy(() => import('./pages/About/Approach'));
@@ -215,6 +216,12 @@ function App() {
           <Route 
             path="/milestones" 
             element={<MilestoneTrackerPage />} 
+          />
+
+          {/* Milestone Celebration AR - Celebrate achievements with AR */}
+          <Route 
+            path="/milestone-celebration" 
+            element={<MilestoneCelebrationPage />} 
           />
 
           {/* Track Order - Public Route */}

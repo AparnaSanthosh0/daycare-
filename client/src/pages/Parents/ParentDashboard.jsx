@@ -57,7 +57,8 @@ import {
   Notifications,
   Logout as LogoutIcon,
   DirectionsCar,
-  Payment
+  Payment,
+  EmojiEvents
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
 import { RAZORPAY_CONFIG } from '../../config/razorpay';
@@ -73,6 +74,7 @@ import TransportRouteMap from '../../components/Maps/TransportRouteMap';
 import VaccinationCard from '../../components/Parents/VaccinationCard';
 import VoiceAssistant from '../../VoiceAssistant';
 import Chatbot from '../../components/Chatbot';
+import MilestoneTracker from '../../components/Milestones/MilestoneTracker';
 import FeedbackForm from '../../components/FeedbackForm';
 
 // Simple helper to format date strings
@@ -1694,6 +1696,7 @@ const ParentDashboard = ({ initialTab }) => {
             <Tab icon={<LocalHospital />} label="Doctor Appointments" iconPosition="start" />
             <Tab icon={<Assessment />} label="Feedback" iconPosition="start" />
             <Tab icon={<KeyboardVoice />} label="AI Assistant" iconPosition="start" />
+            <Tab icon={<EmojiEvents />} label="Milestones" iconPosition="start" />
           </Tabs>
         </Box>
       </Box>
@@ -4181,6 +4184,31 @@ const ParentDashboard = ({ initialTab }) => {
                   </CardContent>
                 </Card>
               </Box>
+            )}
+
+            {/* Tab 10: Milestones - Development Tracker with AR Celebration */}
+            {tab === 10 && activeChildId && (
+              <Box>
+                <MilestoneTracker 
+                  child={{
+                    id: activeChildId,
+                    name: profile?.firstName || 'Your child',
+                    dateOfBirth: profile?.dateOfBirth || new Date().toISOString(),
+                  }}
+                />
+              </Box>
+            )}
+
+            {tab === 10 && !activeChildId && (
+              <Paper sx={{ p: 4, textAlign: 'center' }}>
+                <EmojiEvents sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
+                <Typography variant="h6" gutterBottom>
+                  Select a Child First
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Please select a child from the dropdown above to view their milestones and celebrate achievements!
+                </Typography>
+              </Paper>
             )}
 
             {/* Tab 6: Doctor Appointments */}
