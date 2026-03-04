@@ -60,7 +60,8 @@ import {
   DirectionsCar,
   Payment,
   EmojiEvents,
-  SportsEsports
+  SportsEsports,
+  PlayArrow
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
 import { RAZORPAY_CONFIG } from '../../config/razorpay';
@@ -233,6 +234,7 @@ const ParentDashboard = ({ initialTab }) => {
   const [assignedGames, setAssignedGames] = useState([]);
   const [teacherStories, setTeacherStories] = useState([]);
   const [teacherContentLoading, setTeacherContentLoading] = useState(false);
+  const [childScores, setChildScores] = useState({ scores: [], recentSessions: [] });
 
   // AI Recommendations state (kept for future use)
   // const [socialRecommendations, setSocialRecommendations] = useState(null);
@@ -304,21 +306,25 @@ const ParentDashboard = ({ initialTab }) => {
     loadChildren();
   }, [loadChildren]);
 
-  // Fetch teacher-assigned games + stories when Learning Games tab is active
+  // Fetch teacher-assigned games + stories + scores when Learning Games tab is active
   useEffect(() => {
     if (tab === 11 && activeChildId) {
       const fetchTeacherContent = async () => {
         setTeacherContentLoading(true);
         try {
-          const [storiesRes, gamesRes] = await Promise.allSettled([
+          const [storiesRes, gamesRes, scoresRes] = await Promise.allSettled([
             api.get('/stories'),
-            api.get(`/games/assigned/${activeChildId}`)
+            api.get(`/games/assigned/${activeChildId}`),
+            api.get(`/games/scores/${activeChildId}`)
           ]);
           if (storiesRes.status === 'fulfilled' && storiesRes.value.data?.success) {
             setTeacherStories(storiesRes.value.data.stories || []);
           }
           if (gamesRes.status === 'fulfilled' && gamesRes.value.data?.success) {
             setAssignedGames(gamesRes.value.data.assignments || []);
+          }
+          if (scoresRes.status === 'fulfilled' && scoresRes.value.data?.success) {
+            setChildScores({ scores: scoresRes.value.data.scores || [], recentSessions: scoresRes.value.data.recentSessions || [] });
           }
         } catch (err) {
           // silent
@@ -4283,225 +4289,253 @@ const ParentDashboard = ({ initialTab }) => {
               </Paper>
             )}
 
-            {/* Tab 11: Learning Games - Direct Access to Each Game */}
-            {tab === 11 && (
-              <Box>
-                <Card
-                  sx={{
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    color: 'white',
-                    mb: 3,
-                  }}
-                >
-                  <CardContent sx={{ p: 4 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                      <SportsEsports sx={{ fontSize: 48, mr: 2 }} />
-                      <Box>
-                        <Typography variant="h4" fontWeight="bold">
-                          🎮 Learning Games
-                        </Typography>
-                        <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>
-                          Fun educational games for {profile?.firstName || 'your child'}
-                        </Typography>
-                      </Box>
-                    </Box>
-                    <Typography variant="body1" sx={{ opacity: 0.95 }}>
-                      Choose from our collection of interactive learning experiences - click any game below to start!
-                    </Typography>
-                  </CardContent>
-                </Card>
+            {/* Tab 11: Learning Games — Practice Mode */}
+            {tab === 11 && (() => {
+              const ALL_PRACTICE_GAMES = [
+                { id: 'drag-match', title: 'Drag & Match', emoji: '🧩', ageGroup: '3-5 yrs', description: 'Match shapes, colors & objects!', route: '/drag-match', category: 'Cognitive', gradient: 'linear-gradient(135deg,#FF6B6B,#FF8E53)' },
+                { id: 'body-learning', title: 'Virtual Body', emoji: '🫁', ageGroup: '4-6 yrs', description: 'Explore body parts in 3D!', route: '/virtual-body-learning', category: 'Science', gradient: 'linear-gradient(135deg,#667eea,#764ba2)' },
+                { id: 'vr-360', title: 'Interactive Explorer', emoji: '🔍', ageGroup: '3-7 yrs', description: 'Explore in 2D or 360°!', route: '/vr-360', category: 'Exploration', gradient: 'linear-gradient(135deg,#2196f3,#21CBF3)' },
+                { id: 'vr-story', title: 'VR Story', emoji: '📖', ageGroup: '3-6 yrs', description: 'Immersive storytelling adventures!', route: '/vr-story', category: 'Stories', gradient: 'linear-gradient(135deg,#1abc9c,#2ecc71)' }
+              ];
 
-                {/* Teacher Assigned Content */}
-                {teacherContentLoading ? (
-                  <Box textAlign="center" py={2}><CircularProgress size={28} /></Box>
-                ) : (
-                  <>
-                    {assignedGames.length > 0 && (
-                      <Box mb={3}>
-                        <Typography variant="h6" fontWeight="bold" gutterBottom>
-                          🎯 Assigned by Teacher ({assignedGames.length})
-                        </Typography>
-                        <Grid container spacing={2}>
-                          {assignedGames.map(({ assignmentId, game, assignedBy, playCount }) => (
-                            <Grid item xs={12} sm={6} md={4} key={assignmentId}>
-                              <Card
-                                sx={{ cursor: 'pointer', border: '2px solid #667eea', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 4 } }}
-                                onClick={() => {
-                                  api.put(`/games/play/${assignmentId}`).catch(() => {});
-                                  navigate(game?.gameRoute || '/dashboard');
-                                }}
-                              >
-                                <CardContent>
-                                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1, gap: 1 }}>
-                                    <Typography variant="h4">{game?.emoji || '🎮'}</Typography>
-                                    <Box>
-                                      <Typography variant="subtitle1" fontWeight="bold">{game?.title}</Typography>
-                                      <Chip label={game?.ageGroup} size="small" color="primary" />
+              // Compute total progress from childScores
+              const totalScore = (childScores.scores || []).reduce((sum, s) => sum + (s.totalScore || 0), 0);
+              const maxStars = (childScores.scores || []).reduce((sum, s) => sum + (s.maxStars || 0), 0);
+              const totalPlays = (childScores.scores || []).reduce((sum, s) => sum + (s.playCount || 0), 0);
+
+              const handlePracticeClick = async (assignmentId, gameRoute) => {
+                try { api.put(`/games/play/${assignmentId}`).catch(() => {}); } catch {}
+                navigate(gameRoute);
+              };
+
+              return (
+                <Box>
+                  {/* Hero Header */}
+                  <Paper sx={{
+                    p: 4, mb: 3, borderRadius: 3,
+                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                    color: 'white'
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <SportsEsports sx={{ fontSize: 56 }} />
+                        <Box>
+                          <Typography variant="h4" fontWeight="bold">🎮 Learning Games</Typography>
+                          <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>Practice Mode — play at home &amp; track progress!</Typography>
+                          {profile?.firstName && <Typography variant="body2" sx={{ opacity: 0.8 }}>Learner: {profile.firstName}</Typography>}
+                        </Box>
+                      </Box>
+                      {/* Progress Summary Pills */}
+                      <Stack direction={{ xs: 'row', sm: 'row' }} spacing={2} flexWrap="wrap">
+                        <Paper sx={{ px: 2.5, py: 1.5, bgcolor: 'rgba(255,255,255,0.2)', color: 'white', borderRadius: 2, textAlign: 'center' }}>
+                          <Typography variant="h5" fontWeight="bold">{totalScore}</Typography>
+                          <Typography variant="caption">Total Points</Typography>
+                        </Paper>
+                        <Paper sx={{ px: 2.5, py: 1.5, bgcolor: 'rgba(255,255,255,0.2)', color: 'white', borderRadius: 2, textAlign: 'center' }}>
+                          <Typography variant="h5" fontWeight="bold">{'⭐'.repeat(Math.min(maxStars, 5)) || '—'}</Typography>
+                          <Typography variant="caption">Stars Earned</Typography>
+                        </Paper>
+                        <Paper sx={{ px: 2.5, py: 1.5, bgcolor: 'rgba(255,255,255,0.2)', color: 'white', borderRadius: 2, textAlign: 'center' }}>
+                          <Typography variant="h5" fontWeight="bold">{totalPlays}</Typography>
+                          <Typography variant="caption">Games Played</Typography>
+                        </Paper>
+                        <Paper sx={{ px: 2.5, py: 1.5, bgcolor: 'rgba(255,255,255,0.2)', color: 'white', borderRadius: 2, textAlign: 'center' }}>
+                          <Typography variant="h5" fontWeight="bold">{assignedGames.length}</Typography>
+                          <Typography variant="caption">Assigned</Typography>
+                        </Paper>
+                      </Stack>
+                    </Box>
+                  </Paper>
+
+                  {teacherContentLoading ? (
+                    <Box textAlign="center" py={3}><CircularProgress /></Box>
+                  ) : (
+                    <>
+                      {/* ── Teacher Assigned Games ── */}
+                      {assignedGames.length > 0 && (
+                        <Box mb={4}>
+                          <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            🎯 Assigned by Teacher ({assignedGames.length})
+                            <Chip label="Practice these first!" size="small" color="primary" variant="outlined" />
+                          </Typography>
+                          <Grid container spacing={2}>
+                            {assignedGames.map(({ assignmentId, game, assignedBy, playCount, bestScore, stars }) => (
+                              <Grid item xs={12} sm={6} md={4} key={assignmentId}>
+                                <Card sx={{
+                                  border: '2px solid #667eea', borderRadius: 2,
+                                  transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 }
+                                }}>
+                                  <Box sx={{ background: 'linear-gradient(135deg, #667eea, #764ba2)', p: 2, color: 'white' }}>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                                      <Typography variant="h3">{game?.emoji || '🎮'}</Typography>
+                                      <Box>
+                                        <Typography variant="subtitle1" fontWeight="bold">{game?.title}</Typography>
+                                        <Chip label={game?.ageGroup} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.25)', color: 'white', fontSize: '0.7rem' }} />
+                                      </Box>
                                     </Box>
                                   </Box>
-                                  <Typography variant="caption" color="text.secondary" display="block">{game?.description}</Typography>
-                                  <Box sx={{ mt: 1, display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                                    <Chip label={`By ${assignedBy}`} size="small" sx={{ bgcolor: '#667eea11', color: '#667eea' }} />
-                                    <Chip label={`Played ${playCount || 0}×`} size="small" color={playCount > 0 ? 'success' : 'default'} />
-                                  </Box>
-                                </CardContent>
-                              </Card>
-                            </Grid>
-                          ))}
-                        </Grid>
-                      </Box>
-                    )}
+                                  <CardContent sx={{ pb: 1 }}>
+                                    <Typography variant="caption" color="text.secondary" display="block" mb={1.5}>{game?.description}</Typography>
+                                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap', mb: 1.5 }}>
+                                      <Chip label={`By ${assignedBy}`} size="small" sx={{ bgcolor: '#667eea22', color: '#667eea', fontWeight: 600 }} />
+                                      <Chip label={`Played ${playCount || 0}×`} size="small" color={playCount > 0 ? 'success' : 'default'} />
+                                      {bestScore > 0 && <Chip label={`Best: ${bestScore} pts`} size="small" sx={{ bgcolor: '#fff3e0', color: '#e65100' }} icon={<EmojiEvents style={{ fontSize: 14 }} />} />}
+                                      {stars > 0 && <Chip label={'⭐'.repeat(stars)} size="small" sx={{ bgcolor: '#fffde7', color: '#f9a825' }} />}
+                                    </Box>
+                                    {/* Score Progress Bar */}
+                                    {bestScore > 0 && (
+                                      <Box mb={1}>
+                                        <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.3 }}>
+                                          <Typography variant="caption" color="text.secondary">Best Score</Typography>
+                                          <Typography variant="caption" fontWeight="bold">{bestScore}/100</Typography>
+                                        </Box>
+                                        <LinearProgress variant="determinate" value={Math.min(bestScore, 100)} sx={{ height: 6, borderRadius: 3, bgcolor: '#e3f2fd', '& .MuiLinearProgress-bar': { bgcolor: '#667eea' } }} />
+                                      </Box>
+                                    )}
+                                  </CardContent>
+                                  <CardActions sx={{ px: 2, pb: 2 }}>
+                                    <Button
+                                      fullWidth
+                                      variant="contained"
+                                      startIcon={<PlayArrow />}
+                                      onClick={() => handlePracticeClick(assignmentId, game?.gameRoute || '/')}
+                                      sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5a6fd6' }, fontWeight: 700, borderRadius: 2 }}
+                                    >
+                                      ▶ Practice Now
+                                    </Button>
+                                  </CardActions>
+                                </Card>
+                              </Grid>
+                            ))}
+                          </Grid>
+                        </Box>
+                      )}
 
-                    {teacherStories.length > 0 && (
-                      <Box mb={3}>
-                        <Typography variant="h6" fontWeight="bold" gutterBottom>
-                          📚 Teacher's Video Stories ({teacherStories.length})
-                        </Typography>
-                        <Grid container spacing={2}>
-                          {teacherStories.map(story => (
-                            <Grid item xs={12} sm={6} md={4} key={story._id}>
-                              <Card
-                                sx={{ cursor: 'pointer', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 4 } }}
-                                onClick={() => navigate('/vr-story')}
-                              >
-                                <Box sx={{ bgcolor: '#000', height: 110, overflow: 'hidden' }}>
-                                  <video
-                                    src={`http://localhost:5000${story.videoUrl}`}
-                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                                    preload="metadata"
-                                  />
+                      {/* ── Teacher's Video Stories ── */}
+                      {teacherStories.length > 0 && (
+                        <Box mb={4}>
+                          <Typography variant="h6" fontWeight="bold" gutterBottom>
+                            📚 Teacher's Video Stories ({teacherStories.length})
+                          </Typography>
+                          <Grid container spacing={2}>
+                            {teacherStories.map(story => (
+                              <Grid item xs={12} sm={6} md={4} key={story._id}>
+                                <Card sx={{ cursor: 'pointer', borderRadius: 2, overflow: 'hidden', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 4 } }}
+                                  onClick={() => navigate('/vr-story')}>
+                                  <Box sx={{ bgcolor: '#000', height: 120, overflow: 'hidden', position: 'relative' }}>
+                                    <video src={`http://localhost:5000${story.videoUrl}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} preload="metadata" />
+                                    <Box sx={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      <Box sx={{ bgcolor: 'rgba(0,0,0,0.5)', borderRadius: '50%', width: 40, height: 40, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <PlayArrow sx={{ color: 'white', fontSize: 24 }} />
+                                      </Box>
+                                    </Box>
+                                  </Box>
+                                  <CardContent sx={{ pb: 1 }}>
+                                    <Typography variant="subtitle2" fontWeight="bold" noWrap>{story.title}</Typography>
+                                    <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5 }}>
+                                      <Chip label={story.ageGroup} size="small" color="primary" />
+                                      <Chip label={story.category} size="small" variant="outlined" />
+                                    </Box>
+                                  </CardContent>
+                                </Card>
+                              </Grid>
+                            ))}
+                          </Grid>
+                        </Box>
+                      )}
+                    </>
+                  )}
+
+                  <Divider sx={{ my: 3 }}>
+                    <Chip label="🎮 All Available Games — Practice Mode" sx={{ fontWeight: 600, bgcolor: '#f5f0ff', color: '#667eea', px: 1 }} />
+                  </Divider>
+
+                  {/* ── All Games with Score Display ── */}
+                  <Grid container spacing={3}>
+                    {ALL_PRACTICE_GAMES.map(game => {
+                      const scoreData = (childScores.scores || []).find(s => s.gameName === game.title || s.gameName?.toLowerCase().includes(game.id));
+                      return (
+                        <Grid item xs={12} sm={6} md={3} key={game.id}>
+                          <Card sx={{
+                            height: '100%', borderRadius: 3, overflow: 'hidden',
+                            transition: 'transform 0.2s, box-shadow 0.2s',
+                            '&:hover': { transform: 'translateY(-6px)', boxShadow: 8 }
+                          }}>
+                            {/* Gradient Header */}
+                            <Box sx={{ background: game.gradient, p: 3, color: 'white', textAlign: 'center' }}>
+                              <Typography variant="h2" mb={0.5}>{game.emoji}</Typography>
+                              <Typography variant="subtitle1" fontWeight="bold">{game.title}</Typography>
+                              <Chip label={game.ageGroup} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.25)', color: 'white', mt: 0.5 }} />
+                            </Box>
+                            {/* Content */}
+                            <CardContent sx={{ pb: 1 }}>
+                              <Typography variant="body2" color="text.secondary" mb={1.5}>{game.description}</Typography>
+                              {/* Score Display */}
+                              {scoreData ? (
+                                <Box sx={{ bgcolor: '#f9f9f9', borderRadius: 1.5, p: 1.5, mb: 1 }}>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                    <Typography variant="caption" color="text.secondary">Best Score</Typography>
+                                    <Typography variant="caption" fontWeight="bold" color="#e65100">{scoreData.bestScore} pts</Typography>
+                                  </Box>
+                                  <LinearProgress variant="determinate" value={Math.min(scoreData.bestScore, 100)} sx={{ height: 5, borderRadius: 3, bgcolor: '#e0e0e0' }} />
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+                                    <Chip label={`Played ${scoreData.playCount}×`} size="small" color="success" />
+                                    <Chip label={'⭐'.repeat(scoreData.maxStars || 0) || 'No stars yet'} size="small" sx={{ bgcolor: '#fffde7', color: '#f9a825' }} />
+                                  </Box>
                                 </Box>
-                                <CardContent sx={{ pb: 1 }}>
-                                  <Typography variant="subtitle1" fontWeight="bold" noWrap>{story.title}</Typography>
-                                  <Box sx={{ mt: 0.5, display: 'flex', gap: 0.5 }}>
-                                    <Chip label={story.ageGroup} size="small" color="primary" />
-                                    <Chip label={story.category} size="small" variant="outlined" />
-                                  </Box>
-                                </CardContent>
-                              </Card>
-                            </Grid>
-                          ))}
+                              ) : (
+                                <Box sx={{ bgcolor: '#f5f5f5', borderRadius: 1.5, p: 1.5, mb: 1, textAlign: 'center' }}>
+                                  <Typography variant="caption" color="text.secondary">Not played yet — be the first!</Typography>
+                                </Box>
+                              )}
+                              <Chip label={game.category} size="small" variant="outlined" />
+                            </CardContent>
+                            <CardActions sx={{ px: 2, pb: 2 }}>
+                              <Button
+                                fullWidth
+                                variant="contained"
+                                startIcon={<PlayArrow />}
+                                onClick={() => navigate(game.route)}
+                                sx={{
+                                  background: game.gradient, color: 'white',
+                                  fontWeight: 700, borderRadius: 2,
+                                  '&:hover': { opacity: 0.9, background: game.gradient }
+                                }}
+                              >
+                                ▶ Play
+                              </Button>
+                            </CardActions>
+                          </Card>
                         </Grid>
-                      </Box>
-                    )}
-                  </>
-                )}
-
-                <Divider sx={{ my: 2 }} />
-                <Typography variant="h6" fontWeight="bold" gutterBottom>🎮 All Available Games</Typography>
-
-                {/* Quick Preview Grid */}
-                <Grid container spacing={3}>
-                  <Grid item xs={12} md={6}>
-                    <Card 
-                      sx={{ 
-                        cursor: 'pointer',
-                        transition: 'transform 0.2s, box-shadow 0.2s',
-                        '&:hover': {
-                          transform: 'translateY(-4px)',
-                          boxShadow: 4,
-                        }
-                      }}
-                      onClick={() => navigate('/drag-match')}
-                    >
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                          <Avatar sx={{ bgcolor: '#ff6b6b', mr: 2 }}>🧩</Avatar>
-                          <Typography variant="h6" fontWeight="bold">
-                            Drag & Match Game
-                          </Typography>
-                        </Box>
-                        <Typography variant="body2" color="text.secondary" mb={2}>
-                          Match shapes, colors, and objects to learn!
-                        </Typography>
-                        <Chip label="3-5 years" size="small" color="primary" />
-                      </CardContent>
-                    </Card>
+                      );
+                    })}
                   </Grid>
 
-                  <Grid item xs={12} md={6}>
-                    <Card 
-                      sx={{ 
-                        cursor: 'pointer',
-                        transition: 'transform 0.2s, box-shadow 0.2s',
-                        '&:hover': {
-                          transform: 'translateY(-4px)',
-                          boxShadow: 4,
-                        }
-                      }}
-                      onClick={() => navigate('/virtual-body-learning')}
-                    >
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                          <Avatar sx={{ bgcolor: '#667eea', mr: 2 }}>🫁</Avatar>
-                          <Typography variant="h6" fontWeight="bold">
-                            Virtual Body Learning
-                          </Typography>
-                        </Box>
-                        <Typography variant="body2" color="text.secondary" mb={2}>
-                          Explore body parts in 3D and learn their functions!
-                        </Typography>
-                        <Chip label="4-6 years" size="small" color="primary" />
-                      </CardContent>
-                    </Card>
-                  </Grid>
-
-                  <Grid item xs={12} md={6}>
-                    <Card 
-                      sx={{ 
-                        cursor: 'pointer',
-                        transition: 'transform 0.2s, box-shadow 0.2s',
-                        '&:hover': {
-                          transform: 'translateY(-4px)',
-                          boxShadow: 4,
-                        }
-                      }}
-                      onClick={() => navigate('/vr-360')}
-                    >
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                          <Avatar sx={{ bgcolor: '#764ba2', mr: 2 }}>🔍</Avatar>
-                          <Typography variant="h6" fontWeight="bold">
-                            Interactive Explorer
-                          </Typography>
-                        </Box>
-                        <Typography variant="body2" color="text.secondary" mb={2}>
-                          Explore in 2D or 360°! Zoom, rotate, and click objects to learn.
-                        </Typography>
-                        <Chip label="3-7 years" size="small" color="primary" />
-                      </CardContent>
-                    </Card>
-                  </Grid>
-
-                  <Grid item xs={12} md={6}>
-                    <Card 
-                      sx={{ 
-                        cursor: 'pointer',
-                        transition: 'transform 0.2s, box-shadow 0.2s',
-                        '&:hover': {
-                          transform: 'translateY(-4px)',
-                          boxShadow: 4,
-                        }
-                      }}
-                      onClick={() => navigate('/vr-story')}
-                    >
-                      <CardContent>
-                        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-                          <Avatar sx={{ bgcolor: '#1abc9c', mr: 2 }}>📖</Avatar>
-                          <Typography variant="h6" fontWeight="bold">
-                            VR Story Experience
-                          </Typography>
-                        </Box>
-                        <Typography variant="body2" color="text.secondary" mb={2}>
-                          Immersive storytelling adventures in 360°!
-                        </Typography>
-                        <Chip label="3-6 years" size="small" color="primary" />
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                </Grid>
-              </Box>
-            )}
+                  {/* Learning Benefits Footer */}
+                  <Paper sx={{ mt: 4, p: 3, borderRadius: 2, bgcolor: '#f8f9ff', border: '1px solid #e8eaff' }}>
+                    <Typography variant="subtitle1" fontWeight="bold" color="primary" gutterBottom>💡 Learning Benefits</Typography>
+                    <Grid container spacing={2}>
+                      {[
+                        { icon: '🧠', title: 'Cognitive Development', desc: 'Enhance memory, problem solving & critical thinking' },
+                        { icon: '🎨', title: 'Interactive Learning', desc: 'Hands-on experiences make learning fun & engaging' },
+                        { icon: '📈', title: 'Progress Tracking', desc: 'Monitor scores, stars & achievements over time' },
+                        { icon: '👨‍👩‍👧', title: 'Family Learning', desc: 'Play together and celebrate every achievement!' }
+                      ].map(b => (
+                        <Grid item xs={12} sm={6} md={3} key={b.title}>
+                          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                            <Typography fontSize={24}>{b.icon}</Typography>
+                            <Box>
+                              <Typography variant="body2" fontWeight="bold">{b.title}</Typography>
+                              <Typography variant="caption" color="text.secondary">{b.desc}</Typography>
+                            </Box>
+                          </Box>
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Paper>
+                </Box>
+              );
+            })()}
 
             {/* Tab 6: Doctor Appointments */}
             {/* Tab 7: Doctor Appointments */}

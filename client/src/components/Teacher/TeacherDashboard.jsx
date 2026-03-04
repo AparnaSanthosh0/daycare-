@@ -32,7 +32,11 @@ import {
   CircularProgress,
   Select,
   FormControl,
-  InputLabel
+  InputLabel,
+  LinearProgress,
+  Tooltip,
+  Badge,
+  ButtonGroup
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -54,7 +58,17 @@ import {
   Feedback as FeedbackIcon,
   AccountCircle as ProfileIcon,
   SportsEsports,
-  AutoStories
+  AutoStories,
+  PlayArrow,
+  Stop,
+  EmojiEvents,
+  Star,
+  CheckCircle,
+  Groups,
+  Timer,
+  OpenInNew,
+  History,
+  TrendingUp
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -120,6 +134,19 @@ const TeacherDashboard = () => {
   const [selectedChildForGame, setSelectedChildForGame] = useState('');
   const [selectedGameForAssign, setSelectedGameForAssign] = useState('');
   const [teacherAssignments, setTeacherAssignments] = useState([]);
+
+  // ── Classroom Control state ────────────────────────────────────────────────
+  const [sessionMode, setSessionMode] = useState('assignment'); // 'assignment' | 'classroom'
+  const [classroomSession, setClassroomSession] = useState(null);
+  const [classroomAgeFilter, setClassroomAgeFilter] = useState('all');
+  const [classroomParticipants, setClassroomParticipants] = useState(new Set());
+  const [studentPerformances, setStudentPerformances] = useState({});
+  const [sessionTimer, setSessionTimer] = useState(0);
+  const [sessionIntervalId, setSessionIntervalId] = useState(null);
+  const [classroomNote, setClassroomNote] = useState('');
+  const [sessionHistory, setSessionHistory] = useState([]);
+  const [sessionHistoryLoading, setSessionHistoryLoading] = useState(false);
+  const [childProgress, setChildProgress] = useState([]);
 
   const menuItems = [
     { label: 'Dashboard', icon: <SchoolIcon />, path: '/teacher' },
@@ -200,6 +227,7 @@ const TeacherDashboard = () => {
     // Fetch games when games tab is selected
     if (newValue === 11) {
       fetchGames();
+      fetchSessionHistory();
     }
   };
 
@@ -250,6 +278,94 @@ const TeacherDashboard = () => {
       setGameAssignError('Remove failed');
     }
   };
+
+  // ── Classroom Control Functions ────────────────────────────────────────────
+  const handleStartClassroom = (game) => {
+    setClassroomSession({
+      gameId: game._id,
+      gameName: game.title,
+      gameEmoji: game.emoji,
+      gameRoute: game.gameRoute,
+      ageGroup: classroomAgeFilter,
+      startTime: new Date()
+    });
+    setStudentPerformances({});
+    setClassroomParticipants(new Set());
+    setSessionTimer(0);
+    const id = setInterval(() => setSessionTimer(prev => prev + 1), 1000);
+    setSessionIntervalId(id);
+  };
+
+  const handleToggleParticipant = (studentId) => {
+    setClassroomParticipants(prev => {
+      const next = new Set(prev);
+      if (next.has(studentId)) next.delete(studentId); else next.add(studentId);
+      return next;
+    });
+  };
+
+  const handleSetPerformance = (studentId, perf) => {
+    setStudentPerformances(prev => ({
+      ...prev,
+      [studentId]: prev[studentId] === perf ? '' : perf
+    }));
+  };
+
+  const handleEndSession = async () => {
+    if (sessionIntervalId) { clearInterval(sessionIntervalId); setSessionIntervalId(null); }
+    try {
+      const participantList = Array.from(classroomParticipants).map(id => {
+        const student = students.find(s => s._id === id);
+        return { childId: id, childName: student ? `${student.firstName} ${student.lastName}` : '', performance: studentPerformances[id] || '' };
+      });
+      await api.post('/games/classroom/start', {
+        gameId: classroomSession.gameId,
+        gameName: classroomSession.gameName,
+        gameEmoji: classroomSession.gameEmoji,
+        gameRoute: classroomSession.gameRoute,
+        ageGroup: classroomSession.ageGroup,
+        participants: participantList,
+        duration: sessionTimer,
+        notes: classroomNote
+      });
+      setGameAssignSuccess(`✅ Session saved! ${participantList.length} children participated.`);
+      fetchSessionHistory();
+    } catch (err) { /* silent */ }
+    setClassroomSession(null);
+    setSessionTimer(0);
+    setClassroomNote('');
+    setClassroomParticipants(new Set());
+    setStudentPerformances({});
+  };
+
+  const formatSessionTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}` ;
+
+  const fetchSessionHistory = async () => {
+    try {
+      setSessionHistoryLoading(true);
+      const [histRes, progRes] = await Promise.allSettled([
+        api.get('/games/classroom/history'),
+        api.get('/games/classroom/child-progress')
+      ]);
+      if (histRes.status === 'fulfilled' && histRes.value.data.success) setSessionHistory(histRes.value.data.sessions || []);
+      if (progRes.status === 'fulfilled' && progRes.value.data.success) setChildProgress(progRes.value.data.progress || []);
+    } catch (err) { /* silent */ }
+    finally { setSessionHistoryLoading(false); }
+  };
+
+  // cleanup session interval on unmount
+  React.useEffect(() => () => { if (sessionIntervalId) clearInterval(sessionIntervalId); }, [sessionIntervalId]);
+
+  const AGE_FILTERS = [
+    { value: 'all', label: 'All Ages', color: '#607d8b' },
+    { value: 'Toddlers (3-5)', label: 'Toddlers 3-5', color: '#ff6b6b' },
+    { value: 'Preschool (4-6)', label: 'Preschool 4-6', color: '#ffa726' },
+    { value: 'All Ages (3-7)', label: 'Kinder 5-7', color: '#66bb6a' }
+  ];
+
+  const filteredGames = classroomAgeFilter === 'all'
+    ? gamesList
+    : gamesList.filter(g => g.ageGroup === classroomAgeFilter);
 
   // Visitor Management Functions
   const fetchVisitors = async () => {
@@ -2691,133 +2807,468 @@ const TeacherDashboard = () => {
   // ── Tab 11: Games (manage + assign) ─────────────────────────────
   const renderGamesTab = () => (
     <Box>
-      {/* Header */}
+      {/* ── Header ── */}
       <Paper sx={{ p: 3, mb: 3, background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', color: 'white', borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <SportsEsports sx={{ fontSize: 40 }} />
-          <Box>
-            <Typography variant="h5" fontWeight="bold">🎮 Game Management</Typography>
-            <Typography variant="body2" sx={{ opacity: 0.9 }}>Assign educational games to children for home practice & learning</Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <SportsEsports sx={{ fontSize: 48 }} />
+            <Box>
+              <Typography variant="h5" fontWeight="bold">🎮 Games & Classroom Control</Typography>
+              <Typography variant="body2" sx={{ opacity: 0.9 }}>Assign games for home practice or run interactive classroom activities on projector/smart screen</Typography>
+            </Box>
           </Box>
+          {/* Stats row */}
+          <Stack direction="row" spacing={2}>
+            <Paper sx={{ px: 2, py: 1, bgcolor: 'rgba(255,255,255,0.15)', color: 'white', borderRadius: 2, textAlign: 'center' }}>
+              <Typography variant="h6" fontWeight="bold">{teacherAssignments.length}</Typography>
+              <Typography variant="caption">Assigned</Typography>
+            </Paper>
+            <Paper sx={{ px: 2, py: 1, bgcolor: 'rgba(255,255,255,0.15)', color: 'white', borderRadius: 2, textAlign: 'center' }}>
+              <Typography variant="h6" fontWeight="bold">{teacherAssignments.filter(a => a.playCount > 0).length}</Typography>
+              <Typography variant="caption">Played</Typography>
+            </Paper>
+            <Paper sx={{ px: 2, py: 1, bgcolor: classroomSession ? 'rgba(76,175,80,0.5)' : 'rgba(255,255,255,0.15)', color: 'white', borderRadius: 2, textAlign: 'center' }}>
+              <Typography variant="h6" fontWeight="bold">{classroomSession ? '🔴 LIVE' : '—'}</Typography>
+              <Typography variant="caption">Session</Typography>
+            </Paper>
+          </Stack>
         </Box>
       </Paper>
+
+      {/* ── Mode Toggle ── */}
+      <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+        <Button
+          variant={sessionMode === 'assignment' ? 'contained' : 'outlined'}
+          startIcon={<Groups />}
+          onClick={() => setSessionMode('assignment')}
+          sx={{
+            bgcolor: sessionMode === 'assignment' ? '#667eea' : 'transparent',
+            borderColor: '#667eea', color: sessionMode === 'assignment' ? 'white' : '#667eea',
+            fontWeight: 600, px: 3, '&:hover': { bgcolor: '#5a6fd6', color: 'white' }
+          }}
+        >
+          📋 Assignment Mode
+        </Button>
+        <Button
+          variant={sessionMode === 'classroom' ? 'contained' : 'outlined'}
+          startIcon={<PlayArrow />}
+          onClick={() => { setSessionMode('classroom'); if (!sessionHistory.length) fetchSessionHistory(); }}
+          sx={{
+            bgcolor: sessionMode === 'classroom' ? '#e91e63' : 'transparent',
+            borderColor: '#e91e63', color: sessionMode === 'classroom' ? 'white' : '#e91e63',
+            fontWeight: 600, px: 3, '&:hover': { bgcolor: '#c2185b', color: 'white' }
+          }}
+        >
+          🎯 Classroom Mode
+        </Button>
+      </Box>
 
       {gameAssignSuccess && <Alert severity="success" onClose={() => setGameAssignSuccess('')} sx={{ mb: 2 }}>{gameAssignSuccess}</Alert>}
       {gameAssignError   && <Alert severity="error"   onClose={() => setGameAssignError('')}   sx={{ mb: 2 }}>{gameAssignError}</Alert>}
 
-      <Grid container spacing={3}>
-        {/* Assign Panel */}
-        <Grid item xs={12} md={5}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" fontWeight="bold" gutterBottom>➕ Assign Game to Child</Typography>
-            <Stack spacing={2}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Select Child</InputLabel>
-                <Select value={selectedChildForGame} label="Select Child" onChange={e => setSelectedChildForGame(e.target.value)}>
-                  {students.map(s => (
-                    <MenuItem key={s._id} value={s._id}>{s.firstName} {s.lastName}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl fullWidth size="small">
-                <InputLabel>Select Game</InputLabel>
-                <Select value={selectedGameForAssign} label="Select Game" onChange={e => setSelectedGameForAssign(e.target.value)}>
-                  {gamesList.map(g => (
-                    <MenuItem key={g._id} value={g._id}>{g.emoji} {g.title}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <Button
-                variant="contained"
-                disabled={!selectedChildForGame || !selectedGameForAssign}
-                onClick={handleAssignGame}
-                sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5a6fd6' } }}
-              >
-                Assign Game
-              </Button>
-            </Stack>
-          </Paper>
-        </Grid>
+      {/* ══════════════════ CLASSROOM MODE ══════════════════ */}
+      {sessionMode === 'classroom' && (
+        <Box>
+          {/* Active Session Banner */}
+          {classroomSession && (
+            <Paper sx={{ p: 3, mb: 3, border: '3px solid #4caf50', borderRadius: 2, bgcolor: '#f1f8e9' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="h5">{classroomSession.gameEmoji}</Typography>
+                  <Box>
+                    <Typography variant="h6" fontWeight="bold" color="#2e7d32">🔴 LIVE: {classroomSession.gameName}</Typography>
+                    <Typography variant="caption" color="text.secondary">Started {new Date(classroomSession.startTime).toLocaleTimeString()}</Typography>
+                  </Box>
+                </Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Chip icon={<Timer />} label={formatSessionTime(sessionTimer)} color="success" sx={{ fontWeight: 'bold', fontSize: '1.1rem', px: 1 }} />
+                  <Button
+                    variant="contained"
+                    color="error"
+                    startIcon={<Stop />}
+                    onClick={handleEndSession}
+                    sx={{ fontWeight: 700 }}
+                  >
+                    End Session
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<OpenInNew />}
+                    onClick={() => window.open(classroomSession.gameRoute, '_blank')}
+                    sx={{ borderColor: '#2e7d32', color: '#2e7d32' }}
+                  >
+                    Open Game
+                  </Button>
+                </Box>
+              </Box>
 
-        {/* Game Library */}
-        <Grid item xs={12} md={7}>
+              <Grid container spacing={3}>
+                {/* Participation Tracker */}
+                <Grid item xs={12} md={7}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Groups fontSize="small" /> Participation Tracker ({classroomParticipants.size}/{students.length})
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {students.map(s => {
+                      const id = s._id;
+                      const isParticipating = classroomParticipants.has(id);
+                      return (
+                        <Chip
+                          key={id}
+                          label={`${s.firstName} ${s.lastName}`}
+                          icon={isParticipating ? <CheckCircle /> : undefined}
+                          onClick={() => handleToggleParticipant(id)}
+                          color={isParticipating ? 'success' : 'default'}
+                          variant={isParticipating ? 'filled' : 'outlined'}
+                          sx={{ cursor: 'pointer', fontWeight: isParticipating ? 600 : 400 }}
+                        />
+                      );
+                    })}
+                  </Box>
+                  {students.length === 0 && <Typography variant="body2" color="text.secondary">No students loaded yet.</Typography>}
+                </Grid>
+
+                {/* Performance Marking */}
+                <Grid item xs={12} md={5}>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>📊 Mark Performance</Typography>
+                  {classroomParticipants.size === 0 ? (
+                    <Typography variant="body2" color="text.secondary">Check students above to mark their performance.</Typography>
+                  ) : (
+                    <Box sx={{ maxHeight: 220, overflowY: 'auto' }}>
+                      {Array.from(classroomParticipants).map(id => {
+                        const student = students.find(s => s._id === id);
+                        if (!student) return null;
+                        const perf = studentPerformances[id] || '';
+                        return (
+                          <Box key={id} sx={{ mb: 1.5, p: 1.5, bgcolor: 'white', borderRadius: 1.5, border: '1px solid #e0e0e0' }}>
+                            <Typography variant="body2" fontWeight="bold" mb={0.5}>{student.firstName} {student.lastName}</Typography>
+                            <Box sx={{ display: 'flex', gap: 0.5 }}>
+                              {[
+                                { val: 'excellent', label: '🌟 Excellent', color: '#4caf50' },
+                                { val: 'good', label: '👍 Good', color: '#2196f3' },
+                                { val: 'needs_practice', label: '💪 Practice', color: '#ff9800' }
+                              ].map(opt => (
+                                <Button
+                                  key={opt.val}
+                                  size="small"
+                                  variant={perf === opt.val ? 'contained' : 'outlined'}
+                                  onClick={() => handleSetPerformance(id, opt.val)}
+                                  sx={{
+                                    fontSize: '0.7rem', py: 0.3, px: 0.8,
+                                    bgcolor: perf === opt.val ? opt.color : 'transparent',
+                                    borderColor: opt.color, color: perf === opt.val ? 'white' : opt.color,
+                                    '&:hover': { bgcolor: opt.color, color: 'white' }
+                                  }}
+                                >
+                                  {opt.label}
+                                </Button>
+                              ))}
+                            </Box>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  )}
+                </Grid>
+
+                {/* Session Notes */}
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Session Notes (optional)"
+                    placeholder="e.g. Children engaged well with shapes category..."
+                    value={classroomNote}
+                    onChange={e => setClassroomNote(e.target.value)}
+                    multiline
+                    rows={2}
+                  />
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
+
+          {/* Age Filter Buttons */}
+          <Box sx={{ display: 'flex', gap: 1.5, mb: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Typography variant="subtitle2" fontWeight="bold" color="text.secondary">AGE GROUP:</Typography>
+            {AGE_FILTERS.map(f => (
+              <Button
+                key={f.value}
+                size="small"
+                variant={classroomAgeFilter === f.value ? 'contained' : 'outlined'}
+                onClick={() => setClassroomAgeFilter(f.value)}
+                sx={{
+                  bgcolor: classroomAgeFilter === f.value ? f.color : 'transparent',
+                  borderColor: f.color, color: classroomAgeFilter === f.value ? 'white' : f.color,
+                  fontWeight: 600, '&:hover': { bgcolor: f.color, color: 'white' }
+                }}
+              >
+                {f.label}
+              </Button>
+            ))}
+          </Box>
+
+          {/* Game Grid — Classroom Launch Cards */}
           <Typography variant="h6" fontWeight="bold" gutterBottom>
-            📚 Game Library ({gamesList.length} games)
+            🎲 Select Activity to Start {filteredGames.length !== gamesList.length && `(${filteredGames.length} games)`}
           </Typography>
           {gamesLoading ? (
-            <Box textAlign="center" py={3}><CircularProgress /></Box>
+            <Box textAlign="center" py={4}><CircularProgress /></Box>
+          ) : filteredGames.length === 0 ? (
+            <Typography color="text.secondary" py={3}>No games for the selected age group.</Typography>
           ) : (
-            <Grid container spacing={2}>
-              {gamesList.map(game => (
-                <Grid item xs={12} sm={6} key={game._id}>
-                  <Card sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
+            <Grid container spacing={3} sx={{ mb: 4 }}>
+              {filteredGames.map(game => (
+                <Grid item xs={12} sm={6} md={3} key={game._id}>
+                  <Card sx={{
+                    height: '100%', cursor: 'pointer', border: '2px solid transparent',
+                    transition: 'all 0.2s',
+                    '&:hover': { transform: 'translateY(-4px)', boxShadow: 6, borderColor: '#667eea' }
+                  }}>
+                    <Box sx={{
+                      background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                      p: 3, textAlign: 'center', color: 'white'
+                    }}>
+                      <Typography variant="h2" mb={0.5}>{game.emoji}</Typography>
+                      <Chip label={game.ageGroup} size="small" sx={{ bgcolor: 'rgba(255,255,255,0.25)', color: 'white', fontSize: '0.7rem' }} />
+                    </Box>
                     <CardContent sx={{ pb: 1 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                        <Typography variant="h4">{game.emoji}</Typography>
-                        <Box>
-                          <Typography variant="subtitle1" fontWeight="bold">{game.title}</Typography>
-                          <Chip label={game.ageGroup} size="small" color="primary" />
-                        </Box>
-                      </Box>
-                      <Typography variant="caption" color="text.secondary">{game.description}</Typography>
+                      <Typography variant="subtitle1" fontWeight="bold" gutterBottom>{game.title}</Typography>
+                      <Typography variant="caption" color="text.secondary" display="block" mb={1}>{game.description}</Typography>
+                      <Chip label={game.category} size="small" variant="outlined" sx={{ mb: 1 }} />
                     </CardContent>
-                    <CardActions sx={{ pt: 0 }}>
-                      <Chip
-                        label={game.isBuiltIn ? 'Built-in' : 'Custom'}
-                        size="small" variant="outlined"
-                        color={game.isBuiltIn ? 'success' : 'secondary'}
-                      />
-                      <Chip label={game.category} size="small" variant="outlined" />
+                    <CardActions sx={{ px: 2, pb: 2, gap: 1 }}>
+                      <Button
+                        fullWidth
+                        variant="contained"
+                        startIcon={<PlayArrow />}
+                        disabled={!!classroomSession}
+                        onClick={() => handleStartClassroom(game)}
+                        sx={{
+                          bgcolor: '#e91e63', '&:hover': { bgcolor: '#c2185b' },
+                          fontWeight: 700, fontSize: '0.9rem'
+                        }}
+                      >
+                        Start Activity
+                      </Button>
+                      <Tooltip title="Open game in new tab (projection mode)">
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          onClick={() => window.open(game.gameRoute, '_blank')}
+                          sx={{ minWidth: 40, px: 1, borderColor: '#667eea', color: '#667eea' }}
+                        >
+                          <OpenInNew fontSize="small" />
+                        </Button>
+                      </Tooltip>
                     </CardActions>
                   </Card>
                 </Grid>
               ))}
             </Grid>
           )}
-        </Grid>
 
-        {/* Assignments Table */}
-        <Grid item xs={12}>
-          <Paper sx={{ p: 3 }}>
-            <Typography variant="h6" fontWeight="bold" gutterBottom>
-              📋 My Assignments ({teacherAssignments.length})
-            </Typography>
-            {teacherAssignments.length === 0 ? (
-              <Box textAlign="center" py={3}>
-                <Typography color="text.secondary">No assignments yet. Use the panel above to assign games to children!</Typography>
-              </Box>
-            ) : (
+          {/* Child Progress Overview */}
+          {childProgress.length > 0 && (
+            <Paper sx={{ p: 3, mb: 3 }}>
+              <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <TrendingUp /> Class Performance Overview
+              </Typography>
               <Box sx={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr style={{ background: '#f5f5f5' }}>
-                      {['Game', 'Child', 'Assigned On', 'Last Played', 'Times Played', 'Action'].map(h => (
+                      {['Child', 'Sessions', '🌟 Excellent', '👍 Good', '💪 Needs Practice'].map(h => (
                         <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '2px solid #e0e0e0' }}>{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {teacherAssignments.map((a, i) => (
-                      <tr key={a._id || i} style={{ borderBottom: '1px solid #f0f0f0' }}>
-                        <td style={{ padding: '10px 12px' }}>{a.gameId?.emoji} {a.gameId?.title || '—'}</td>
-                        <td style={{ padding: '10px 12px' }}>{a.childName || '—'}</td>
-                        <td style={{ padding: '10px 12px' }}>{a.assignedAt ? new Date(a.assignedAt).toLocaleDateString() : '—'}</td>
-                        <td style={{ padding: '10px 12px' }}>{a.lastPlayedAt ? new Date(a.lastPlayedAt).toLocaleDateString() : <em style={{ color: '#999' }}>Not yet</em>}</td>
-                        <td style={{ padding: '10px 12px' }}>
-                          <Chip label={a.playCount || 0} size="small" color={a.playCount > 0 ? 'success' : 'default'} />
-                        </td>
-                        <td style={{ padding: '10px 12px' }}>
-                          <Button size="small" color="error" onClick={() => handleRemoveAssignment(a._id)}>Remove</Button>
-                        </td>
+                    {childProgress.map((cp, i) => (
+                      <tr key={cp.childId || i} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                        <td style={{ padding: '10px 12px', fontWeight: 500 }}>{cp.childName || '—'}</td>
+                        <td style={{ padding: '10px 12px' }}><Chip label={cp.sessions} size="small" color="primary" /></td>
+                        <td style={{ padding: '10px 12px' }}><Chip label={cp.excellent || 0} size="small" sx={{ bgcolor: '#e8f5e9', color: '#2e7d32' }} /></td>
+                        <td style={{ padding: '10px 12px' }}><Chip label={cp.good || 0} size="small" sx={{ bgcolor: '#e3f2fd', color: '#1565c0' }} /></td>
+                        <td style={{ padding: '10px 12px' }}><Chip label={cp.needs_practice || 0} size="small" sx={{ bgcolor: '#fff3e0', color: '#e65100' }} /></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </Box>
+            </Paper>
+          )}
+
+          {/* Session History */}
+          <Paper sx={{ p: 3 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+              <Typography variant="h6" fontWeight="bold" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <History /> Recent Sessions ({sessionHistory.length})
+              </Typography>
+              <Button size="small" onClick={fetchSessionHistory} disabled={sessionHistoryLoading}>Refresh</Button>
+            </Box>
+            {sessionHistoryLoading ? (
+              <Box textAlign="center" py={2}><CircularProgress size={24} /></Box>
+            ) : sessionHistory.length === 0 ? (
+              <Box textAlign="center" py={3}>
+                <Typography color="text.secondary">No classroom sessions yet. Click "Start Activity" to begin!</Typography>
+              </Box>
+            ) : (
+              <Grid container spacing={2}>
+                {sessionHistory.slice(0, 6).map((s, i) => (
+                  <Grid item xs={12} sm={6} md={4} key={s._id || i}>
+                    <Card variant="outlined" sx={{ p: 2 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                        <Typography variant="h5">{s.gameEmoji || '🎮'}</Typography>
+                        <Box>
+                          <Typography variant="subtitle2" fontWeight="bold">{s.gameName}</Typography>
+                          <Typography variant="caption" color="text.secondary">{new Date(s.startTime).toLocaleDateString()}</Typography>
+                        </Box>
+                      </Box>
+                      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                        <Chip label={`${s.participants?.length || 0} children`} size="small" icon={<Groups />} />
+                        <Chip label={s.ageGroup || 'All'} size="small" variant="outlined" />
+                        {s.duration > 0 && <Chip label={formatSessionTime(s.duration)} size="small" icon={<Timer />} variant="outlined" />}
+                      </Box>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
             )}
           </Paper>
+        </Box>
+      )}
+
+      {/* ══════════════════ ASSIGNMENT MODE ══════════════════ */}
+      {sessionMode === 'assignment' && (
+        <Grid container spacing={3}>
+          {/* Quick Assign Panel */}
+          <Grid item xs={12} md={5}>
+            <Paper sx={{ p: 3, height: '100%' }}>
+              <Typography variant="h6" fontWeight="bold" gutterBottom>➕ Assign Game for Home Practice</Typography>
+              <Typography variant="body2" color="text.secondary" mb={2}>
+                Assign educational games to specific children so parents can practice at home!
+              </Typography>
+              <Stack spacing={2}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Select Child</InputLabel>
+                  <Select value={selectedChildForGame} label="Select Child" onChange={e => setSelectedChildForGame(e.target.value)}>
+                    {students.map(s => (
+                      <MenuItem key={s._id} value={s._id}>{s.firstName} {s.lastName}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Select Game</InputLabel>
+                  <Select value={selectedGameForAssign} label="Select Game" onChange={e => setSelectedGameForAssign(e.target.value)}>
+                    {gamesList.map(g => (
+                      <MenuItem key={g._id} value={g._id}>{g.emoji} {g.title} — {g.ageGroup}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <Button
+                  variant="contained"
+                  disabled={!selectedChildForGame || !selectedGameForAssign}
+                  onClick={handleAssignGame}
+                  startIcon={<PlayArrow />}
+                  sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5a6fd6' }, fontWeight: 700 }}
+                >
+                  Assign for Home Practice
+                </Button>
+              </Stack>
+            </Paper>
+          </Grid>
+
+          {/* Game Library Preview */}
+          <Grid item xs={12} md={7}>
+            <Typography variant="h6" fontWeight="bold" gutterBottom>
+              📚 Game Library ({gamesList.length} games)
+            </Typography>
+            {gamesLoading ? (
+              <Box textAlign="center" py={3}><CircularProgress /></Box>
+            ) : (
+              <Grid container spacing={2}>
+                {gamesList.map(game => (
+                  <Grid item xs={12} sm={6} key={game._id}>
+                    <Card sx={{ border: '1px solid #e0e0e0', height: '100%', transition: 'box-shadow 0.2s', '&:hover': { boxShadow: 4 } }}>
+                      <CardContent sx={{ pb: 1 }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+                          <Typography variant="h3">{game.emoji}</Typography>
+                          <Box>
+                            <Typography variant="subtitle1" fontWeight="bold">{game.title}</Typography>
+                            <Chip label={game.ageGroup} size="small" color="primary" sx={{ fontSize: '0.7rem' }} />
+                          </Box>
+                        </Box>
+                        <Typography variant="caption" color="text.secondary">{game.description}</Typography>
+                      </CardContent>
+                      <CardActions sx={{ pt: 0, pb: 1, px: 2, gap: 0.5 }}>
+                        <Chip label={game.isBuiltIn ? '✅ Built-in' : 'Custom'} size="small" variant="outlined" color={game.isBuiltIn ? 'success' : 'secondary'} />
+                        <Chip label={game.category} size="small" variant="outlined" />
+                        <Box sx={{ flex: 1 }} />
+                        <Button size="small" startIcon={<OpenInNew />} onClick={() => window.open(game.gameRoute, '_blank')} sx={{ color: '#667eea' }}>
+                          Preview
+                        </Button>
+                      </CardActions>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            )}
+          </Grid>
+
+          {/* Assignments Table */}
+          <Grid item xs={12}>
+            <Paper sx={{ p: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography variant="h6" fontWeight="bold">
+                  📋 Home Practice Assignments ({teacherAssignments.length})
+                </Typography>
+                <Button size="small" onClick={fetchGames} disabled={gamesLoading}>Refresh</Button>
+              </Box>
+              {teacherAssignments.length === 0 ? (
+                <Box textAlign="center" py={4} sx={{ bgcolor: '#f9f9f9', borderRadius: 2 }}>
+                  <Typography variant="h4" mb={1}>🎮</Typography>
+                  <Typography color="text.secondary">No assignments yet. Use the panel above to assign games!</Typography>
+                </Box>
+              ) : (
+                <Box sx={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr style={{ background: '#f5f5f5' }}>
+                        {['Game', 'Child', 'Assigned', 'Last Played', 'Played', 'Best Score', 'Stars', 'Action'].map(h => (
+                          <th key={h} style={{ padding: '10px 12px', textAlign: 'left', fontWeight: 600, borderBottom: '2px solid #e0e0e0' }}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teacherAssignments.map((a, i) => (
+                        <tr key={a._id || i} style={{ borderBottom: '1px solid #f0f0f0' }}>
+                          <td style={{ padding: '10px 12px' }}>{a.gameId?.emoji} {a.gameId?.title || '—'}</td>
+                          <td style={{ padding: '10px 12px', fontWeight: 500 }}>{a.childName || '—'}</td>
+                          <td style={{ padding: '10px 12px', fontSize: 13 }}>{a.assignedAt ? new Date(a.assignedAt).toLocaleDateString() : '—'}</td>
+                          <td style={{ padding: '10px 12px', fontSize: 13 }}>{a.lastPlayedAt ? new Date(a.lastPlayedAt).toLocaleDateString() : <em style={{ color: '#999' }}>Not yet</em>}</td>
+                          <td style={{ padding: '10px 12px' }}><Chip label={a.playCount || 0} size="small" color={a.playCount > 0 ? 'success' : 'default'} /></td>
+                          <td style={{ padding: '10px 12px' }}>
+                            {a.bestScore > 0
+                              ? <Chip label={`${a.bestScore} pts`} size="small" sx={{ bgcolor: '#fff3e0', color: '#e65100' }} icon={<EmojiEvents style={{ fontSize: 14 }} />} />
+                              : <span style={{ color: '#bbb' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            {'⭐'.repeat(a.stars || 0) || <span style={{ color: '#ccc' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '10px 12px' }}>
+                            <Button size="small" color="error" onClick={() => handleRemoveAssignment(a._id)}>Remove</Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </Box>
+              )}
+            </Paper>
+          </Grid>
         </Grid>
-      </Grid>
+      )}
     </Box>
   );
 
@@ -3016,6 +3467,9 @@ const TeacherDashboard = () => {
         <Tabs 
           value={currentTab} 
           onChange={handleTabChange}
+          variant="scrollable"
+          scrollButtons="auto"
+          allowScrollButtonsMobile
           sx={{
             '& .MuiTab-root': {
               textTransform: 'none',

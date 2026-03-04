@@ -10,7 +10,7 @@ const gameSchema = new mongoose.Schema({
   description: { type: String, default: '' },
   ageGroup:    { type: String, default: 'All Ages' },
   category:    { type: String, default: 'General' },
-  gameRoute:   { type: String, default: '' },   // internal path e.g. /drag-match
+  gameRoute:   { type: String, default: '' },
   emoji:       { type: String, default: '🎮' },
   thumbnail:   { type: String, default: '' },
   isBuiltIn:   { type: Boolean, default: true },
@@ -30,11 +30,55 @@ const assignmentSchema = new mongoose.Schema({
   assignedAt:   { type: Date, default: Date.now },
   lastPlayedAt: { type: Date },
   playCount:    { type: Number, default: 0 },
+  bestScore:    { type: Number, default: 0 },
+  totalScore:   { type: Number, default: 0 },
+  stars:        { type: Number, default: 0, min: 0, max: 3 },
   completed:    { type: Boolean, default: false },
   completedAt:  { type: Date },
   notes:        { type: String, default: '' }
 });
 const GameAssignment = mongoose.model('GameAssignment', assignmentSchema);
+
+// ── GameSession Schema ────────────────────────────────────────────────────────
+if (mongoose.models.GameSession) delete mongoose.models['GameSession'];
+const gameSessionSchema = new mongoose.Schema({
+  childId:      { type: mongoose.Schema.Types.ObjectId, required: true },
+  childName:    { type: String, default: '' },
+  gameId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Game' },
+  gameName:     { type: String, default: '' },
+  assignmentId: { type: mongoose.Schema.Types.ObjectId, ref: 'GameAssignment' },
+  score:        { type: Number, default: 0 },
+  maxScore:     { type: Number, default: 100 },
+  stars:        { type: Number, default: 0, min: 0, max: 3 },
+  level:        { type: Number, default: 1 },
+  gameType:     { type: String, default: '' },
+  duration:     { type: Number, default: 0 },   // seconds
+  mode:         { type: String, enum: ['practice', 'classroom'], default: 'practice' },
+  completedAt:  { type: Date, default: Date.now }
+});
+const GameSession = mongoose.model('GameSession', gameSessionSchema);
+
+// ── ClassroomSession Schema ───────────────────────────────────────────────────
+if (mongoose.models.ClassroomSession) delete mongoose.models['ClassroomSession'];
+const classroomSchema = new mongoose.Schema({
+  gameId:       { type: mongoose.Schema.Types.ObjectId, ref: 'Game' },
+  gameName:     { type: String, default: '' },
+  gameEmoji:    { type: String, default: '🎮' },
+  gameRoute:    { type: String, default: '' },
+  teacherId:    { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  teacherName:  { type: String, default: '' },
+  ageGroup:     { type: String, default: 'All' },
+  participants: [{
+    childId:     { type: mongoose.Schema.Types.ObjectId },
+    childName:   { type: String },
+    performance: { type: String, enum: ['excellent', 'good', 'needs_practice', ''], default: '' }
+  }],
+  duration:     { type: Number, default: 0 },
+  notes:        { type: String, default: '' },
+  startTime:    { type: Date, default: Date.now },
+  endTime:      { type: Date }
+});
+const ClassroomSession = mongoose.model('ClassroomSession', classroomSchema);
 
 // ── Seed built-in games ───────────────────────────────────────────────────────
 const BUILTIN_GAMES = [
@@ -170,6 +214,9 @@ router.get('/assigned/:childId', auth, async (req, res) => {
         assignedAt:   a.assignedAt,
         lastPlayedAt: a.lastPlayedAt,
         playCount:    a.playCount,
+        bestScore:    a.bestScore || 0,
+        totalScore:   a.totalScore || 0,
+        stars:        a.stars || 0,
         completed:    a.completed,
         notes:        a.notes
       }));
@@ -199,21 +246,170 @@ router.get('/assignments', auth, async (req, res) => {
 });
 
 // ── PUT /api/games/play/:assignmentId ─────────────────────────────────────────
-// Parent marks game as played (increments play count)
+// Parent marks game as played — optionally saves score
 router.put('/play/:assignmentId', auth, async (req, res) => {
   try {
-    const assignment = await GameAssignment.findByIdAndUpdate(
-      req.params.assignmentId,
-      {
-        $inc: { playCount: 1 },
-        lastPlayedAt: new Date()
-      },
-      { new: true }
-    );
+    const { score, stars, level, gameType, duration } = req.body || {};
+    const update = {
+      $inc: { playCount: 1 },
+      lastPlayedAt: new Date()
+    };
+    const assignment = await GameAssignment.findById(req.params.assignmentId);
     if (!assignment) return res.status(404).json({ message: 'Assignment not found' });
-    res.json({ success: true, assignment });
+
+    if (score !== undefined) {
+      update.$inc.totalScore = score;
+      if (score > (assignment.bestScore || 0)) update.bestScore = score;
+      const s = score >= 80 ? 3 : score >= 50 ? 2 : score > 0 ? 1 : 0;
+      if (s > (assignment.stars || 0)) update.stars = s;
+    }
+    const updated = await GameAssignment.findByIdAndUpdate(req.params.assignmentId, update, { new: true });
+    res.json({ success: true, assignment: updated });
   } catch (err) {
     res.status(500).json({ message: 'Failed to update play count', error: err.message });
+  }
+});
+
+// ── POST /api/games/session ───────────────────────────────────────────────────
+// Save a completed game session (score, stars, level, duration)
+router.post('/session', auth, async (req, res) => {
+  try {
+    const { childId, childName, gameId, gameName, assignmentId,
+            score, maxScore, stars, level, gameType, duration, mode } = req.body;
+    if (!childId) return res.status(400).json({ message: 'childId required' });
+
+    const session = new GameSession({
+      childId, childName: childName || '',
+      gameId, gameName: gameName || '',
+      assignmentId,
+      score: score || 0,
+      maxScore: maxScore || 100,
+      stars: stars || (score >= 80 ? 3 : score >= 50 ? 2 : score > 0 ? 1 : 0),
+      level: level || 1,
+      gameType: gameType || '',
+      duration: duration || 0,
+      mode: mode || 'practice'
+    });
+    await session.save();
+
+    // Also update the assignment if provided
+    if (assignmentId) {
+      const s = session.stars;
+      const update = { $inc: { playCount: 1, totalScore: score || 0 }, lastPlayedAt: new Date() };
+      const existing = await GameAssignment.findById(assignmentId);
+      if (existing) {
+        if ((score || 0) > (existing.bestScore || 0)) update.bestScore = score || 0;
+        if (s > (existing.stars || 0)) update.stars = s;
+      }
+      await GameAssignment.findByIdAndUpdate(assignmentId, update);
+    }
+
+    res.status(201).json({ success: true, session });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to save session', error: err.message });
+  }
+});
+
+// ── GET /api/games/scores/:childId ──────────────────────────────────────────
+// Get child's score summary per game (for parent dashboard progress)
+router.get('/scores/:childId', auth, async (req, res) => {
+  try {
+    const sessions = await GameSession.find({ childId: req.params.childId })
+      .sort({ completedAt: -1 })
+      .limit(100);
+
+    // Aggregate per gameName
+    const totals = {};
+    for (const s of sessions) {
+      const key = s.gameName || s.gameId?.toString() || 'Unknown';
+      if (!totals[key]) {
+        totals[key] = { gameName: key, gameId: s.gameId, totalScore: 0, bestScore: 0, playCount: 0, maxStars: 0, lastPlayed: s.completedAt };
+      }
+      totals[key].playCount += 1;
+      totals[key].totalScore += s.score;
+      if (s.score > totals[key].bestScore) totals[key].bestScore = s.score;
+      if (s.stars > totals[key].maxStars) totals[key].maxStars = s.stars;
+    }
+
+    res.json({ success: true, scores: Object.values(totals), recentSessions: sessions.slice(0, 20) });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch scores', error: err.message });
+  }
+});
+
+// ── POST /api/games/classroom/start ─────────────────────────────────────────
+// Teacher saves a completed classroom session
+router.post('/classroom/start', auth, async (req, res) => {
+  try {
+    const { role } = req.user;
+    if (!['admin', 'staff'].includes(role)) {
+      return res.status(403).json({ message: 'Only teachers/admins can save classroom sessions' });
+    }
+    const { gameId, gameName, gameEmoji, gameRoute, ageGroup, participants, duration, notes } = req.body;
+
+    const cs = new ClassroomSession({
+      gameId,
+      gameName: gameName || '',
+      gameEmoji: gameEmoji || '🎮',
+      gameRoute: gameRoute || '',
+      teacherId: req.user._id || req.user.id,
+      teacherName: req.user.name || req.user.email || 'Teacher',
+      ageGroup: ageGroup || 'All',
+      participants: participants || [],
+      duration: duration || 0,
+      notes: notes || '',
+      endTime: new Date()
+    });
+    await cs.save();
+    res.status(201).json({ success: true, session: cs });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to save classroom session', error: err.message });
+  }
+});
+
+// ── GET /api/games/classroom/history ─────────────────────────────────────────
+// Teacher's past classroom sessions
+router.get('/classroom/history', auth, async (req, res) => {
+  try {
+    const { role } = req.user;
+    if (!['admin', 'staff'].includes(role)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const teacherId = req.user._id || req.user.id;
+    const sessions = await ClassroomSession.find({ teacherId })
+      .sort({ startTime: -1 })
+      .limit(20);
+    res.json({ success: true, sessions });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch classroom history', error: err.message });
+  }
+});
+
+// ── GET /api/games/classroom/child-progress ──────────────────────────────────
+// Get child participation + performance across all classroom sessions (teacher view)
+router.get('/classroom/child-progress', auth, async (req, res) => {
+  try {
+    const { role } = req.user;
+    if (!['admin', 'staff'].includes(role)) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    const teacherId = req.user._id || req.user.id;
+    const sessions = await ClassroomSession.find({ teacherId }).sort({ startTime: -1 });
+
+    // Aggregate per child
+    const childMap = {};
+    for (const s of sessions) {
+      for (const p of s.participants || []) {
+        const id = p.childId?.toString();
+        if (!id) continue;
+        if (!childMap[id]) childMap[id] = { childName: p.childName, sessions: 0, excellent: 0, good: 0, needs_practice: 0 };
+        childMap[id].sessions += 1;
+        if (p.performance) childMap[id][p.performance] = (childMap[id][p.performance] || 0) + 1;
+      }
+    }
+    res.json({ success: true, progress: Object.entries(childMap).map(([id, v]) => ({ childId: id, ...v })) });
+  } catch (err) {
+    res.status(500).json({ message: 'Failed to fetch progress', error: err.message });
   }
 });
 
