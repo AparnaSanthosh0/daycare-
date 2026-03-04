@@ -25,8 +25,6 @@ import api, { API_BASE_URL } from '../../config/api';
 import { useShop } from '../../contexts/ShopContext';
 import { recommendForProduct, recommendForUser, collectSignalsFromContext } from '../../utils/recommendations';
 import { deriveSizeOptions } from '../../utils/sizes';
-import Product3DViewer from '../Product3DViewer';
-import Image3DViewer from '../Image3DViewer';
 import Product3DImageViewer from '../Product3DImageViewer';
 
 function toAbsoluteImageUrl(maybePath) {

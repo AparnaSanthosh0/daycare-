@@ -67,23 +67,7 @@ function ARModel({ url, scale = 1, position = [0, 0, 0] }) {
   return <primitive object={scene} scale={scale} position={position} />;
 }
 
-/**
- * Fallback Model Component
- * Shows a simple cube when model fails to load
- */
-function FallbackModel({ scale = 1, position = [0, 0, 0] }) {
-  console.log('⚠️ Using fallback model (cube)');
-  return (
-    <mesh scale={scale} position={position} castShadow>
-      <boxGeometry args={[1, 1, 1]} />
-      <meshStandardMaterial 
-        color="#1976d2" 
-        metalness={0.3} 
-        roughness={0.5} 
-      />
-    </mesh>
-  );
-}
+
 
 /**
  * ARViewer Component
@@ -122,7 +106,7 @@ const ARViewer = ({
     console.log('Product Name:', productName);
     console.log('Product ID:', productId);
     console.log('Price:', price);
-  }, []);
+  }, [modelUrl, productName, productId, price]);
 
   // Validate model URL
   useEffect(() => {

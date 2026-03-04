@@ -25,7 +25,6 @@ const Product3DImageViewer = ({
   const [zoom, setZoom] = useState(1);
   const [isDragging, setIsDragging] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isHovering, setIsHovering] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
   
   const containerRef = useRef(null);
@@ -107,7 +106,6 @@ const Product3DImageViewer = ({
     for (let i = 0; i < totalSlices; i++) {
       // Calculate angle for this slice (full 360 degrees)
       const sliceAngle = i * anglePerSlice;
-      const radians = (sliceAngle * Math.PI) / 180;
       
       // Calculate effective angle after rotation
       const effectiveAngle = ((sliceAngle + rotationY) % 360 + 360) % 360;

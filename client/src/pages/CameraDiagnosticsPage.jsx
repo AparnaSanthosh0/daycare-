@@ -1,5 +1,5 @@
 import React from 'react';
-import { Container, Box, Button, Typography } from '@mui/material';
+import { Container, Box, Button } from '@mui/material';
 import { ArrowBack } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import CameraDiagnostics from '../components/AR/CameraDiagnostics';

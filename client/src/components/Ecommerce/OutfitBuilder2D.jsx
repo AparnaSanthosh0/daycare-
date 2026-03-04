@@ -37,16 +37,12 @@ import {
   AccordionSummary,
   AccordionDetails,
   FormControl,
-  FormLabel,
   RadioGroup,
   FormControlLabel,
   Radio,
 } from '@mui/material';
 import {
   ShoppingCart,
-  Palette,
-  TextFields,
-  AutoAwesome,
   Download,
   Checkroom,
   ExpandMore,
@@ -837,7 +833,7 @@ function drawShortsSet(ctx, config) {
 /** Draws ROMPER - suitable for boys or girls */
 function drawRomper(ctx, config) {
   const centerX = CANVAS_W / 2;
-  const { neckline = 'round', sleeve = 'short' } = config;
+  const { sleeve = 'short' } = config;
   
   ctx.beginPath();
   

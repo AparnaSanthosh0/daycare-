@@ -19,7 +19,6 @@ import {
   ListItem,
   ListItemText,
   ListItemIcon,
-  Divider,
   Paper
 } from '@mui/material';
 import {
@@ -56,6 +55,7 @@ const BlockchainAttendanceHistory = ({ entityType, entityId, entityName }) => {
     if (entityType && entityId) {
       loadHistory();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [entityType, entityId]);
 
   const loadHistory = async () => {

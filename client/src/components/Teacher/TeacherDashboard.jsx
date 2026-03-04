@@ -32,9 +32,7 @@ import {
   CircularProgress,
   Select,
   FormControl,
-  InputLabel,
-  LinearProgress,
-  Tooltip
+  InputLabel
 } from '@mui/material';
 import {
   People as PeopleIcon,

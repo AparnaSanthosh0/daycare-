@@ -7,7 +7,6 @@ import {
   Button,
   Paper,
   Grid,
-  Chip,
   CircularProgress,
   Alert,
   Dialog,
@@ -21,7 +20,6 @@ import {
   Close,
   CameraAlt,
   FlipCameraIos,
-  PhotoCamera,
   ShoppingCart,
   Refresh,
   Download,
@@ -210,6 +208,7 @@ const FaceAccessoriesAR = ({ product, onClose, onAddToCart }) => {
       mounted = false;
       cleanup();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facingMode]);
 
   // Sync selectedAccessory to ref for render loop

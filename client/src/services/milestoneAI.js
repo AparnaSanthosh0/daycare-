@@ -25,7 +25,6 @@ export const analyzeMilestones = (childAge, completedMilestones, totalMilestones
 
   // Check critical milestones
   const criticalMilestones = totalMilestones.filter(m => m.critical);
-  const criticalCompleted = completedMilestones.filter(m => m.critical);
   const criticalMissing = criticalMilestones.filter(m => 
     !completedMilestones.some(cm => cm.milestone === m.milestone)
   );

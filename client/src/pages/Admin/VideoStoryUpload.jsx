@@ -10,7 +10,6 @@ import {
   Card,
   CardContent,
   CardActions,
-  CardMedia,
   Chip,
   Alert,
   CircularProgress,
