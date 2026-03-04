@@ -12,7 +12,7 @@
   "env": {
     "NODE_ENV": "production",
     "GENERATE_SOURCEMAP": "false",
-    "REACT_APP_API_URL": "https://your-backend-url.railway.app"
+    "REACT_APP_API_URL": "https://your-actual-backend-url.railway.app"
   },
   "headers": [
     {
@@ -90,11 +90,11 @@
       ]
     }
   ],
-  "redirects": [
+  "routes": [
     {
-      "source": "/",
-      "destination": "/client",
-      "permanent": false
+      "src": "/[^.]+",
+      "dest": "/",
+      "status": 200
     }
   ],
   "cleanUrls": true,

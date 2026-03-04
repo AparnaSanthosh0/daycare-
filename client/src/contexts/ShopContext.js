@@ -51,32 +51,69 @@ export const ShopProvider = ({ children }) => {
   }, [recentlyViewed]);
 
   const addToCart = useCallback((product, variant = null, qty = 1) => {
-    const stockQty = product.stockQty ?? (product.inStock ? Infinity : 0);
-    
+    // Prefer explicit stock quantity when provided; otherwise:
+    // - if inStock is explicitly false, treat as 0
+    // - if no stock info at all (e.g. AR try-on demo objects), assume effectively infinite stock
+    const hasNumericStock = typeof product.stockQty === 'number' && !Number.isNaN(product.stockQty);
+    const stockQty = hasNumericStock
+      ? product.stockQty
+      : (product.inStock === false ? 0 : Infinity);
+
+    // Normalise product id so AR / demo objects with only _id still work
+    const productId = product.id ?? product._id;
+
+    if (!productId) {
+      console.warn('Cannot add to cart: product is missing id/_id', product);
+      return false;
+    }
+
     // Check if product is out of stock
     if (stockQty <= 0) {
       console.warn(`Cannot add ${product.name} to cart: out of stock`);
       return false; // Return false to indicate failure
     }
 
+    // Extract optional customization payload (from 2D outfit builder)
+    const customization = product.customization || null;
+    // A customised item generates a unique key so it's tracked separately
+    const custKey = customization
+      ? `::custom::${JSON.stringify({
+          si: customization.silhouette,
+          ne: customization.neckline,
+          sl: customization.sleeve,
+          le: customization.length,
+          wa: customization.waist,
+          fe: customization.features?.sort().join(','),
+          bc: customization.baseColour,
+          pt: customization.pattern,
+          tx: customization.text,
+          tc: customization.textColour,
+          ff: customization.fontFamily,
+        })}`
+      : '';
+
     setCartItems((prev) => {
-      const key = `${product.id}${variant ? `::${variant}` : ''}`;
+      const key = `${productId}${variant ? `::${variant}` : ''}${custKey}`;
       const idx = prev.findIndex((i) => i.key === key);
       
       if (idx !== -1) {
         const next = [...prev];
-        const newQuantity = next[idx].quantity + qty;
-        // Check if new quantity exceeds available stock
-        if (newQuantity > (next[idx].stockQty ?? stockQty)) {
+        const current = next[idx];
+        const currentStock = typeof current.stockQty === 'number' && !Number.isNaN(current.stockQty)
+          ? current.stockQty
+          : stockQty;
+        const newQuantity = current.quantity + qty;
+        // Check if new quantity exceeds available stock (unless effectively infinite)
+        if (Number.isFinite(currentStock) && newQuantity > currentStock) {
           console.warn(`Cannot add ${qty} more of ${product.name}: insufficient stock`);
           return prev; // Don't update if stock insufficient
         }
-        next[idx] = { ...next[idx], quantity: newQuantity, stockQty: next[idx].stockQty ?? stockQty };
+        next[idx] = { ...current, quantity: newQuantity, stockQty: currentStock };
         return next;
       }
       
-      // Check if requested quantity exceeds available stock
-      if (qty > stockQty) {
+      // Check if requested quantity exceeds available stock (unless effectively infinite)
+      if (Number.isFinite(stockQty) && qty > stockQty) {
         console.warn(`Cannot add ${qty} of ${product.name}: only ${stockQty} available`);
         return prev;
       }
@@ -85,21 +122,25 @@ export const ShopProvider = ({ children }) => {
         ...prev,
         {
           key,
-          id: product.id,
+          id: productId,
           name: product.name,
           price: product.price,
-          image: product.image,
+          // Show the canvas-generated preview for customised items
+          image: customization?.previewDataUrl || product.image,
           quantity: qty,
           variant,
           stockQty: stockQty, // Store stock quantity for later checks
+          customization,      // Persist full customisation data
         },
       ];
     });
     // record add interaction
     setInteractions((prev) => {
       const next = { ...prev };
-      const entry = next[product.id] || { view: 0, add: 0 };
-      next[product.id] = { ...entry, add: entry.add + 1 };
+      const idForStats = product.id ?? product._id;
+      if (!idForStats) return next;
+      const entry = next[idForStats] || { view: 0, add: 0 };
+      next[idForStats] = { ...entry, add: entry.add + 1 };
       return next;
     });
     return true; // Return true to indicate success

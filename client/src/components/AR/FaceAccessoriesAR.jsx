@@ -596,7 +596,7 @@ const FaceAccessoriesAR = ({ product, onClose, onAddToCart }) => {
               </span>
             </Tooltip>
 
-            <Tooltip title="Reset">
+            <Tooltip title="Remove Accessories">
               <IconButton
                 onClick={() => setSelectedAccessory(null)}
                 sx={{

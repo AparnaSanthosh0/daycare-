@@ -71,14 +71,19 @@ const ARViewerPage = () => {
   }, [searchParams]);
 
   // Handle add to cart
-  const handleAddToCart = (product) => {
+  const handleAddToCart = () => {
+    if (!arData) return;
+
+    // Normalise a minimal product object for the shared shop context.
+    // Stock info is intentionally left undefined so ShopContext treats it as "virtual" infinite stock.
     addToCart({
-      id: product.id,
+      id: arData.productId || arData.id,
+      _id: arData.productId || arData.id,
       name: arData.productName,
       price: arData.price || 0,
-      quantity: 1,
+      image: arData.image || null,
     });
-    
+
     // Show confirmation and redirect
     setTimeout(() => {
       navigate('/shop/cart');

@@ -1154,7 +1154,7 @@ const VirtualMakeupAR = ({ product, onClose, onAddToCart }) => {
                 </span>
               </Tooltip>
 
-              <Tooltip title="Reset">
+              <Tooltip title="Clear Makeup / Tattoos">
                 <IconButton
                   onClick={() => setSelectedStyle(null)}
                   sx={{

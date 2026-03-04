@@ -26,6 +26,7 @@ import {
 import FaceAccessoriesAR from '../components/AR/FaceAccessoriesAR';
 import VirtualMakeupAR from '../components/AR/VirtualMakeupAR';
 import { useShop } from '../contexts/ShopContext';
+import api from '../config/api';
 
 /**
  * FaceARPage
@@ -43,21 +44,100 @@ import { useShop } from '../contexts/ShopContext';
 const FaceARPage = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { addToCart, products } = useShop();
+  const { addToCart } = useShop();
 
   const [activeAR, setActiveAR] = useState(null); // 'accessories' or 'makeup'
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [arProducts, setArProducts] = useState([]); // Real shop products suitable for face AR
 
-  // Get product from URL if provided
+  // Load AR-compatible products from backend so try-on items are actually purchasable
   React.useEffect(() => {
-    const productId = searchParams.get('productId');
-    if (productId && products) {
-      const product = products.find(p => p._id === productId);
-      if (product) {
-        setSelectedProduct(product);
+    let mounted = true;
+
+    const load = async () => {
+      try {
+        const { data } = await api.get('/products', { params: { all: true } });
+        const list = data.products || [];
+
+        const mapped = list.map((p) => {
+          const hasActiveDiscount = p.discountStatus === 'active' && p.activeDiscount > 0;
+          const discountedPrice = hasActiveDiscount
+            ? Math.round(p.price * (1 - p.activeDiscount / 100) * 100) / 100
+            : p.price;
+
+          return {
+            id: p._id || p.id,
+            _id: p._id || p.id,
+            name: p.name,
+            price: discountedPrice,
+            originalPrice: hasActiveDiscount ? p.price : (p.originalPrice || null),
+            activeDiscount: hasActiveDiscount ? p.activeDiscount : 0,
+            discountStatus: p.discountStatus || 'none',
+            image: p.image || (Array.isArray(p.images) && p.images[0]) || '/logo192.svg',
+            category: p.category || 'General',
+            stockQty: p.stockQty ?? 0,
+            inStock: (p.stockQty ?? 0) > 0 && (p.inStock !== false),
+            description: p.description || '',
+            arType: 'accessories',
+          };
+        });
+
+        // Filter to products that make sense for face AR (accessories / makeup)
+        const filtered = mapped.filter((p) => {
+          const cat = (p.category || '').toLowerCase();
+          const name = (p.name || '').toLowerCase();
+          if (
+            cat.includes('makeup') ||
+            cat.includes('face paint') ||
+            name.includes('face paint') ||
+            name.includes('tattoo') ||
+            name.includes('makeup')
+          ) {
+            p.arType = 'makeup';
+            return true;
+          }
+
+          if (
+            cat.includes('accessor') ||
+            cat.includes('hat') ||
+            cat.includes('cap') ||
+            cat.includes('glass') ||
+            cat.includes('sunglass') ||
+            name.includes('hat') ||
+            name.includes('crown') ||
+            name.includes('sunglass')
+          ) {
+            p.arType = 'accessories';
+            return true;
+          }
+
+          return false;
+        });
+
+        if (mounted) {
+          setArProducts(filtered);
+
+          // If a productId is present in URL, preselect that product
+          const productId = searchParams.get('productId');
+          if (productId) {
+            const found = filtered.find((p) => p.id === productId || p._id === productId);
+            if (found) {
+              setSelectedProduct(found);
+            }
+          }
+        }
+      } catch {
+        if (mounted) {
+          setArProducts([]);
+        }
       }
-    }
-  }, [searchParams, products]);
+    };
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, [searchParams]);
 
   // AR Experience cards
   const arExperiences = [
@@ -93,42 +173,6 @@ const FaceARPage = () => {
     },
   ];
 
-  // Sample products for demonstration
-  const demoProducts = [
-    {
-      _id: 'demo-1',
-      name: 'Party Hat Collection',
-      image: '/assets/products/party-hat.jpg',
-      price: 15.99,
-      category: 'accessories',
-      arType: 'accessories',
-    },
-    {
-      _id: 'demo-2',
-      name: 'Face Paint Set',
-      image: '/assets/products/face-paint.jpg',
-      price: 24.99,
-      category: 'makeup',
-      arType: 'makeup',
-    },
-    {
-      _id: 'demo-3',
-      name: 'Cool Kids Sunglasses',
-      image: '/assets/products/sunglasses.jpg',
-      price: 12.99,
-      category: 'accessories',
-      arType: 'accessories',
-    },
-    {
-      _id: 'demo-4',
-      name: 'Temporary Tattoo Pack',
-      image: '/assets/products/tattoos.jpg',
-      price: 8.99,
-      category: 'makeup',
-      arType: 'makeup',
-    },
-  ];
-
   const handleStartAR = (type, product = null) => {
     setActiveAR(type);
     if (product) {
@@ -141,7 +185,7 @@ const FaceARPage = () => {
   };
 
   const handleAddToCart = (product) => {
-    addToCart(product, 1);
+    addToCart(product, null, 1);
   };
 
   return (
@@ -264,7 +308,7 @@ const FaceARPage = () => {
           </Typography>
 
           <Grid container spacing={2}>
-            {demoProducts.map((product) => (
+            {arProducts.map((product) => (
               <Grid item xs={6} sm={3} key={product._id}>
                 <Card
                   sx={{

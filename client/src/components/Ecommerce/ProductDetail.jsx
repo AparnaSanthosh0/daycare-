@@ -49,14 +49,6 @@ function toAbsoluteImageUrl(maybePath) {
   }
 }
 
-// Check if category is fashion/clothing (uses Image3DViewer instead of generic 3D models)
-function isFashionCategory(category) {
-  if (!category) return false;
-  const fashionKeywords = ['fashion', 'clothing', 'clothes', 'dress', 'shirt', 'romper', 'onesie', 'bodysuit', 'pants', 'shorts', 'skirt', 'jacket', 'sweater', 'coat'];
-  const lowerCategory = category.toLowerCase();
-  return fashionKeywords.some(keyword => lowerCategory.includes(keyword));
-}
-
 export default function ProductDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -67,7 +59,7 @@ export default function ProductDetail() {
   const [images, setImages] = React.useState([]);
   const [allProducts, setAllProducts] = React.useState([]);
   const [snack, setSnack] = React.useState('');
-  const [view3D, setView3D] = React.useState(false); // Toggle for 3D view
+  const [view3D,      setView3D]     = React.useState(false); // Toggle for 3D view
   const sizeOptions = deriveSizeOptions(product?.category, product?.sizeBasis || null);
 
   React.useEffect(() => {
@@ -297,9 +289,9 @@ export default function ProductDetail() {
                 <Typography variant="body2" color="text.secondary">Shortlist</Typography>
               </Box>
 
-              {/* AR Try-On Banner for applicable products */}
-              {(product.category?.toLowerCase().includes('accessory') || 
-                product.category?.toLowerCase().includes('hat') || 
+              {/* AR Try-On Banner for face accessories / makeup */}
+              {(product.category?.toLowerCase().includes('accessory') ||
+                product.category?.toLowerCase().includes('hat') ||
                 product.category?.toLowerCase().includes('glasses') ||
                 product.name?.toLowerCase().includes('face paint') ||
                 product.name?.toLowerCase().includes('makeup')) && (
@@ -336,6 +328,7 @@ export default function ProductDetail() {
                   </Button>
                 </Box>
               )}
+
               <Button
                 fullWidth
                 variant="contained"

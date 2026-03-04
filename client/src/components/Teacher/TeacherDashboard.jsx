@@ -2822,6 +2822,9 @@ const TeacherDashboard = () => {
       </Grid>
     </Box>
   );
+
+  return (
+    <Box sx={{ minHeight: '100vh', backgroundColor: '#f8f9fa' }}>
       {/* Attendance Marking Dialog */}
       <Dialog open={attendanceDialogOpen} onClose={handleCloseAttendanceDialog}>
         <DialogTitle sx={{ backgroundColor: '#1abc9c', color: 'white' }}>

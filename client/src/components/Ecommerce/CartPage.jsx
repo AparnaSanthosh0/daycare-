@@ -133,7 +133,8 @@ export default function CartPage() {
           quantity: item.quantity,
           price: item.price,
           name: item.name,
-          image: item.image
+          image: item.image,
+          customization: item.customization || null,
         }));
 
         // Build full address string
@@ -218,7 +219,8 @@ export default function CartPage() {
                 quantity: item.quantity,
                 price: item.price,
                 name: item.name,
-                image: item.image
+                image: item.image,
+                customization: item.customization || null,
               }));
 
               // Build full address string
@@ -354,6 +356,46 @@ export default function CartPage() {
                       <Typography fontWeight={700}>{item.name}</Typography>
                       {item.variant && (
                         <Chip size="small" label={`Size: ${item.variant}`} sx={{ mt: 0.5 }} />
+                      )}
+                      {/* Customisation summary */}
+                      {item.customization && (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6, mt: 0.75 }}>
+                          <Chip
+                            size="small"
+                            label="✨ Custom Design"
+                            sx={{ bgcolor: '#fff3e0', color: '#e65100', fontWeight: 700, fontSize: 11 }}
+                          />
+                          {item.customization.silhouette && (
+                            <Chip size="small" label={item.customization.silhouette} sx={{ fontSize: 11, textTransform: 'capitalize' }} />
+                          )}
+                          {item.customization.length && (
+                            <Chip size="small" label={`${item.customization.length} length`} variant="outlined" sx={{ fontSize: 10 }} />
+                          )}
+                          {item.customization.sleeve && (
+                            <Chip size="small" label={`${item.customization.sleeve} sleeve`} variant="outlined" sx={{ fontSize: 10 }} />
+                          )}
+                          <Chip
+                            size="small"
+                            sx={{
+                              bgcolor: item.customization.baseColour,
+                              border: '1px solid #ccc',
+                              fontSize: 11,
+                              minWidth: 28,
+                            }}
+                            label=""
+                          />
+                          {item.customization.pattern && item.customization.pattern !== 'none' && (
+                            <Chip size="small" label={item.customization.pattern} variant="outlined" sx={{ fontSize: 10 }} />
+                          )}
+                          {item.customization.text && (
+                            <Chip
+                              size="small"
+                              label={`"${item.customization.text}"`}
+                              variant="outlined"
+                              sx={{ fontSize: 10, fontStyle: 'italic' }}
+                            />
+                          )}
+                        </Box>
                       )}
                       <Typography variant="body2" color="text.secondary">₹{item.price.toFixed(2)}</Typography>
                       
