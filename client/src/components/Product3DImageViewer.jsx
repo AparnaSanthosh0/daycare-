@@ -274,8 +274,7 @@ const Product3DImageViewer = ({
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleEnd}
-        onMouseLeave={() => { handleEnd(); setIsHovering(false); }}
-        onMouseEnter={() => setIsHovering(true)}
+        onMouseLeave={handleEnd}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleEnd}
