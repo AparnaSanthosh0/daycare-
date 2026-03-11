@@ -234,6 +234,171 @@ const DoctorDashboard = () => {
     doctorNotes: '',
     followUpDays: 14
   });
+  const selectedClinicalChild = useMemo(
+    () => clinicalChildren.find((child) => child.id === selectedClinicalChildId) || null,
+    [clinicalChildren, selectedClinicalChildId]
+  );
+  const clinicalTimeline = useMemo(() => {
+    const source = Array.isArray(clinicalReportHistory) ? [...clinicalReportHistory] : [];
+    return source
+      .filter((item) => item?.measuredAt)
+      .sort((a, b) => new Date(a.measuredAt) - new Date(b.measuredAt))
+      .map((item) => ({
+        measuredAt: item.measuredAt,
+        bmi: Number(item?.growthAnalysis?.bmi || 0),
+        weightKg: Number(item?.inputs?.weightKg || 0),
+        heightCm: Number(item?.inputs?.heightCm || 0),
+        status: item?.malnutritionPrediction?.prediction || 'N/A',
+        confidence: Number(item?.malnutritionPrediction?.confidence || 0),
+        alerts: Array.isArray(item?.growthAnalysis?.alerts) ? item.growthAnalysis.alerts : []
+      }));
+  }, [clinicalReportHistory]);
+
+  const growthForecast = useMemo(() => {
+    if (clinicalTimeline.length === 0) return null;
+    if (clinicalTimeline.length === 1) {
+      const latest = clinicalTimeline[0];
+      return {
+        next30Days: { bmi: latest.bmi, weightKg: latest.weightKg, heightCm: latest.heightCm },
+        trend: 'Baseline established from one measurement'
+      };
+    }
+
+    const previous = clinicalTimeline[clinicalTimeline.length - 2];
+    const latest = clinicalTimeline[clinicalTimeline.length - 1];
+    const dayGap = Math.max(1, Math.round((new Date(latest.measuredAt) - new Date(previous.measuredAt)) / (24 * 60 * 60 * 1000)));
+
+    const project = (latestValue, previousValue, daysAhead) => {
+      const slopePerDay = (latestValue - previousValue) / dayGap;
+      return Number((latestValue + (slopePerDay * daysAhead)).toFixed(2));
+    };
+
+    return {
+      next30Days: {
+        bmi: project(latest.bmi, previous.bmi, 30),
+        weightKg: project(latest.weightKg, previous.weightKg, 30),
+        heightCm: project(latest.heightCm, previous.heightCm, 30)
+      },
+      trend: latest.bmi < previous.bmi ? 'BMI declining' : latest.bmi > previous.bmi ? 'BMI improving' : 'BMI stable'
+    };
+  }, [clinicalTimeline]);
+
+  const clinicalRiskScore = useMemo(() => {
+    const latest = clinicalResult || (clinicalReportHistory?.[0] || null);
+    if (!latest) return null;
+
+    let score = 10;
+    const factors = [];
+    const status = String(latest?.malnutritionPrediction?.prediction || '').toLowerCase();
+    const bmi = Number(latest?.growthAnalysis?.bmi || 0);
+    const muac = Number(latest?.inputs?.muacCm || 0);
+    const hemoglobin = Number(latest?.inputs?.hemoglobin || 0);
+
+    if (status.includes('severe')) {
+      score += 50;
+      factors.push('Severe malnutrition status');
+    } else if (status.includes('moderate')) {
+      score += 30;
+      factors.push('Moderate malnutrition status');
+    }
+    if (bmi > 0 && bmi < 14) {
+      score += 20;
+      factors.push('Low BMI');
+    }
+    if (muac > 0 && muac < 12.5) {
+      score += 12;
+      factors.push('Low MUAC');
+    }
+    if (hemoglobin > 0 && hemoglobin < 11) {
+      score += 8;
+      factors.push('Low hemoglobin');
+    }
+    if ((latest?.growthAnalysis?.alerts || []).length > 0) {
+      score += 10;
+      factors.push('Growth alerts present');
+    }
+
+    const bounded = Math.min(100, Math.max(0, Math.round(score)));
+    const riskLevel = bounded >= 70 ? 'high' : bounded >= 40 ? 'medium' : 'low';
+    return { overallRiskScore: bounded, riskLevel, factors };
+  }, [clinicalResult, clinicalReportHistory]);
+
+  const predictiveHealthAlerts = useMemo(() => {
+    const alerts = [];
+    const latest = clinicalResult || (clinicalReportHistory?.[0] || null);
+    if (!latest) return alerts;
+
+    if (clinicalRiskScore?.riskLevel === 'high') {
+      alerts.push('High risk child: schedule urgent review within 7 days.');
+    }
+    if (growthForecast?.trend === 'BMI declining') {
+      alerts.push('BMI trend is declining. Increase nutrition follow-up frequency.');
+    }
+    (latest?.growthAnalysis?.alerts || []).forEach((alert) => alerts.push(String(alert)));
+    if ((latest?.doctorReview?.followUpDays || 14) > 21) {
+      alerts.push('Long follow-up window detected. Consider earlier check-up.');
+    }
+
+    return Array.from(new Set(alerts));
+  }, [clinicalResult, clinicalReportHistory, clinicalRiskScore, growthForecast]);
+
+  const clinicalPatterns = useMemo(() => {
+    if (!clinicalReportHistory.length) return null;
+
+    const statusCounts = clinicalReportHistory.reduce((acc, row) => {
+      const key = row?.malnutritionPrediction?.prediction || 'Unknown';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    const avgBmi = clinicalReportHistory.reduce((sum, row) => sum + Number(row?.growthAnalysis?.bmi || 0), 0) / clinicalReportHistory.length;
+    const avgConfidence = clinicalReportHistory.reduce((sum, row) => sum + Number(row?.malnutritionPrediction?.confidence || 0), 0) / clinicalReportHistory.length;
+
+    return {
+      totalReports: clinicalReportHistory.length,
+      avgBmi: Number(avgBmi.toFixed(2)),
+      avgConfidence: Number((avgConfidence * 100).toFixed(1)),
+      statusCounts
+    };
+  }, [clinicalReportHistory]);
+
+  const handleDownloadClinicalReport = useCallback(() => {
+    if (!selectedClinicalChild || !clinicalResult) return;
+
+    const reportLines = [
+      'TinyTots Clinical Health Report',
+      `Generated At: ${new Date().toLocaleString()}`,
+      `Child: ${selectedClinicalChild.name}`,
+      `Age: ${Math.floor((selectedClinicalChild.ageMonths || 0) / 12)} years`,
+      '',
+      `Nutrition Status: ${clinicalResult?.malnutritionPrediction?.prediction || 'N/A'}`,
+      `Confidence: ${clinicalResult?.malnutritionPrediction?.confidence ? `${Math.round(clinicalResult.malnutritionPrediction.confidence * 100)}%` : 'N/A'}`,
+      `Growth Status: ${clinicalResult?.growthAnalysis?.growth_status || 'N/A'}`,
+      `BMI: ${clinicalResult?.growthAnalysis?.bmi ?? 'N/A'}`,
+      '',
+      `Risk Score: ${clinicalRiskScore?.overallRiskScore ?? 'N/A'} (${clinicalRiskScore?.riskLevel || 'N/A'})`,
+      '',
+      'Recommended Foods:',
+      ...((clinicalResult?.nutrientFoodRecommendations?.recommended_foods || []).slice(0, 10).map((food) => `- ${food}`)),
+      '',
+      'Predictive Alerts:',
+      ...(predictiveHealthAlerts.length ? predictiveHealthAlerts.map((a) => `- ${a}`) : ['- No active predictive alerts']),
+      '',
+      `Reports Analyzed: ${clinicalPatterns?.totalReports || 0}`
+    ];
+
+    const blob = new Blob([reportLines.join('\n')], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `clinical-report-${selectedClinicalChild.name.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}.txt`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      if (anchor.parentNode) document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+    }, 100);
+  }, [selectedClinicalChild, clinicalResult, clinicalRiskScore, predictiveHealthAlerts, clinicalPatterns]);
 
   const fetchClinicalChildren = useCallback(async () => {
     try {
@@ -326,7 +491,7 @@ const DoctorDashboard = () => {
       try {
         const response = await api.post(`/child-health/doctor/children/${selectedClinicalChildId}/analyze`, payload, { timeout: 60000 });
         setClinicalResult(response.data?.data || null);
-        setSuccess('Clinical analysis completed and report generated');
+        setSuccess('Clinical analysis completed, report generated, and parent/teacher views updated for this child');
       } catch (primaryErr) {
         // Fallback to generic analyzer endpoint when per-child doctor endpoint is not yet deployed.
         const fallbackResponse = await api.post('/child-health/analyze', {
@@ -3419,6 +3584,10 @@ const DoctorDashboard = () => {
                 <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
                   Growth Monitoring Inputs
                 </Typography>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  Selected Child: <strong>{selectedClinicalChild?.name || 'No child selected'}</strong>
+                  {selectedClinicalChild?.ageMonths ? ` • Age: ${Math.floor(selectedClinicalChild.ageMonths / 12)} years` : ''}
+                </Alert>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -3504,6 +3673,7 @@ const DoctorDashboard = () => {
                 </Grid>
 
                 <Box sx={{ mt: 2 }}>
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
                   <Button
                     variant="contained"
                     onClick={handleRunClinicalAnalysis}
@@ -3511,12 +3681,23 @@ const DoctorDashboard = () => {
                   >
                     {clinicalSubmitting ? 'Running Analysis...' : 'Run AI Nutrition Prediction'}
                   </Button>
+                    <Chip
+                      size="small"
+                      variant="outlined"
+                      label={clinicalResult?.measuredAt
+                        ? `Last analyzed: ${new Date(clinicalResult.measuredAt).toLocaleString()}`
+                        : 'Last analyzed: Not yet'}
+                    />
+                  </Stack>
                 </Box>
               </Paper>
 
               <Paper sx={{ p: 2.5, borderRadius: 2, mb: 3 }}>
                 <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
                   Malnutrition Status and Meal Recommendation
+                </Typography>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Child: {selectedClinicalChild?.name || 'No child selected'}
                 </Typography>
                 {!clinicalResult ? (
                   <Alert severity="info">Select child and run analysis to see clinical output.</Alert>
@@ -3604,6 +3785,106 @@ const DoctorDashboard = () => {
                       </TableBody>
                     </Table>
                   </TableContainer>
+                )}
+              </Paper>
+
+              <Paper sx={{ p: 2.5, borderRadius: 2, mt: 3 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                  ML Growth Chart Predictions
+                </Typography>
+                {!growthForecast ? (
+                  <Typography color="text.secondary">Run and save at least one report to view growth predictions.</Typography>
+                ) : (
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}>
+                      <Card variant="outlined"><CardContent><Typography variant="caption" color="text.secondary">Predicted BMI (30 days)</Typography><Typography variant="h6">{growthForecast.next30Days.bmi}</Typography></CardContent></Card>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Card variant="outlined"><CardContent><Typography variant="caption" color="text.secondary">Predicted Weight (30 days)</Typography><Typography variant="h6">{growthForecast.next30Days.weightKg} kg</Typography></CardContent></Card>
+                    </Grid>
+                    <Grid item xs={12} sm={4}>
+                      <Card variant="outlined"><CardContent><Typography variant="caption" color="text.secondary">Predicted Height (30 days)</Typography><Typography variant="h6">{growthForecast.next30Days.heightCm} cm</Typography></CardContent></Card>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <Chip label={`Trend: ${growthForecast.trend}`} color={growthForecast.trend === 'BMI declining' ? 'warning' : 'success'} variant="outlined" />
+                    </Grid>
+                  </Grid>
+                )}
+              </Paper>
+
+              <Paper sx={{ p: 2.5, borderRadius: 2, mt: 3 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                  Health Risk Scoring
+                </Typography>
+                {!clinicalRiskScore ? (
+                  <Typography color="text.secondary">No risk score available yet.</Typography>
+                ) : (
+                  <>
+                    <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                      <Typography variant="h5">{clinicalRiskScore.overallRiskScore}/100</Typography>
+                      <Chip
+                        label={clinicalRiskScore.riskLevel.toUpperCase()}
+                        color={clinicalRiskScore.riskLevel === 'high' ? 'error' : clinicalRiskScore.riskLevel === 'medium' ? 'warning' : 'success'}
+                      />
+                    </Stack>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      {clinicalRiskScore.factors.map((factor, idx) => (
+                        <Chip key={`${factor}-${idx}`} label={factor} variant="outlined" size="small" />
+                      ))}
+                    </Box>
+                  </>
+                )}
+              </Paper>
+
+              <Paper sx={{ p: 2.5, borderRadius: 2, mt: 3 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                  Automated Report Generation
+                </Typography>
+                <Button variant="contained" onClick={handleDownloadClinicalReport} disabled={!selectedClinicalChild || !clinicalResult}>
+                  Generate and Download Report
+                </Button>
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                  Includes nutrition status, confidence, growth analysis, risk score, recommended foods, and predictive alerts.
+                </Typography>
+              </Paper>
+
+              <Paper sx={{ p: 2.5, borderRadius: 2, mt: 3 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                  Predictive Health Alerts
+                </Typography>
+                {predictiveHealthAlerts.length === 0 ? (
+                  <Typography color="text.secondary">No active predictive alerts.</Typography>
+                ) : (
+                  <List dense>
+                    {predictiveHealthAlerts.map((alert, idx) => (
+                      <ListItem key={`${alert}-${idx}`}>
+                        <ListItemText primary={alert} />
+                      </ListItem>
+                    ))}
+                  </List>
+                )}
+              </Paper>
+
+              <Paper sx={{ p: 2.5, borderRadius: 2, mt: 3 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                  Pattern Recognition Dashboard
+                </Typography>
+                {!clinicalPatterns ? (
+                  <Typography color="text.secondary">No pattern data available yet.</Typography>
+                ) : (
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} sm={4}><Card variant="outlined"><CardContent><Typography variant="caption" color="text.secondary">Reports Analyzed</Typography><Typography variant="h6">{clinicalPatterns.totalReports}</Typography></CardContent></Card></Grid>
+                    <Grid item xs={12} sm={4}><Card variant="outlined"><CardContent><Typography variant="caption" color="text.secondary">Average BMI</Typography><Typography variant="h6">{clinicalPatterns.avgBmi}</Typography></CardContent></Card></Grid>
+                    <Grid item xs={12} sm={4}><Card variant="outlined"><CardContent><Typography variant="caption" color="text.secondary">Avg Prediction Confidence</Typography><Typography variant="h6">{clinicalPatterns.avgConfidence}%</Typography></CardContent></Card></Grid>
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" sx={{ mb: 1 }}>Status Distribution</Typography>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                        {Object.entries(clinicalPatterns.statusCounts).map(([status, count]) => (
+                          <Chip key={status} label={`${status}: ${count}`} variant="outlined" />
+                        ))}
+                      </Box>
+                    </Grid>
+                  </Grid>
                 )}
               </Paper>
             </Grid>

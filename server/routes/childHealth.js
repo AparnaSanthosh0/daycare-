@@ -1,11 +1,19 @@
 const express = require('express');
 const router = express.Router();
 const { spawn } = require('child_process');
+const fs = require('fs');
 const path = require('path');
 const auth = require('../middleware/auth');
 const { authorize } = require('../middleware/auth');
 const Child = require('../models/Child');
 const ChildHealthRecord = require('../models/ChildHealthRecord');
+
+const MEAL_DATASET_PATHS = [
+  path.join(__dirname, '../ml_models/clean_food_dataset.csv'),
+  path.join(__dirname, '../ml_models/clean_food_dataset (1).csv'),
+];
+
+let cachedMealDataset = null;
 
 function getAgeMonths(dateOfBirth) {
   const now = new Date();
@@ -32,8 +40,15 @@ async function runChildHealthPrediction(payload) {
       } catch (_) {
         // Process already stopped.
       }
-      reject(new Error('Child health analysis timed out'));
+      resolve(buildNodeFallbackPrediction(payload, 'Python analysis timed out'));
     }, 45000);
+
+    pythonProcess.on('error', (error) => {
+      clearTimeout(timeoutId);
+      if (finished) return;
+      finished = true;
+      resolve(buildNodeFallbackPrediction(payload, error.message || 'Python process failed to start'));
+    });
 
     pythonProcess.stdout.on('data', (data) => {
       output += data.toString();
@@ -49,16 +64,257 @@ async function runChildHealthPrediction(payload) {
       finished = true;
 
       if (code !== 0) {
-        return reject(new Error(errorOutput || 'Child health Python process failed'));
+        return resolve(buildNodeFallbackPrediction(payload, errorOutput || 'Child health Python process failed'));
       }
 
       try {
         resolve(JSON.parse(output));
       } catch (parseError) {
-        reject(new Error(`Failed to parse child health output: ${parseError.message}`));
+        resolve(buildNodeFallbackPrediction(payload, `Failed to parse child health output: ${parseError.message}`));
       }
     });
   });
+}
+
+function toInt(value, defaultValue = 0) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+function toFloat(value, defaultValue = 0) {
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : defaultValue;
+}
+
+function parseDietaryPreference(value) {
+  const text = String(value || '').trim().toLowerCase();
+  return text.includes('non') ? 1 : 0;
+}
+
+function parseCsvLine(line) {
+  const cells = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+
+    if (char === '"') {
+      if (inQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      cells.push(current);
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  cells.push(current);
+  return cells.map((cell) => cell.trim());
+}
+
+function loadMealDataset() {
+  if (cachedMealDataset) {
+    return cachedMealDataset;
+  }
+
+  const datasetPath = MEAL_DATASET_PATHS.find((candidatePath) => fs.existsSync(candidatePath));
+  if (!datasetPath) {
+    cachedMealDataset = [];
+    return cachedMealDataset;
+  }
+
+  const raw = fs.readFileSync(datasetPath, 'utf8');
+  const lines = raw.split(/\r?\n/).filter(Boolean);
+  const headers = parseCsvLine(lines[0]);
+
+  cachedMealDataset = lines.slice(1).map((line) => {
+    const values = parseCsvLine(line);
+    const row = {};
+    headers.forEach((header, index) => {
+      row[header] = values[index] ?? '';
+    });
+    return {
+      Category: row.Category,
+      Food: row.Food,
+      Carbohydrates: toFloat(row.Carbohydrates, 0),
+      Potassium: toFloat(row.Potassium, 0),
+      Sodium: toFloat(row.Sodium, 0),
+      Zinc: toFloat(row.Zinc, 0),
+      VitaminC: toFloat(row.VitaminC, 0),
+      VitaminA: toFloat(row.VitaminA, 0),
+    };
+  });
+
+  return cachedMealDataset;
+}
+
+function classifyGrowthStatus(weightDev, heightDev) {
+  if (weightDev < -20 || heightDev < -20) {
+    return 'Growth Delay';
+  }
+  if (weightDev > 20 || heightDev > 20) {
+    return 'Above Expected Growth';
+  }
+  return 'Normal Growth';
+}
+
+function analyzeGrowthFallback(ageMonths, weightKg, heightCm) {
+  const ageYears = Math.max(1, Math.min(6, ageMonths / 12));
+  const expectedWeight = (2 * ageYears) + 8;
+  const expectedHeight = (6 * ageYears) + 77;
+  const weightDeviationPercent = expectedWeight ? ((weightKg - expectedWeight) / expectedWeight) * 100 : 0;
+  const heightDeviationPercent = expectedHeight ? ((heightCm - expectedHeight) / expectedHeight) * 100 : 0;
+  const bmi = heightCm > 0 ? weightKg / ((heightCm / 100) ** 2) : 0;
+  const alerts = [];
+
+  if (weightDeviationPercent < -20) alerts.push('Weight is significantly below expected range for age');
+  if (heightDeviationPercent < -20) alerts.push('Height is significantly below expected range for age');
+  if (bmi < 14) alerts.push('Low BMI signal detected');
+  if (bmi > 18) alerts.push('High BMI signal detected');
+
+  return {
+    age_years: Number(ageYears.toFixed(2)),
+    expected_weight_kg: Number(expectedWeight.toFixed(2)),
+    expected_height_cm: Number(expectedHeight.toFixed(2)),
+    actual_weight_kg: Number(weightKg.toFixed(2)),
+    actual_height_cm: Number(heightCm.toFixed(2)),
+    weight_deviation_percent: Number(weightDeviationPercent.toFixed(2)),
+    height_deviation_percent: Number(heightDeviationPercent.toFixed(2)),
+    bmi: Number(bmi.toFixed(2)),
+    growth_status: classifyGrowthStatus(weightDeviationPercent, heightDeviationPercent),
+    alerts,
+  };
+}
+
+function predictMalnutritionFallback(payload, growthInfo) {
+  const muacCm = toFloat(payload.muacCm, 0);
+  const hemoglobin = toFloat(payload.hemoglobin, 0);
+  const bmi = toFloat(growthInfo?.bmi, 0);
+  const weightDeviation = toFloat(growthInfo?.weight_deviation_percent, 0);
+  const lowHeight = toFloat(growthInfo?.height_deviation_percent, 0);
+
+  let prediction = 'Normal';
+  let confidence = 0.78;
+
+  if (bmi < 13 || (muacCm > 0 && muacCm < 11.5) || (hemoglobin > 0 && hemoglobin < 9) || weightDeviation < -30 || lowHeight < -25) {
+    prediction = 'Severely Malnourished';
+    confidence = 0.89;
+  } else if (bmi < 14.5 || (muacCm > 0 && muacCm < 12.5) || (hemoglobin > 0 && hemoglobin < 11) || weightDeviation < -20 || lowHeight < -18) {
+    prediction = 'Moderately Malnourished';
+    confidence = 0.86;
+  }
+
+  return {
+    available: false,
+    prediction,
+    raw_prediction: prediction,
+    confidence,
+  };
+}
+
+function recommendMealFallback(payload) {
+  const ageMonths = toInt(payload.ageMonths, 24);
+  const ageYears = Math.max(1, Math.min(6, Math.round(ageMonths / 12)));
+  const dietaryPreference = parseDietaryPreference(payload.dietaryPreference);
+  const hasAllergy = Boolean(payload.hasAllergy);
+
+  let prediction = 'standard_veg';
+  let mealCategory = 'Standard Vegetarian Meal';
+
+  if (ageYears < 3) {
+    if (hasAllergy) {
+      prediction = 'allergy_free_soft';
+      mealCategory = 'Allergy-Free Soft Meal';
+    } else if (dietaryPreference === 1) {
+      prediction = 'soft_nonveg';
+      mealCategory = 'Soft Non-Vegetarian Meal';
+    } else {
+      prediction = 'soft_veg';
+      mealCategory = 'Soft Vegetarian Meal';
+    }
+  } else if (hasAllergy) {
+    prediction = 'allergy_free_standard';
+    mealCategory = 'Allergy-Free Standard Meal';
+  } else if (dietaryPreference === 1) {
+    prediction = 'standard_nonveg';
+    mealCategory = 'Standard Non-Vegetarian Meal';
+  }
+
+  return {
+    prediction,
+    meal_category: mealCategory,
+    confidence: 0.82,
+    input_features: {
+      age: ageYears,
+      dietary_preference: dietaryPreference === 1 ? 'Non-Vegetarian' : 'Vegetarian',
+      has_allergy: hasAllergy ? 'Yes' : 'No',
+    },
+  };
+}
+
+function recommendFoodsFallback(status, ageYears) {
+  const dataset = loadMealDataset();
+  let foods = [...dataset];
+
+  if (ageYears <= 2) {
+    foods = foods.filter((food) => food.Sodium < 200);
+  } else if (ageYears <= 5) {
+    foods = foods.filter((food) => food.Potassium > 200);
+  } else {
+    foods = foods.filter((food) => food.Carbohydrates > 5);
+  }
+
+  if (status === 'Moderately Malnourished') {
+    foods = foods.filter((food) => food.Zinc > 1);
+  } else if (status === 'Severely Malnourished') {
+    foods = foods.filter((food) => food.Zinc > 2 && food.Potassium > 300);
+  }
+
+  const uniqueFoods = [];
+  const seen = new Set();
+  for (const food of foods) {
+    const foodName = String(food.Food || '').trim();
+    if (!foodName || seen.has(foodName)) continue;
+    seen.add(foodName);
+    uniqueFoods.push(foodName);
+    if (uniqueFoods.length >= 10) break;
+  }
+
+  return uniqueFoods;
+}
+
+function buildNodeFallbackPrediction(payload, reason) {
+  const ageMonths = toInt(payload.ageMonths, 24);
+  const weightKg = toFloat(payload.weightKg, 10);
+  const heightCm = toFloat(payload.heightCm, 80);
+  const growthAnalysis = analyzeGrowthFallback(ageMonths, weightKg, heightCm);
+  const malnutritionPrediction = predictMalnutritionFallback(payload, growthAnalysis);
+  const normalizedStatus = normalizeNutritionStatus(malnutritionPrediction.prediction);
+  const mealRecommendation = recommendMealFallback(payload);
+  const recommendedFoods = recommendFoodsFallback(normalizedStatus, Math.max(1, Math.round(ageMonths / 12)));
+
+  return {
+    success: true,
+    system: 'Smart Child Growth Monitoring and Malnutrition Prediction',
+    backend: 'node-fallback',
+    growth_analysis: growthAnalysis,
+    malnutrition_prediction: {
+      ...malnutritionPrediction,
+      prediction: normalizedStatus,
+    },
+    meal_recommendation: mealRecommendation,
+    nutrient_food_recommendations: {
+      nutrition_status_for_filter: normalizedStatus,
+      recommended_foods: recommendedFoods,
+    },
+    note: `Fallback analysis used because Python analysis was unavailable: ${reason}`,
+  };
 }
 
 function normalizeDashboardPayload(child, body) {
@@ -89,7 +345,27 @@ function buildTeacherPlan(result) {
   };
 }
 
+function normalizeNutritionStatus(value) {
+  const text = String(value || '').trim().toLowerCase();
+  const mapping = {
+    '0': 'Normal',
+    '1': 'Moderately Malnourished',
+    '2': 'Severely Malnourished',
+    normal: 'Normal',
+    moderate: 'Moderately Malnourished',
+    'moderately malnourished': 'Moderately Malnourished',
+    severe: 'Severely Malnourished',
+    'severely malnourished': 'Severely Malnourished',
+    underweight: 'Moderately Malnourished',
+    wasted: 'Severely Malnourished',
+    stunted: 'Moderately Malnourished',
+  };
+  return mapping[text] || value || 'No Analysis Yet';
+}
+
 function buildApiResponse(record, child) {
+  const normalizedPrediction = normalizeNutritionStatus(record?.malnutritionPrediction?.prediction);
+
   return {
     recordId: record._id,
     child: {
@@ -101,7 +377,10 @@ function buildApiResponse(record, child) {
       ageMonths: record.inputs.ageMonths,
     },
     growthAnalysis: record.growthAnalysis,
-    malnutritionPrediction: record.malnutritionPrediction,
+    malnutritionPrediction: {
+      ...(record.malnutritionPrediction || {}),
+      prediction: normalizedPrediction,
+    },
     mealRecommendation: record.mealRecommendation,
     nutrientFoodRecommendations: record.nutrientFoodRecommendations,
     doctorReview: record.doctorReview,
@@ -186,7 +465,7 @@ router.get('/doctor/children', auth, authorize('doctor', 'admin'), async (req, r
         ageMonths: getAgeMonths(child.dateOfBirth),
         program: child.program,
         hasAllergy: (child.allergies || []).length > 0,
-        latestStatus: latest?.malnutritionPrediction?.prediction || null,
+          latestStatus: normalizeNutritionStatus(latest?.malnutritionPrediction?.prediction) || null,
         latestConfidence: latest?.malnutritionPrediction?.confidence || null,
         measuredAt: latest?.measuredAt || null,
       };
@@ -220,6 +499,7 @@ router.post('/doctor/children/:childId/analyze', auth, authorize('doctor', 'admi
 
     const payload = normalizeDashboardPayload(child, req.body);
     const result = await runChildHealthPrediction(payload);
+    const normalizedPrediction = normalizeNutritionStatus(result?.malnutrition_prediction?.prediction);
 
     const record = await ChildHealthRecord.create({
       child: child._id,
@@ -235,7 +515,10 @@ router.post('/doctor/children/:childId/analyze', auth, authorize('doctor', 'admi
         hasAllergy: Boolean(payload.hasAllergy),
       },
       growthAnalysis: result.growth_analysis || {},
-      malnutritionPrediction: result.malnutrition_prediction || {},
+      malnutritionPrediction: {
+        ...(result.malnutrition_prediction || {}),
+        prediction: normalizedPrediction,
+      },
       mealRecommendation: result.meal_recommendation || {},
       nutrientFoodRecommendations: result.nutrient_food_recommendations || {},
       doctorReview: {
@@ -275,11 +558,19 @@ router.get('/doctor/children/:childId/report', auth, authorize('doctor', 'admin'
       .lean();
 
     const latest = records[0] || null;
+    const normalizedHistory = records.map((record) => ({
+      ...record,
+      malnutritionPrediction: {
+        ...(record.malnutritionPrediction || {}),
+        prediction: normalizeNutritionStatus(record?.malnutritionPrediction?.prediction),
+      },
+    }));
+
     res.json({
       success: true,
       child,
-      latest,
-      history: records,
+      latest: normalizedHistory[0] || null,
+      history: normalizedHistory,
     });
   } catch (error) {
     console.error('Doctor report error:', error);
@@ -313,7 +604,7 @@ router.get('/parent/children', auth, authorize('parent'), async (req, res) => {
         id: child._id,
         name: `${child.firstName} ${child.lastName || ''}`.trim(),
         ageMonths: getAgeMonths(child.dateOfBirth),
-        statusBadge: latest?.malnutritionPrediction?.prediction || 'No Analysis Yet',
+          statusBadge: normalizeNutritionStatus(latest?.malnutritionPrediction?.prediction),
         topFoods: latest?.nutrientFoodRecommendations?.recommended_foods?.slice(0, 3) || [],
         nextCheckupInDays: latest?.doctorReview?.followUpDays || 14,
       };
@@ -354,7 +645,10 @@ router.get('/parent/children/:childId/summary', auth, authorize('parent'), async
       success: true,
       child,
       growthProgress: latest.growthAnalysis,
-      nutritionStatus: latest.malnutritionPrediction,
+        nutritionStatus: {
+          ...(latest.malnutritionPrediction || {}),
+          prediction: normalizeNutritionStatus(latest?.malnutritionPrediction?.prediction),
+        },
       recommendedFoods: latest.nutrientFoodRecommendations?.recommended_foods || [],
       dailyDietPlan: latest.teacherDailyPlan,
       healthAlerts: latest.growthAnalysis?.alerts || [],
@@ -400,7 +694,7 @@ router.get('/teacher/daily-plan', auth, authorize('staff', 'admin'), async (req,
         childId: child._id,
         name: `${child.firstName} ${child.lastName || ''}`.trim(),
         allergies: child.allergies || [],
-        status: latest?.malnutritionPrediction?.prediction || 'No Analysis Yet',
+        status: normalizeNutritionStatus(latest?.malnutritionPrediction?.prediction),
         breakfast: latest?.teacherDailyPlan?.breakfast || 'Milk + Banana',
         lunch: latest?.teacherDailyPlan?.lunch || 'Rice + Lentils + Spinach',
         snack: latest?.teacherDailyPlan?.snack || 'Fruit',

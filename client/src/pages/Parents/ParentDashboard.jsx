@@ -570,7 +570,16 @@ const ParentDashboard = ({ initialTab }) => {
 
       try {
         setParentHealthLoading(true);
-        const response = await api.get(`/child-health/parent/children/${activeChildId}/summary`);
+        const childrenResponse = await api.get('/child-health/parent/children');
+        const parentChildren = childrenResponse.data?.children || [];
+        const selectedBelongsToParent = parentChildren.some((child) => child.id === activeChildId);
+        const targetChildId = selectedBelongsToParent ? activeChildId : (parentChildren[0]?.id || activeChildId);
+
+        if (!selectedBelongsToParent && parentChildren[0]?.id && parentChildren[0].id !== activeChildId) {
+          setActiveChildId(parentChildren[0].id);
+        }
+
+        const response = await api.get(`/child-health/parent/children/${targetChildId}/summary`);
         setParentHealthSummary(response.data || null);
       } catch (error) {
         // Fallback: derive a lightweight summary from existing reports/meals when endpoint not available.
@@ -4668,6 +4677,9 @@ const ParentDashboard = ({ initialTab }) => {
                             <Typography variant="subtitle2" color="text.secondary">Nutrition Status</Typography>
                             <Typography variant="h6">
                               {parentHealthSummary?.nutritionStatus?.prediction || 'No Analysis Yet'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Last analyzed: {parentHealthSummary?.measuredAt ? new Date(parentHealthSummary.measuredAt).toLocaleString() : 'Not yet'}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
                               Next Checkup: {parentHealthSummary?.doctorSuggestion?.nextCheckupInDays || 14} days

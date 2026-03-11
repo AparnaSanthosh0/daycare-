@@ -26,6 +26,24 @@ MALNUTRITION_MODEL_PATH = os.path.join(BASE_DIR, "malnutrition_model.pkl")
 MEAL_MODEL_PATH = os.path.join(BASE_DIR, "meal_decision_tree_model.pkl")
 
 
+def normalize_nutrition_status(value: Any) -> str:
+    text = str(value).strip().lower()
+    mapping = {
+        "0": "Normal",
+        "1": "Moderately Malnourished",
+        "2": "Severely Malnourished",
+        "normal": "Normal",
+        "moderate": "Moderately Malnourished",
+        "moderately malnourished": "Moderately Malnourished",
+        "severe": "Severely Malnourished",
+        "severely malnourished": "Severely Malnourished",
+        "underweight": "Moderately Malnourished",
+        "wasted": "Severely Malnourished",
+        "stunted": "Moderately Malnourished",
+    }
+    return mapping.get(text, str(value))
+
+
 def to_int(value: Any, default: int = 0) -> int:
     try:
         return int(float(value))
@@ -171,9 +189,12 @@ def predict_malnutrition(payload: Dict[str, Any], growth_info: Dict[str, Any]) -
         probs = model.predict_proba(feature_vector)[0]
         confidence = float(np.max(probs))
 
+    normalized_prediction = normalize_nutrition_status(raw_prediction)
+
     return {
         "available": True,
-        "prediction": str(raw_prediction),
+        "prediction": normalized_prediction,
+        "raw_prediction": str(raw_prediction),
         "confidence": confidence,
     }
 
