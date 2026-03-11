@@ -9,7 +9,8 @@ const orderSchema = new mongoose.Schema({
     price: { type: Number, required: true },
     name: String,
     image: String,
-    vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' } // Vendor for this specific item
+    vendor: { type: mongoose.Schema.Types.ObjectId, ref: 'Vendor' }, // Vendor for this specific item
+    customization: { type: mongoose.Schema.Types.Mixed, default: null } // Custom outfit/design data
   }],
   shippingAddress: {
     street: String,

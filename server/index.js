@@ -180,6 +180,9 @@ app.use('/api/feedback-classification', requireDb, require('./routes/feedbackCla
 // Meal Recommendations (Decision Tree ML)
 app.use('/api/meal-recommendations', requireDb, require('./routes/mealRecommendations'));
 
+// Child Health System (growth + malnutrition + meal recommendation)
+app.use('/api/child-health', requireDb, require('./routes/childHealth'));
+
 // Purchase Prediction (SVM ML)
 app.use('/api/purchase-prediction', requireDb, require('./routes/purchasePrediction'));
 

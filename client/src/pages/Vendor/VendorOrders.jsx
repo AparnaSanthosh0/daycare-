@@ -389,9 +389,30 @@ const VendorOrders = () => {
                   const itemVendorId = item.vendor?._id ? item.vendor._id.toString() : item.vendor?.toString();
                   return itemVendorId === vendorId;
                 }).map((item, index) => (
-                  <Box key={index} sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                    <Typography>{item.name} (x{item.quantity})</Typography>
-                    <Typography>₹{(item.price * item.quantity).toFixed(2)}</Typography>
+                  <Box key={index} sx={{ mb: 1.5 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography>{item.name} (x{item.quantity})</Typography>
+                      <Typography>₹{(item.price * item.quantity).toFixed(2)}</Typography>
+                    </Box>
+                    {item.customization && (
+                      <Box sx={{ mt: 0.5, p: 1, bgcolor: '#f3e5f5', borderRadius: 1, border: '1px solid #ce93d8' }}>
+                        <Typography variant="caption" color="secondary" fontWeight={700} display="block">🎨 Custom Design Request</Typography>
+                        {item.customization.category && <Typography variant="caption" display="block">Category: {item.customization.category}</Typography>}
+                        {item.customization.garmentType && <Typography variant="caption" display="block">Garment: {item.customization.garmentType}</Typography>}
+                        {item.customization.baseColour && <Typography variant="caption" display="block">Colour: {item.customization.baseColour}</Typography>}
+                        {item.customization.silhouette && <Typography variant="caption" display="block">Silhouette: {item.customization.silhouette}</Typography>}
+                        {item.customization.sleeves && <Typography variant="caption" display="block">Sleeves: {item.customization.sleeves}</Typography>}
+                        {item.customization.length && <Typography variant="caption" display="block">Length: {item.customization.length}</Typography>}
+                        {item.customization.neckline && <Typography variant="caption" display="block">Neckline: {item.customization.neckline}</Typography>}
+                        {item.customization.pattern && <Typography variant="caption" display="block">Pattern: {item.customization.pattern}</Typography>}
+                        {item.customization.text && <Typography variant="caption" display="block">Text: "{item.customization.text}"</Typography>}
+                        {item.customization.features?.length > 0 && <Typography variant="caption" display="block">Features: {item.customization.features.join(', ')}</Typography>}
+                        {item.customization.previewDataUrl && (
+                          <Box component="img" src={item.customization.previewDataUrl} alt="Custom preview"
+                            sx={{ mt: 0.5, maxWidth: 80, maxHeight: 80, borderRadius: 1, border: '1px solid #ce93d8' }} />
+                        )}
+                      </Box>
+                    )}
                   </Box>
                 )) : null}
 

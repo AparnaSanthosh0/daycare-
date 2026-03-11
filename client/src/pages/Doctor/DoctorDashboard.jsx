@@ -217,6 +217,152 @@ const DoctorDashboard = () => {
   const [editInsightDialog, setEditInsightDialog] = useState({ open: false, insight: null });
   const [editInsightNotes, setEditInsightNotes] = useState('');
 
+  // Main Clinical Panel states (child growth + malnutrition + meal recommendation)
+  const [clinicalChildren, setClinicalChildren] = useState([]);
+  const [clinicalLoading, setClinicalLoading] = useState(false);
+  const [clinicalSubmitting, setClinicalSubmitting] = useState(false);
+  const [selectedClinicalChildId, setSelectedClinicalChildId] = useState('');
+  const [clinicalResult, setClinicalResult] = useState(null);
+  const [clinicalReportHistory, setClinicalReportHistory] = useState([]);
+  const [clinicalForm, setClinicalForm] = useState({
+    weightKg: '',
+    heightCm: '',
+    muacCm: '',
+    hemoglobin: '',
+    dietaryPreference: 'vegetarian',
+    hasAllergy: false,
+    doctorNotes: '',
+    followUpDays: 14
+  });
+
+  const fetchClinicalChildren = useCallback(async () => {
+    try {
+      setClinicalLoading(true);
+      let list = [];
+      try {
+        const response = await api.get('/child-health/doctor/children', { timeout: 60000 });
+        list = response.data?.children || [];
+      } catch (primaryErr) {
+        // Fallback to existing doctor children endpoint to avoid hard failure during rollout.
+        const fallback = await api.get('/doctor/children', { timeout: 60000 });
+        const raw = Array.isArray(fallback.data) ? fallback.data : (fallback.data?.children || []);
+        list = raw.map((c) => ({
+          id: c._id,
+          name: `${c.firstName || ''} ${c.lastName || ''}`.trim(),
+          gender: c.gender,
+          ageMonths: c.dateOfBirth ? Math.max(1, Math.floor((new Date() - new Date(c.dateOfBirth)) / (30.4375 * 24 * 60 * 60 * 1000))) : 0,
+          latestStatus: c.healthStatus || null,
+          latestConfidence: null,
+          measuredAt: c.updatedAt || c.createdAt || null
+        }));
+      }
+      setClinicalChildren(list);
+
+      if (!selectedClinicalChildId && list.length > 0) {
+        setSelectedClinicalChildId(list[0].id);
+      }
+    } catch (err) {
+      console.error('Failed to fetch clinical children:', err);
+      setError('Failed to load children for clinical panel');
+      setClinicalChildren([]);
+    } finally {
+      setClinicalLoading(false);
+    }
+  }, [selectedClinicalChildId]);
+
+  const fetchClinicalReport = useCallback(async (childId) => {
+    if (!childId) return;
+    try {
+      const response = await api.get(`/child-health/doctor/children/${childId}/report`, { timeout: 60000 });
+      const latest = response.data?.latest || null;
+      setClinicalResult(latest);
+      setClinicalReportHistory(response.data?.history || []);
+
+      // Prefill growth monitoring inputs from latest saved report for this selected child.
+      if (latest?.inputs) {
+        setClinicalForm((prev) => ({
+          ...prev,
+          weightKg: latest.inputs.weightKg ?? prev.weightKg,
+          heightCm: latest.inputs.heightCm ?? prev.heightCm,
+          muacCm: latest.inputs.muacCm ?? prev.muacCm,
+          hemoglobin: latest.inputs.hemoglobin ?? prev.hemoglobin,
+          dietaryPreference: latest.inputs.dietaryPreference || prev.dietaryPreference,
+          hasAllergy: latest.inputs.hasAllergy ?? prev.hasAllergy,
+          followUpDays: latest?.doctorReview?.followUpDays ?? prev.followUpDays,
+          doctorNotes: latest?.doctorReview?.notes ?? prev.doctorNotes
+        }));
+      }
+    } catch (err) {
+      // Fallback to empty report if dedicated endpoint is not available yet.
+      console.warn('Clinical report endpoint unavailable, using empty fallback report view.');
+      setClinicalResult(null);
+      setClinicalReportHistory([]);
+    }
+  }, []);
+
+  const handleRunClinicalAnalysis = async () => {
+    try {
+      if (!selectedClinicalChildId) {
+        setError('Please select a child for analysis');
+        return;
+      }
+      if (!clinicalForm.weightKg || !clinicalForm.heightCm) {
+        setError('Weight and Height are required for analysis');
+        return;
+      }
+
+      setClinicalSubmitting(true);
+      const payload = {
+        weightKg: Number(clinicalForm.weightKg),
+        heightCm: Number(clinicalForm.heightCm),
+        muacCm: clinicalForm.muacCm ? Number(clinicalForm.muacCm) : undefined,
+        hemoglobin: clinicalForm.hemoglobin ? Number(clinicalForm.hemoglobin) : undefined,
+        dietaryPreference: clinicalForm.dietaryPreference,
+        hasAllergy: Boolean(clinicalForm.hasAllergy),
+        doctorNotes: clinicalForm.doctorNotes,
+        followUpDays: Number(clinicalForm.followUpDays || 14)
+      };
+
+      try {
+        const response = await api.post(`/child-health/doctor/children/${selectedClinicalChildId}/analyze`, payload, { timeout: 60000 });
+        setClinicalResult(response.data?.data || null);
+        setSuccess('Clinical analysis completed and report generated');
+      } catch (primaryErr) {
+        // Fallback to generic analyzer endpoint when per-child doctor endpoint is not yet deployed.
+        const fallbackResponse = await api.post('/child-health/analyze', {
+          ageMonths: Math.max(1, Math.round((clinicalChildren.find((c) => c.id === selectedClinicalChildId)?.ageMonths || 48))),
+          weightKg: Number(clinicalForm.weightKg),
+          heightCm: Number(clinicalForm.heightCm),
+          hemoglobin: clinicalForm.hemoglobin ? Number(clinicalForm.hemoglobin) : 0,
+          dietaryPreference: clinicalForm.dietaryPreference,
+          hasAllergy: Boolean(clinicalForm.hasAllergy)
+        }, { timeout: 60000 });
+
+        const data = fallbackResponse.data || {};
+        const mapped = {
+          malnutritionPrediction: data.malnutrition_prediction || {},
+          growthAnalysis: data.growth_analysis || {},
+          nutrientFoodRecommendations: data.nutrient_food_recommendations || {},
+          teacherDailyPlan: {
+            breakfast: (data.nutrient_food_recommendations?.recommended_foods || [])[0] || 'Milk + Banana',
+            lunch: (data.nutrient_food_recommendations?.recommended_foods || [])[1] || 'Rice + Lentils + Spinach',
+            snack: (data.nutrient_food_recommendations?.recommended_foods || [])[2] || 'Fruit Snack',
+            dinner: (data.nutrient_food_recommendations?.recommended_foods || [])[3] || 'Vegetable Khichdi'
+          }
+        };
+        setClinicalResult(mapped);
+        setSuccess('Clinical analysis completed (fallback mode)');
+      }
+      await fetchClinicalReport(selectedClinicalChildId);
+      await fetchClinicalChildren();
+    } catch (err) {
+      console.error('Clinical analysis failed:', err);
+      setError(err.response?.data?.message || 'Failed to run clinical analysis');
+    } finally {
+      setClinicalSubmitting(false);
+    }
+  };
+
   // Fetch assigned children
   const fetchChildren = async () => {
     try {
@@ -764,7 +910,16 @@ const DoctorDashboard = () => {
     if (activeTab === 6) {
       fetchEmergencies('all');
     }
+    if (activeTab === 7) {
+      fetchClinicalChildren();
+    }
   }, [activeTab, fetchEarnings]);
+
+  useEffect(() => {
+    if (activeTab === 7 && selectedClinicalChildId) {
+      fetchClinicalReport(selectedClinicalChildId);
+    }
+  }, [activeTab, selectedClinicalChildId, fetchClinicalReport]);
 
   const handleVaOpen = () => setVaOpen(true);
   const handleVaClose = () => setVaOpen(false);
@@ -908,6 +1063,7 @@ const DoctorDashboard = () => {
         <Tab label="Prescriptions" icon={<Medication />} />
         <Tab label="Earnings" icon={<AccountBalance />} />
         <Tab label="Emergencies" icon={<WarningAmber />} />
+        <Tab label="Clinical Panel" icon={<LocalHospital />} />
       </Tabs>
 
       {/* Assigned Children Tab */}
@@ -3211,6 +3367,247 @@ const DoctorDashboard = () => {
               </TableContainer>
             )}
           </Paper>
+        </Box>
+      )}
+
+      {/* Main Clinical Panel Tab */}
+      {activeTab === 7 && (
+        <Box>
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+            <Typography variant="h6" gutterBottom>
+              Main Clinical Panel
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Workflow: Children List, Select Child, Growth Monitoring, AI Nutrition Prediction,
+              Meal Recommendation, Health Report.
+            </Typography>
+          </Paper>
+
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={4}>
+              <Paper sx={{ p: 2.5, borderRadius: 2 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                  Children List
+                </Typography>
+                {clinicalLoading ? (
+                  <Typography color="text.secondary">Loading children...</Typography>
+                ) : clinicalChildren.length === 0 ? (
+                  <Alert severity="info">No children available for clinical analysis.</Alert>
+                ) : (
+                  <List dense>
+                    {clinicalChildren.map((child) => (
+                      <ListItem
+                        key={child.id}
+                        button
+                        selected={selectedClinicalChildId === child.id}
+                        onClick={() => setSelectedClinicalChildId(child.id)}
+                        sx={{ borderRadius: 1, mb: 0.5 }}
+                      >
+                        <ListItemText
+                          primary={child.name}
+                          secondary={`Age: ${Math.floor((child.ageMonths || 0) / 12)} years • Latest: ${child.latestStatus || 'N/A'}`}
+                        />
+                      </ListItem>
+                    ))}
+                  </List>
+                )}
+              </Paper>
+            </Grid>
+
+            <Grid item xs={12} md={8}>
+              <Paper sx={{ p: 2.5, borderRadius: 2, mb: 3 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                  Growth Monitoring Inputs
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Weight (kg)"
+                      type="number"
+                      value={clinicalForm.weightKg}
+                      onChange={(e) => setClinicalForm((prev) => ({ ...prev, weightKg: e.target.value }))}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Height (cm)"
+                      type="number"
+                      value={clinicalForm.heightCm}
+                      onChange={(e) => setClinicalForm((prev) => ({ ...prev, heightCm: e.target.value }))}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="MUAC (cm)"
+                      type="number"
+                      value={clinicalForm.muacCm}
+                      onChange={(e) => setClinicalForm((prev) => ({ ...prev, muacCm: e.target.value }))}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Hemoglobin"
+                      type="number"
+                      value={clinicalForm.hemoglobin}
+                      onChange={(e) => setClinicalForm((prev) => ({ ...prev, hemoglobin: e.target.value }))}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Dietary Preference</InputLabel>
+                      <Select
+                        value={clinicalForm.dietaryPreference}
+                        label="Dietary Preference"
+                        onChange={(e) => setClinicalForm((prev) => ({ ...prev, dietaryPreference: e.target.value }))}
+                      >
+                        <MenuItem value="vegetarian">Vegetarian</MenuItem>
+                        <MenuItem value="non-vegetarian">Non-Vegetarian</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <FormControl fullWidth>
+                      <InputLabel>Has Allergy</InputLabel>
+                      <Select
+                        value={clinicalForm.hasAllergy ? 'yes' : 'no'}
+                        label="Has Allergy"
+                        onChange={(e) => setClinicalForm((prev) => ({ ...prev, hasAllergy: e.target.value === 'yes' }))}
+                      >
+                        <MenuItem value="no">No</MenuItem>
+                        <MenuItem value="yes">Yes</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="Next Checkup (days)"
+                      type="number"
+                      value={clinicalForm.followUpDays}
+                      onChange={(e) => setClinicalForm((prev) => ({ ...prev, followUpDays: e.target.value }))}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      multiline
+                      rows={3}
+                      label="Doctor Notes"
+                      value={clinicalForm.doctorNotes}
+                      onChange={(e) => setClinicalForm((prev) => ({ ...prev, doctorNotes: e.target.value }))}
+                    />
+                  </Grid>
+                </Grid>
+
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    variant="contained"
+                    onClick={handleRunClinicalAnalysis}
+                    disabled={clinicalSubmitting || !selectedClinicalChildId}
+                  >
+                    {clinicalSubmitting ? 'Running Analysis...' : 'Run AI Nutrition Prediction'}
+                  </Button>
+                </Box>
+              </Paper>
+
+              <Paper sx={{ p: 2.5, borderRadius: 2, mb: 3 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                  Malnutrition Status and Meal Recommendation
+                </Typography>
+                {!clinicalResult ? (
+                  <Alert severity="info">Select child and run analysis to see clinical output.</Alert>
+                ) : (
+                  <>
+                    <Grid container spacing={2} sx={{ mb: 2 }}>
+                      <Grid item xs={12} sm={6}>
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Typography variant="caption" color="text.secondary">Nutrition Status</Typography>
+                            <Typography variant="h6">
+                              {clinicalResult.malnutritionPrediction?.prediction || 'N/A'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Confidence: {clinicalResult.malnutritionPrediction?.confidence
+                                ? `${Math.round(clinicalResult.malnutritionPrediction.confidence * 100)}%`
+                                : 'N/A'}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Card variant="outlined">
+                          <CardContent>
+                            <Typography variant="caption" color="text.secondary">Growth Status</Typography>
+                            <Typography variant="h6">
+                              {clinicalResult.growthAnalysis?.growth_status || 'N/A'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              BMI: {clinicalResult.growthAnalysis?.bmi ?? 'N/A'}
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    </Grid>
+
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Recommended Foods</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                      {(clinicalResult.nutrientFoodRecommendations?.recommended_foods || []).slice(0, 10).map((food, idx) => (
+                        <Chip key={`${food}-${idx}`} label={food} color="success" variant="outlined" />
+                      ))}
+                    </Box>
+
+                    <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Daily Diet Plan</Typography>
+                    <Grid container spacing={1}>
+                      <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Breakfast:</strong> {clinicalResult.teacherDailyPlan?.breakfast || 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Lunch:</strong> {clinicalResult.teacherDailyPlan?.lunch || 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Snack:</strong> {clinicalResult.teacherDailyPlan?.snack || 'N/A'}</Typography></Grid>
+                      <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Dinner:</strong> {clinicalResult.teacherDailyPlan?.dinner || 'N/A'}</Typography></Grid>
+                    </Grid>
+                  </>
+                )}
+              </Paper>
+
+              <Paper sx={{ p: 2.5, borderRadius: 2 }}>
+                <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                  Health Reports History
+                </Typography>
+                {clinicalReportHistory.length === 0 ? (
+                  <Typography color="text.secondary">No reports available for selected child.</Typography>
+                ) : (
+                  <TableContainer>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell>Date</TableCell>
+                          <TableCell>Status</TableCell>
+                          <TableCell>Confidence</TableCell>
+                          <TableCell>Growth</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {clinicalReportHistory.map((item) => (
+                          <TableRow key={item._id}>
+                            <TableCell>{item.measuredAt ? new Date(item.measuredAt).toLocaleString() : '-'}</TableCell>
+                            <TableCell>{item.malnutritionPrediction?.prediction || '-'}</TableCell>
+                            <TableCell>
+                              {item.malnutritionPrediction?.confidence
+                                ? `${Math.round(item.malnutritionPrediction.confidence * 100)}%`
+                                : '-'}
+                            </TableCell>
+                            <TableCell>{item.growthAnalysis?.growth_status || '-'}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Paper>
+            </Grid>
+          </Grid>
         </Box>
       )}
 

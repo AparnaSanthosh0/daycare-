@@ -36,7 +36,13 @@ import {
   LinearProgress,
   Tooltip,
   Badge,
-  ButtonGroup
+  ButtonGroup,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -68,7 +74,8 @@ import {
   Timer,
   OpenInNew,
   History,
-  TrendingUp
+  TrendingUp,
+  CameraAlt
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -99,6 +106,30 @@ const TeacherDashboard = () => {
   const [rating, setRating] = useState(5);
   const [classificationResult, setClassificationResult] = useState(null);
   const [vaOpen, setVaOpen] = useState(false);
+  const [teacherHealthPlan, setTeacherHealthPlan] = useState([]);
+  const [teacherHealthLoading, setTeacherHealthLoading] = useState(false);
+
+  const fetchTeacherHealthPlan = async () => {
+    try {
+      setTeacherHealthLoading(true);
+      const response = await api.get('/child-health/teacher/daily-plan');
+      setTeacherHealthPlan(response.data?.dailyPlan || []);
+    } catch (error) {
+      console.warn('Teacher health daily plan unavailable, using empty fallback.');
+      setTeacherHealthPlan([]);
+    } finally {
+      setTeacherHealthLoading(false);
+    }
+  };
+
+  const updateTeacherMealCompletion = async (childId, patch) => {
+    try {
+      await api.patch(`/child-health/teacher/children/${childId}/meal-completion`, patch);
+      fetchTeacherHealthPlan();
+    } catch (error) {
+      console.error('Failed to update teacher meal completion:', error);
+    }
+  };
 
   // Visitor Management States
   const [visitors, setVisitors] = useState([]);
@@ -228,6 +259,9 @@ const TeacherDashboard = () => {
     if (newValue === 11) {
       fetchGames();
       fetchSessionHistory();
+    }
+    if (newValue === 1) {
+      fetchTeacherHealthPlan();
     }
   };
 
@@ -607,7 +641,8 @@ const TeacherDashboard = () => {
         <Grid item xs={12} sm={6} md={3}>
           <Paper elevation={0} sx={{ p: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Total Children
+              Workflow: Today's Children List, Assigned Meal Plan, Allergy-Safe Meals,
+              Serve Recommended Foods, Update Meal Completion.
             </Typography>
             <Typography variant="h4" sx={{ color: '#1abc9c', fontWeight: 600 }}>
               {students.length}
@@ -1063,6 +1098,88 @@ const TeacherDashboard = () => {
       <Typography variant="h5" sx={{ fontWeight: 600, mb: 3 }}>
         Weekly Meal Planning
       </Typography>
+
+      <Paper elevation={0} sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+          Daily Child Nutrition Workflow
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Today's workflow: Children List, Assigned Meal Plan, Allergy-Safe Meals,
+          Serve Recommended Foods, Update Meal Completion.
+        </Typography>
+
+        {teacherHealthLoading ? (
+          <CircularProgress size={24} />
+        ) : teacherHealthPlan.length === 0 ? (
+          <Alert severity="info">No AI meal plans found yet. Doctor must run clinical analysis first.</Alert>
+        ) : (
+          <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Child</TableCell>
+                  <TableCell>Status</TableCell>
+                  <TableCell>Breakfast</TableCell>
+                  <TableCell>Lunch</TableCell>
+                  <TableCell>Snack</TableCell>
+                  <TableCell>Dinner</TableCell>
+                  <TableCell>Foods to Avoid</TableCell>
+                  <TableCell>Completion</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {teacherHealthPlan.map((row) => (
+                  <TableRow key={row.childId}>
+                    <TableCell>{row.name}</TableCell>
+                    <TableCell>
+                      <Chip size="small" label={row.status || 'N/A'} color="warning" variant="outlined" />
+                    </TableCell>
+                    <TableCell>{row.breakfast || '-'}</TableCell>
+                    <TableCell>{row.lunch || '-'}</TableCell>
+                    <TableCell>{row.snack || '-'}</TableCell>
+                    <TableCell>{row.dinner || '-'}</TableCell>
+                    <TableCell>
+                      {(row.foodsToAvoid || []).length ? (row.foodsToAvoid || []).join(', ') : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} flexWrap="wrap">
+                        <Button
+                          size="small"
+                          variant={row.completion?.breakfastDone ? 'contained' : 'outlined'}
+                          onClick={() => updateTeacherMealCompletion(row.childId, { breakfastDone: !row.completion?.breakfastDone })}
+                        >
+                          B
+                        </Button>
+                        <Button
+                          size="small"
+                          variant={row.completion?.lunchDone ? 'contained' : 'outlined'}
+                          onClick={() => updateTeacherMealCompletion(row.childId, { lunchDone: !row.completion?.lunchDone })}
+                        >
+                          L
+                        </Button>
+                        <Button
+                          size="small"
+                          variant={row.completion?.snackDone ? 'contained' : 'outlined'}
+                          onClick={() => updateTeacherMealCompletion(row.childId, { snackDone: !row.completion?.snackDone })}
+                        >
+                          S
+                        </Button>
+                        <Button
+                          size="small"
+                          variant={row.completion?.dinnerDone ? 'contained' : 'outlined'}
+                          onClick={() => updateTeacherMealCompletion(row.childId, { dinnerDone: !row.completion?.dinnerDone })}
+                        >
+                          D
+                        </Button>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
       
       {/* Meal Planning Grid */}
       {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'].map((day) => (
@@ -3269,6 +3386,97 @@ const TeacherDashboard = () => {
           </Grid>
         </Grid>
       )}
+    </Box>
+  );
+
+  // ── AR Tools Tab ──────────────────────────────────────────────────────────
+  const renderARToolsTab = () => (
+    <Box>
+      <Paper sx={{ p: 4, mb: 3, borderRadius: 3, background: 'linear-gradient(135deg,#667eea 0%,#764ba2 100%)', color: 'white' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <CameraAlt sx={{ fontSize: 48 }} />
+          <Box>
+            <Typography variant="h4" fontWeight="bold">🎯 AR Teaching Tools</Typography>
+            <Typography variant="subtitle1" sx={{ opacity: 0.9 }}>
+              Use augmented reality to make lessons interactive and engaging
+            </Typography>
+          </Box>
+        </Box>
+      </Paper>
+      <Grid container spacing={3}>
+        {/* AR Alphabet Scanner */}
+        <Grid item xs={12} sm={6}>
+          <Card sx={{ borderRadius: 3, overflow: 'hidden', border: '2px solid #667eea', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 } }}>
+            <Box sx={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', p: 3, color: 'white', textAlign: 'center' }}>
+              <Typography variant="h2">🔤</Typography>
+              <Typography variant="h6" fontWeight="bold" mt={1}>AR Alphabet Scanner</Typography>
+              <Typography variant="caption" sx={{ opacity: 0.85 }}>Classroom-Ready</Typography>
+            </Box>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary" mb={2}>
+                Print the 26 flashcards and conduct an AR letter-recognition activity. 
+                The camera detects each card's QR code and overlays the emoji + pronunciation.
+                Great for group or individual learning!
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {['Ages 2-6', '26 Letters', 'Printable Cards', 'Audio Pronunciation'].map(tag => (
+                  <Chip key={tag} label={tag} size="small" sx={{ bgcolor: '#667eea22', color: '#667eea', fontWeight: 600 }} />
+                ))}
+              </Box>
+              <Button fullWidth variant="contained" onClick={() => navigate('/alphabet-ar')}
+                sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5a6fd6' }, borderRadius: 2, fontWeight: 700 }}>
+                🚀 Open AR Alphabet
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+        {/* Face Accessories AR */}
+        <Grid item xs={12} sm={6}>
+          <Card sx={{ borderRadius: 3, overflow: 'hidden', border: '2px solid #f06292', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 } }}>
+            <Box sx={{ background: 'linear-gradient(135deg,#f06292,#ce93d8)', p: 3, color: 'white', textAlign: 'center' }}>
+              <Typography variant="h2">👒</Typography>
+              <Typography variant="h6" fontWeight="bold" mt={1}>Face Accessories AR</Typography>
+              <Typography variant="caption" sx={{ opacity: 0.85 }}>For Dress-Up & Drama</Typography>
+            </Box>
+            <CardContent>
+              <Typography variant="body2" color="text.secondary" mb={2}>
+                Use face AR for drama, dress-up activities, and creative expression. 
+                Kids can try on crowns, cat ears, hats and more — then capture the photo!
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                {['All Ages', '24 Accessories', 'Photo Capture', 'Camera Required'].map(tag => (
+                  <Chip key={tag} label={tag} size="small" sx={{ bgcolor: '#f0629222', color: '#c2185b', fontWeight: 600 }} />
+                ))}
+              </Box>
+              <Button fullWidth variant="contained" onClick={() => navigate('/face-ar')}
+                sx={{ bgcolor: '#f06292', '&:hover': { bgcolor: '#e91e8c' }, borderRadius: 2, fontWeight: 700 }}>
+                🎭 Open Face AR
+              </Button>
+            </CardContent>
+          </Card>
+        </Grid>
+        {/* Tips card */}
+        <Grid item xs={12}>
+          <Paper sx={{ p: 3, borderRadius: 2, bgcolor: '#fff8e1', border: '1px solid #ffe082' }}>
+            <Typography variant="subtitle1" fontWeight="bold" gutterBottom>💡 Classroom Tips</Typography>
+            <Grid container spacing={2}>
+              {[
+                { icon: '1️⃣', tip: 'Print the A-Z flashcards from the Alphabet AR "Print Flashcards" tab. Laminate for re-use.' },
+                { icon: '2️⃣', tip: 'Assign each child a letter to find. The child who scans it first reads the word aloud.' },
+                { icon: '3️⃣', tip: 'For Face AR, use it during creative play, costume day or as a reward activity.' },
+                { icon: '4️⃣', tip: 'Works best on Chrome or Edge browser. Ensure camera permission is granted.' },
+              ].map(({ icon, tip }) => (
+                <Grid item xs={12} sm={6} key={icon}>
+                  <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start' }}>
+                    <Typography variant="h6">{icon}</Typography>
+                    <Typography variant="body2" color="text.secondary">{tip}</Typography>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Paper>
+        </Grid>
+      </Grid>
     </Box>
   );
 

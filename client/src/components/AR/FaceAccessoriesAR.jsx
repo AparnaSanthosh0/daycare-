@@ -1,709 +1,414 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+﻿import React, { useEffect, useRef, useState, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import {
-  Box,
-  Typography,
-  IconButton,
-  Button,
-  Paper,
-  Grid,
-  CircularProgress,
-  Alert,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Stack,
-  Tooltip,
-} from '@mui/material';
+  Box, Typography, IconButton, Button, Paper,
+  CircularProgress, Alert, Dialog, DialogTitle, DialogContent,
+  DialogActions, Stack, Tooltip, Tabs, Tab, Chip,
+} from "@mui/material";
 import {
-  Close,
-  CameraAlt,
-  FlipCameraIos,
-  ShoppingCart,
-  Refresh,
-  Download,
-  BuildCircle,
-} from '@mui/icons-material';
+  Close, CameraAlt, FlipCameraIos, ShoppingCart,
+  Refresh, Download, ArrowBack,
+} from "@mui/icons-material";
 
-/**
- * FaceAccessoriesAR Component
- * 
- * Real-time face accessories try-on using device camera
- * - Hats, sunglasses, hair accessories, masks
- * - Uses browser's MediaPipe Face Detection
- * - Works on mobile and desktop
- * 
- * Features:
- * - Live camera preview
- * - Multiple accessory options
- * - Capture photo with accessory
- * - Add to cart directly
- */
+const ACCESSORIES = [
+  { id: "sunglasses",   name: "Sunglasses",    category: "glasses",  emoji: "🕶️",  type: "glasses" },
+  { id: "heartglasses", name: "Heart Glasses", category: "glasses",  emoji: "🩷",  type: "heartglasses" },
+  { id: "nerdglasses",  name: "Nerd Glasses",  category: "glasses",  emoji: "🤓",  type: "glasses" },
+  { id: "starglasses",  name: "Star Glasses",  category: "glasses",  emoji: "⭐",  type: "starglasses" },
+  { id: "crown",        name: "Crown",         category: "crowns",   emoji: "👑",  type: "crown" },
+  { id: "floral",       name: "Flower Crown",  category: "crowns",   emoji: "🌸",  type: "flowercrown" },
+  { id: "rainbow",      name: "Rainbow",       category: "crowns",   emoji: "🌈",  type: "crown" },
+  { id: "tiara",        name: "Tiara",         category: "crowns",   emoji: "✨",  type: "tiara" },
+  { id: "catears",      name: "Cat Ears",      category: "ears",     emoji: "🐱",  type: "ears" },
+  { id: "bunnyears",    name: "Bunny Ears",    category: "ears",     emoji: "🐰",  type: "ears" },
+  { id: "bearears",     name: "Bear Ears",     category: "ears",     emoji: "🐻",  type: "ears" },
+  { id: "unicorn",      name: "Unicorn Horn",  category: "ears",     emoji: "🦄",  type: "unicornhorn" },
+  { id: "tophat",       name: "Top Hat",       category: "hats",     emoji: "🎩",  type: "hat" },
+  { id: "partyhat",     name: "Party Hat",     category: "hats",     emoji: "🎉",  type: "hat" },
+  { id: "cowboy",       name: "Cowboy Hat",    category: "hats",     emoji: "🤠",  type: "hat" },
+  { id: "santa",        name: "Santa Hat",     category: "hats",     emoji: "🎅",  type: "hat" },
+  { id: "diamond",      name: "Diamonds",      category: "earrings", emoji: "💎",  type: "earring" },
+  { id: "starrings",    name: "Star Drops",    category: "earrings", emoji: "⭐",  type: "earring" },
+  { id: "heartring",    name: "Heart Drops",   category: "earrings", emoji: "❤️",  type: "earring" },
+  { id: "flowerring",   name: "Flowers",       category: "earrings", emoji: "🌺",  type: "earring" },
+  { id: "butterfly",    name: "Butterfly",     category: "face",     emoji: "🦋",  type: "facecenter" },
+  { id: "clown",        name: "Clown Nose",    category: "face",     emoji: "🤡",  type: "nose" },
+  { id: "sparkles",     name: "Sparkles",      category: "face",     emoji: "✨",  type: "fullface" },
+  { id: "blush",        name: "Heart Blush",   category: "face",     emoji: "💕",  type: "blush" },
+];
+
+const CATEGORIES = ["All", "glasses", "crowns", "ears", "hats", "earrings", "face"];
+const CATEGORY_LABELS = {
+  All: "🎭 All", glasses: "👓 Glasses", crowns: "👑 Crowns",
+  ears: "🐾 Ears", hats: "🎩 Hats", earrings: "💎 Earrings", face: "😊 Face",
+};
+
+function drawAccessoryEmoji(ctx, canvas, face, accessory) {
+  const { x, y, width, height } = face;
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  switch (accessory.type) {
+    case "glasses":
+      ctx.font = `${width * 0.7}px serif`;
+      ctx.fillText(accessory.emoji, x + width / 2, y + height * 0.38);
+      break;
+    case "heartglasses":
+      ctx.font = `${width * 0.32}px serif`;
+      ctx.fillText("🩷", x + width * 0.3, y + height * 0.38);
+      ctx.fillText("🩷", x + width * 0.7, y + height * 0.38);
+      break;
+    case "starglasses":
+      ctx.font = `${width * 0.32}px serif`;
+      ctx.fillText("⭐", x + width * 0.28, y + height * 0.37);
+      ctx.fillText("⭐", x + width * 0.72, y + height * 0.37);
+      ctx.strokeStyle = "gold"; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x + width * 0.44, y + height * 0.37);
+      ctx.lineTo(x + width * 0.56, y + height * 0.37);
+      ctx.stroke();
+      break;
+    case "hat":
+      ctx.font = `${width * 0.75}px serif`;
+      ctx.fillText(accessory.emoji, x + width / 2, y - height * 0.12);
+      break;
+    case "crown":
+      ctx.font = `${width * 0.7}px serif`;
+      ctx.fillText(accessory.emoji, x + width / 2, y - height * 0.08);
+      break;
+    case "tiara":
+      ctx.font = `${width * 0.22}px serif`;
+      ctx.fillText("💍", x + width * 0.18, y - height * 0.05);
+      ctx.font = `${width * 0.32}px serif`;
+      ctx.fillText("✨", x + width * 0.5, y - height * 0.12);
+      ctx.font = `${width * 0.22}px serif`;
+      ctx.fillText("💍", x + width * 0.82, y - height * 0.05);
+      break;
+    case "flowercrown": {
+      const fl = ["🌸","🌼","🌺","🌸","🌼"];
+      const sp = width / (fl.length + 1);
+      ctx.font = `${width * 0.22}px serif`;
+      fl.forEach((f, i) => ctx.fillText(f, x + sp * (i + 1), y - height * 0.06));
+      break;
+    }
+    case "ears":
+      ctx.font = `${width * 0.38}px serif`;
+      ctx.fillText(accessory.emoji, x - width * 0.05, y - height * 0.05);
+      ctx.fillText(accessory.emoji, x + width + width * 0.05, y - height * 0.05);
+      break;
+    case "unicornhorn":
+      ctx.font = `${width * 0.55}px serif`;
+      ctx.fillText("🦄", x + width / 2, y - height * 0.1);
+      break;
+    case "earring":
+      ctx.font = `${width * 0.22}px serif`;
+      ctx.fillText(accessory.emoji, x - width * 0.1, y + height * 0.52);
+      ctx.fillText(accessory.emoji, x + width + width * 0.1, y + height * 0.52);
+      break;
+    case "nose":
+      ctx.font = `${width * 0.18}px serif`;
+      ctx.fillText("🔴", x + width / 2, y + height * 0.6);
+      break;
+    case "facecenter":
+      ctx.font = `${width * 0.32}px serif`;
+      ctx.fillText(accessory.emoji, x + width / 2, y + height * 0.38);
+      break;
+    case "blush":
+      ctx.font = `${width * 0.22}px serif`;
+      ctx.fillText("🌸", x + width * 0.15, y + height * 0.55);
+      ctx.fillText("🌸", x + width * 0.85, y + height * 0.55);
+      break;
+    case "fullface": {
+      const sp2 = [[0.1,0.15],[0.9,0.15],[0.05,0.5],[0.95,0.5],[0.15,0.85],[0.85,0.85],[0.5,0.0],[0.5,1.0]];
+      ctx.font = `${width * 0.12}px serif`;
+      sp2.forEach(([rx,ry]) => ctx.fillText("✨", x + rx * width, y + ry * height));
+      break;
+    }
+    default:
+      ctx.font = `${width * 0.6}px serif`;
+      ctx.fillText(accessory.emoji, x + width / 2, y + height / 2);
+  }
+  ctx.restore();
+}
+
+function estimatedFace(canvas) {
+  const cw = canvas.width, ch = canvas.height;
+  const size = Math.min(cw, ch) * 0.5;
+  return { x: (cw - size) / 2, y: ch * 0.12, width: size, height: size * 1.2 };
+}
+
 const FaceAccessoriesAR = ({ product, onClose, onAddToCart }) => {
+  const navigate = useNavigate();
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
-  const animationRef = useRef(null);
+  const animRef = useRef(null);
   const detectorRef = useRef(null);
-  const selectedAccessoryRef = useRef(null);
+  const selectedRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedAccessory, setSelectedAccessory] = useState(null);
-  const [facingMode, setFacingMode] = useState('user'); // 'user' or 'environment'
+  const [facingMode, setFacingMode] = useState("user");
   const [capturedImage, setCapturedImage] = useState(null);
-  const [showCaptureDialog, setShowCaptureDialog] = useState(false);
+  const [showCapture, setShowCapture] = useState(false);
+  const [categoryTab, setCategoryTab] = useState(0);
 
-  // Accessory presets based on product type
-  const accessories = [
-    {
-      id: 'hat-1',
-      name: 'Party Hat',
-      type: 'hat',
-      image: product?.image || '/assets/accessories/party-hat.png',
-      position: { x: 0.5, y: 0.15 },
-      scale: 0.35,
-    },
-    {
-      id: 'glasses-1',
-      name: 'Cool Sunglasses',
-      type: 'glasses',
-      image: '/assets/accessories/sunglasses.png',
-      position: { x: 0.5, y: 0.42 },
-      scale: 0.28,
-    },
-    {
-      id: 'mask-1',
-      name: 'Fun Mask',
-      type: 'mask',
-      image: '/assets/accessories/mask.png',
-      position: { x: 0.5, y: 0.52 },
-      scale: 0.3,
-    },
-    {
-      id: 'headband-1',
-      name: 'Cute Headband',
-      type: 'headband',
-      image: '/assets/accessories/headband.png',
-      position: { x: 0.5, y: 0.2 },
-      scale: 0.32,
-    },
-  ];
+  const selectAccessory = (acc) => {
+    setSelectedAccessory(acc);
+    selectedRef.current = acc;
+  };
 
-  // Initialize camera and face detection
-  const initCamera = async () => {
+  const currentCategory = CATEGORIES[categoryTab];
+  const filteredAccessories = currentCategory === "All"
+    ? ACCESSORIES
+    : ACCESSORIES.filter(a => a.category === currentCategory);
+
+  const startCamera = useCallback(async () => {
+    setError(null);
+    setLoading(true);
     try {
-      console.log('🎥 Initializing camera for face accessories AR...');
-      setError(null);
-      setLoading(true);
-      
-      // Check if mediaDevices is available
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Camera API not supported in this browser');
-      }
-
-      let stream;
-      
-      // Try with ideal constraints first
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: facingMode,
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        });
-      } catch (err) {
-        console.log('⚠️ Trying fallback camera constraints...');
-        // Fallback: try with basic constraints
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: true,
-            audio: false,
-          });
-        } catch (fallbackErr) {
-          console.log('⚠️ Trying to enumerate devices...');
-          // Check if any video input devices exist
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const videoDevices = devices.filter(device => device.kind === 'videoinput');
-          
-          if (videoDevices.length === 0) {
-            throw new Error('NO_CAMERA');
-          }
-          throw fallbackErr;
-        }
-      }
-
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
       streamRef.current = stream;
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        
-        console.log('📹 Starting video playback...');
-        await videoRef.current.play();
-        
-        console.log('⏳ Waiting for video metadata...');
-        await new Promise(resolve => {
-          videoRef.current.onloadedmetadata = () => {
-            console.log(`✅ Video ready: ${videoRef.current.videoWidth}x${videoRef.current.videoHeight}`);
-            resolve();
-          };
-        });
-
-        console.log('🔍 Initializing face detection...');
-        await initFaceDetection();
-
-        console.log('✅ Camera fully initialized');
-        setLoading(false);
-        
-        // Wait for React to update DOM, then start rendering
-        setTimeout(() => {
-          console.log('🎬 Starting accessories render loop...');
-          if (videoRef.current && canvasRef.current && detectorRef.current) {
-            console.log('✅ All refs ready for accessories');
-            startRendering();
-          } else {
-            console.error('❌ Refs not ready for accessories');
-          }
-        }, 200);
+      videoRef.current.srcObject = stream;
+      await videoRef.current.play();
+      await new Promise(r => { videoRef.current.onloadedmetadata = r; });
+      if ("FaceDetector" in window) {
+        try { detectorRef.current = new window.FaceDetector({ maxDetectedFaces: 1, fastMode: true }); }
+        catch (_) { detectorRef.current = null; }
       }
+      setLoading(false);
+      startRenderLoop();
     } catch (err) {
-      console.error('❌ Camera initialization error:', err);
-      
-      let errorMessage = 'Camera access failed. ';
-      
-      if (err.message === 'NO_CAMERA') {
-        errorMessage = 'No camera found. Please connect a camera and try again.';
-      } else if (err.name === 'NotFoundError') {
-        errorMessage = 'No camera found. Please ensure a camera is connected to your device.';
-      } else if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-        errorMessage = 'Camera access denied. Please allow camera permissions in your browser settings.';
-      } else if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
-        errorMessage = 'Camera is in use by another application. Please close other apps using the camera.';
-      } else if (err.message === 'Camera API not supported in this browser') {
-        errorMessage = err.message + '. Please use a modern browser like Chrome, Firefox, or Edge.';
-      } else {
-        errorMessage += err.message || 'Unknown error occurred.';
-      }
-      
-      setError(errorMessage);
+      setError(err.message || "Camera access failed.");
       setLoading(false);
     }
-  };
-
-  useEffect(() => {
-    let mounted = true;
-
-    const init = async () => {
-      if (mounted) {
-        await initCamera();
-      }
-    };
-
-    init();
-
-    return () => {
-      mounted = false;
-      cleanup();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facingMode]);
 
-  // Sync selectedAccessory to ref for render loop
-  useEffect(() => {
-    selectedAccessoryRef.current = selectedAccessory;
-    if (selectedAccessory) {
-      console.log('✨ Accessory selected:', selectedAccessory.name);
-    }
-  }, [selectedAccessory]);
+  const stopCamera = useCallback(() => {
+    if (animRef.current) cancelAnimationFrame(animRef.current);
+    if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+  }, []);
 
-  // Retry camera initialization
-  const handleRetry = () => {
-    cleanup();
-    initCamera();
-  };
+  useEffect(() => { startCamera(); return () => stopCamera(); }, [startCamera, stopCamera]);
 
-  // Initialize MediaPipe Face Detection
-  const initFaceDetection = async () => {
-    try {
-      console.log('🔍 Initializing face detection...');
-      
-      // Check if FaceDetector API is available
-      if ('FaceDetector' in window) {
-        detectorRef.current = new window.FaceDetector({
-          maxDetectedFaces: 1,
-          fastMode: true,
-        });
-        console.log('✅ Using native FaceDetector API');
-      } else {
-        // Fallback to basic face estimation using video dimensions
-        console.log('⚠️ FaceDetector not available, using fallback');
-        detectorRef.current = {
-          detect: async (video) => {
-            // Estimate face position (center of video)
-            const w = video.videoWidth;
-            const h = video.videoHeight;
-            return [{
-              boundingBox: {
-                x: w * 0.25,
-                y: h * 0.15,
-                width: w * 0.5,
-                height: h * 0.6,
-              },
-            }];
-          },
-        };
-      }
-    } catch (err) {
-      console.error('❌ Face detection init error:', err);
-      // Use fallback
-      detectorRef.current = {
-        detect: async (video) => {
-          const w = video.videoWidth;
-          const h = video.videoHeight;
-          return [{
-            boundingBox: {
-              x: w * 0.25,
-              y: h * 0.15,
-              width: w * 0.5,
-              height: h * 0.6,
-            },
-          }];
-        },
-      };
-    }
-  };
-
-  // Render loop - draw video and overlays
-  const startRendering = () => {
-    console.log('👓 Starting accessories render loop');
+  const startRenderLoop = () => {
+    let lastFaceBounds = null;
     let frameCount = 0;
-    
-    const render = async () => {
-      if (!videoRef.current || !canvasRef.current || !detectorRef.current) {
-        animationRef.current = requestAnimationFrame(render);
-        return;
-      }
-
+    const loop = async () => {
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      const ctx = canvas.getContext('2d');
-
-      frameCount++;
-
-      // Set canvas size to match video (only if changed)
-      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        console.log(`📐 Canvas sized: ${canvas.width}x${canvas.height}`);
+      if (!video || !canvas) { animRef.current = requestAnimationFrame(loop); return; }
+      const ctx = canvas.getContext("2d");
+      if (canvas.width !== video.videoWidth) {
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
       }
-
-      // Draw video frame
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // Debug indicator - blue square in top-right corner
-      ctx.fillStyle = '#0000FF';
-      ctx.fillRect(canvas.width - 30, 10, 20, 20);
-
-      // Detect faces and draw accessories
-      const currentAccessory = selectedAccessoryRef.current;
-      if (currentAccessory) {
-        if (frameCount <= 3) {
-          console.log(`👓 Applying ${currentAccessory.name} accessory...`);
-        }
-        
-        try {
-          const faces = await detectorRef.current.detect(video);
-          
-          if (faces && faces.length > 0) {
-            const face = faces[0];
-            if (frameCount <= 3) {
-              console.log('👤 Face detected for accessory');
+      if (facingMode === "user") {
+        ctx.save();
+        ctx.translate(canvas.width, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+      } else {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      }
+      const acc = selectedRef.current;
+      if (acc) {
+        frameCount++;
+        let faceBounds = lastFaceBounds;
+        if (frameCount % 10 === 0 || !lastFaceBounds) {
+          if (detectorRef.current) {
+            try {
+              const faces = await detectorRef.current.detect(video);
+              if (faces.length > 0) {
+                const f = faces[0].boundingBox;
+                const bx = facingMode === "user" ? canvas.width - f.x - f.width : f.x;
+                faceBounds = { x: bx, y: f.y, width: f.width, height: f.height };
+                lastFaceBounds = faceBounds;
+              }
+            } catch (_) {
+              faceBounds = estimatedFace(canvas);
+              lastFaceBounds = faceBounds;
             }
-            drawAccessory(ctx, face.boundingBox, currentAccessory);
-          }
-        } catch (err) {
-          if (frameCount <= 3) {
-            console.error('Face detection error:', err);
+          } else {
+            faceBounds = estimatedFace(canvas);
+            lastFaceBounds = faceBounds;
           }
         }
+        if (faceBounds) drawAccessoryEmoji(ctx, canvas, faceBounds, acc);
       }
-
-      animationRef.current = requestAnimationFrame(render);
+      if (!acc) {
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+        ctx.fillStyle = "white";
+        ctx.font = "bold 18px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("👆 Select an accessory below!", canvas.width / 2, canvas.height - 20);
+      }
+      animRef.current = requestAnimationFrame(loop);
     };
-
-    render();
+    animRef.current = requestAnimationFrame(loop);
   };
 
-  // Draw accessory on detected face
-  const drawAccessory = (ctx, faceBounds, accessory) => {
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    
-    // Calculate accessory position based on face bounds and accessory type
-    const faceWidth = faceBounds.width;
-    const faceHeight = faceBounds.height;
-    
-    let x, y, width, height;
-
-    switch (accessory.type) {
-      case 'hat':
-        // Position above forehead
-        width = faceWidth * accessory.scale * 2;
-        height = width; // Maintain aspect ratio
-        x = faceBounds.x + (faceWidth / 2) - (width / 2);
-        y = faceBounds.y - (height * 0.6);
-        break;
-      
-      case 'glasses':
-        // Position on eyes
-        width = faceWidth * accessory.scale * 2.5;
-        height = width * 0.4;
-        x = faceBounds.x + (faceWidth / 2) - (width / 2);
-        y = faceBounds.y + (faceHeight * 0.35);
-        break;
-      
-      case 'mask':
-        // Position on lower face
-        width = faceWidth * accessory.scale * 2;
-        height = width * 0.6;
-        x = faceBounds.x + (faceWidth / 2) - (width / 2);
-        y = faceBounds.y + (faceHeight * 0.5);
-        break;
-      
-      case 'headband':
-        // Position on top of head
-        width = faceWidth * accessory.scale * 2.2;
-        height = width * 0.3;
-        x = faceBounds.x + (faceWidth / 2) - (width / 2);
-        y = faceBounds.y + (faceHeight * 0.05);
-        break;
-      
-      default:
-        // Default positioning
-        width = faceWidth * accessory.scale * 2;
-        height = width;
-        x = faceBounds.x + (faceWidth / 2) - (width / 2);
-        y = faceBounds.y;
-    }
-
-    // Load and draw image
-    img.onload = () => {
-      ctx.drawImage(img, x, y, width, height);
-    };
-    
-    img.src = accessory.image;
-  };
-
-  // Capture photo with accessory
-  const capturePhoto = () => {
+  const handleCapture = () => {
     if (!canvasRef.current) return;
-
-    const dataUrl = canvasRef.current.toDataURL('image/png');
-    setCapturedImage(dataUrl);
-    setShowCaptureDialog(true);
+    setCapturedImage(canvasRef.current.toDataURL("image/png"));
+    setShowCapture(true);
   };
 
-  // Download captured photo
-  const downloadPhoto = () => {
+  const handleFlip = () => { stopCamera(); setFacingMode(p => (p === "user" ? "environment" : "user")); };
+
+  const handleDownload = () => {
     if (!capturedImage) return;
-
-    const link = document.createElement('a');
-    link.href = capturedImage;
-    link.download = `tinytots-tryonn-${Date.now()}.png`;
-    link.click();
+    const a = document.createElement("a");
+    a.href = capturedImage;
+    a.download = `tinytots-look-${Date.now()}.png`;
+    a.click();
   };
 
-  // Switch camera (front/back)
-  const switchCamera = () => {
-    setFacingMode(prev => prev === 'user' ? 'environment' : 'user');
-    setLoading(true);
+  const handleShopClick = () => {
+    setShowCapture(false);
+    if (onClose) onClose();
+    navigate("/shop?category=accessories");
   };
 
-  // Cleanup resources
-  const cleanup = () => {
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop());
-    }
-  };
-
-  // Handle accessory selection
-  const handleAccessorySelect = (accessory) => {
-    setSelectedAccessory(accessory);
-  };
-
-  // Handle add to cart
   const handleAddToCart = () => {
-    if (onAddToCart && product) {
-      onAddToCart(product);
-    }
-    setShowCaptureDialog(false);
+    if (onAddToCart && product) onAddToCart(product);
+    setShowCapture(false);
+    if (onClose) onClose();
   };
 
   return (
-    <Box
-      sx={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        bgcolor: 'background.paper',
-        zIndex: 9999,
-        display: 'flex',
-        flexDirection: 'column',
-      }}
-    >
-      {/* Header */}
-      <Paper
-        elevation={2}
-        sx={{
-          p: 2,
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-        }}
-      >
-        <Box>
-          <Typography variant="h6" fontWeight="bold">
-            Try On Accessories
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            {product?.name || 'Face Accessories'}
-          </Typography>
-        </Box>
-        <IconButton onClick={onClose}>
-          <Close />
-        </IconButton>
-      </Paper>
-
-      {/* Camera View */}
-      <Box
-        sx={{
-          flex: 1,
-          position: 'relative',
-          bgcolor: 'black',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-      >
-        {loading && (
-          <Box textAlign="center">
-            <CircularProgress size={60} />
-            <Typography color="white" mt={2}>
-              Initializing camera...
-            </Typography>
-          </Box>
+    <Box sx={{ display: "flex", flexDirection: "column", height: "100%", bgcolor: "#0a0a0a" }}>
+      <Box sx={{ display: "flex", alignItems: "center", px: 2, py: 1, bgcolor: "rgba(255,255,255,0.07)" }}>
+        <Tooltip title="Go Back">
+          <IconButton onClick={onClose} sx={{ color: "white", mr: 1 }}><ArrowBack /></IconButton>
+        </Tooltip>
+        <Typography variant="h6" sx={{ color: "white", flex: 1, fontWeight: 700 }}>
+          👒 Try On Accessories
+        </Typography>
+        {selectedAccessory && (
+          <Chip
+            label={`${selectedAccessory.emoji} ${selectedAccessory.name}`}
+            sx={{ bgcolor: "rgba(255,255,255,0.15)", color: "white", fontWeight: 600, mr: 1 }}
+          />
         )}
-
-        {error && (
-          <Box sx={{ textAlign: 'center', p: 4, maxWidth: 500, mx: 'auto' }}>
-            <Alert severity="error" sx={{ mb: 2 }}>
-              {error}
-            </Alert>
-            <Stack direction="row" spacing={2} justifyContent="center">
-              <Button
-                variant="contained"
-                onClick={handleRetry}
-                startIcon={<Refresh />}
-              >
-                Retry Camera
-              </Button>
-              <Button
-                component={Link}
-                to="/camera-diagnostics"
-                variant="outlined"
-                startIcon={<BuildCircle />}
-              >
-                Diagnose Issue
-              </Button>
-            </Stack>
-            <Typography variant="caption" display="block" sx={{ mt: 2, color: 'text.secondary' }}>
-              Having trouble? Use the diagnostics tool to identify camera issues.
-            </Typography>
-          </Box>
-        )}
-
-        {/* Video (hidden, used for face detection) */}
-        <video
-          ref={videoRef}
-          style={{ display: 'none' }}
-          playsInline
-          muted
-        />
-
-        {/* Canvas (visible, shows video + overlays) */}
-        <canvas
-          ref={canvasRef}
-          style={{
-            maxWidth: '100%',
-            maxHeight: '100%',
-            objectFit: 'contain',
-            display: loading || error ? 'none' : 'block',
-          }}
-        />
-
-        {/* Camera Controls */}
-        {!loading && !error && (
-          <Stack
-            direction="row"
-            spacing={2}
-            sx={{
-              position: 'absolute',
-              bottom: 20,
-              left: '50%',
-              transform: 'translateX(-50%)',
-            }}
-          >
-            <Tooltip title="Flip Camera">
-              <IconButton
-                onClick={switchCamera}
-                sx={{
-                  bgcolor: 'rgba(255, 255, 255, 0.9)',
-                  '&:hover': { bgcolor: 'white' },
-                }}
-              >
-                <FlipCameraIos />
-              </IconButton>
-            </Tooltip>
-
-            <Tooltip title={!selectedAccessory ? "Select an accessory first" : "Capture Photo"}>
-              <span>
-                <IconButton
-                  onClick={capturePhoto}
-                  disabled={!selectedAccessory}
-                  sx={{
-                    bgcolor: selectedAccessory ? 'primary.main' : 'rgba(255, 255, 255, 0.5)',
-                    color: 'white',
-                    width: 64,
-                    height: 64,
-                    '&:hover': { bgcolor: selectedAccessory ? 'primary.dark' : 'rgba(255, 255, 255, 0.5)' },
-                    '&.Mui-disabled': {
-                      opacity: 0.6,
-                      color: 'white',
-                    },
-                  }}
-                >
-                  <CameraAlt fontSize="large" />
-                </IconButton>
-              </span>
-            </Tooltip>
-
-            <Tooltip title="Remove Accessories">
-              <IconButton
-                onClick={() => setSelectedAccessory(null)}
-                sx={{
-                  bgcolor: 'rgba(255, 255, 255, 0.9)',
-                  '&:hover': { bgcolor: 'white' },
-                }}
-              >
-                <Refresh />
-              </IconButton>
-            </Tooltip>
-          </Stack>
-        )}
+        <Tooltip title="Capture Photo">
+          <IconButton onClick={handleCapture} sx={{ color: "white", bgcolor: "rgba(255,255,255,0.15)", mx: 0.5 }}>
+            <CameraAlt />
+          </IconButton>
+        </Tooltip>
+        <Tooltip title="Flip Camera">
+          <IconButton onClick={handleFlip} sx={{ color: "white", bgcolor: "rgba(255,255,255,0.15)", mx: 0.5 }}>
+            <FlipCameraIos />
+          </IconButton>
+        </Tooltip>
       </Box>
 
-      {/* Accessory Selection */}
-      {!loading && !error && (
-        <Paper
-          elevation={3}
+      <Box sx={{ position: "relative", flex: 1, bgcolor: "black", minHeight: 260, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {loading && (
+          <Box sx={{ position: "absolute", zIndex: 10, textAlign: "center", color: "white" }}>
+            <CircularProgress sx={{ color: "white" }} />
+            <Typography mt={1}>Starting camera…</Typography>
+          </Box>
+        )}
+        {error && (
+          <Alert severity="error" sx={{ position: "absolute", zIndex: 10, m: 2 }}
+            action={<Button size="small" startIcon={<Refresh />} onClick={startCamera}>Retry</Button>}
+          >
+            {error}
+          </Alert>
+        )}
+        <video ref={videoRef} style={{ display: "none" }} playsInline muted />
+        <canvas ref={canvasRef} style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
+      </Box>
+
+      <Paper elevation={8} sx={{ bgcolor: "#111", borderTop: "1px solid rgba(255,255,255,0.1)" }}>
+        <Tabs
+          value={categoryTab}
+          onChange={(_, v) => setCategoryTab(v)}
+          variant="scrollable"
+          scrollButtons="auto"
           sx={{
-            p: 2,
-            maxHeight: '180px',
-            overflowX: 'auto',
+            minHeight: 38,
+            "& .MuiTab-root": { color: "rgba(255,255,255,0.6)", minHeight: 38, fontSize: "0.7rem", px: 1 },
+            "& .Mui-selected": { color: "white" },
+            "& .MuiTabs-indicator": { bgcolor: "#764ba2" },
+            borderBottom: "1px solid rgba(255,255,255,0.08)",
           }}
         >
-          <Typography variant="subtitle2" gutterBottom>
-            Select Accessory:
-          </Typography>
-          <Grid container spacing={1}>
-            {accessories.map((accessory) => (
-              <Grid item xs={3} sm={2} key={accessory.id}>
-                <Paper
-                  onClick={() => handleAccessorySelect(accessory)}
-                  sx={{
-                    p: 1,
-                    cursor: 'pointer',
-                    textAlign: 'center',
-                    border: 2,
-                    borderColor: selectedAccessory?.id === accessory.id ? 'primary.main' : 'transparent',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      borderColor: 'primary.light',
-                      transform: 'scale(1.05)',
-                    },
-                  }}
-                >
-                  <Box
-                    component="img"
-                    src={accessory.image}
-                    alt={accessory.name}
-                    sx={{
-                      width: '100%',
-                      height: 60,
-                      objectFit: 'contain',
-                      mb: 0.5,
-                    }}
-                    onError={(e) => {
-                      e.target.src = product?.image || '/assets/placeholder.png';
-                    }}
-                  />
-                  <Typography variant="caption" noWrap>
-                    {accessory.name}
-                  </Typography>
-                </Paper>
-              </Grid>
-            ))}
-          </Grid>
-        </Paper>
-      )}
+          {CATEGORIES.map((c) => <Tab key={c} label={CATEGORY_LABELS[c]} />)}
+        </Tabs>
 
-      {/* Capture Dialog */}
-      <Dialog
-        open={showCaptureDialog}
-        onClose={() => setShowCaptureDialog(false)}
-        maxWidth="sm"
-        fullWidth
-      >
-        <DialogTitle>Your Photo</DialogTitle>
-        <DialogContent>
-          {capturedImage && (
-            <Box
-              component="img"
-              src={capturedImage}
-              alt="Captured"
-              sx={{
-                width: '100%',
-                borderRadius: 1,
-                mb: 2,
-              }}
-            />
+        <Box sx={{ overflowX: "auto", display: "flex", gap: 1, p: 1.5 }}>
+          {filteredAccessories.map((acc) => {
+            const sel = selectedAccessory?.id === acc.id;
+            return (
+              <Box
+                key={acc.id}
+                onClick={() => selectAccessory(sel ? null : acc)}
+                sx={{
+                  minWidth: 64, maxWidth: 64, cursor: "pointer",
+                  display: "flex", flexDirection: "column", alignItems: "center",
+                  p: 1, borderRadius: 2,
+                  border: sel ? "2px solid #a855f7" : "2px solid transparent",
+                  bgcolor: sel ? "rgba(168,85,247,0.2)" : "rgba(255,255,255,0.05)",
+                  transition: "all 0.15s",
+                  "&:hover": { bgcolor: "rgba(255,255,255,0.12)", transform: "scale(1.07)" },
+                }}
+              >
+                <Typography sx={{ fontSize: 28, lineHeight: 1 }}>{acc.emoji}</Typography>
+                <Typography sx={{ color: "rgba(255,255,255,0.75)", fontSize: "0.6rem", mt: 0.3, textAlign: "center", lineHeight: 1.2 }}>
+                  {acc.name}
+                </Typography>
+              </Box>
+            );
+          })}
+        </Box>
+
+        <Stack direction="row" spacing={1} sx={{ px: 2, pb: 1.5 }}>
+          <Button fullWidth variant="contained" startIcon={<CameraAlt />} onClick={handleCapture}
+            sx={{ bgcolor: "#764ba2", "&:hover": { bgcolor: "#5c3d82" }, textTransform: "none", fontWeight: 700 }}>
+            Capture Look
+          </Button>
+          <Button fullWidth variant="outlined" startIcon={<ShoppingCart />} onClick={handleShopClick}
+            sx={{ borderColor: "rgba(255,255,255,0.3)", color: "white", textTransform: "none", fontWeight: 700,
+              "&:hover": { borderColor: "white", bgcolor: "rgba(255,255,255,0.08)" } }}>
+            Shop Accessories
+          </Button>
+        </Stack>
+      </Paper>
+
+      <Dialog open={showCapture} onClose={() => setShowCapture(false)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontWeight: 700 }}>
+          📸 Your Look!
+          <IconButton onClick={() => setShowCapture(false)}><Close /></IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ p: 0 }}>
+          {capturedImage && <Box component="img" src={capturedImage} alt="Captured" sx={{ width: "100%", display: "block" }} />}
+          {selectedAccessory && (
+            <Box sx={{ p: 2, textAlign: "center" }}>
+              <Typography variant="h5">{selectedAccessory.emoji}</Typography>
+              <Typography fontWeight="bold">{selectedAccessory.name}</Typography>
+            </Box>
           )}
-          <Typography variant="body2" color="text.secondary">
-            Love this look? Add to cart or download your photo!
-          </Typography>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowCaptureDialog(false)}>
-            Close
+        <DialogActions sx={{ p: 2, gap: 1, flexWrap: "wrap", justifyContent: "center" }}>
+          <Button onClick={handleDownload} variant="outlined" startIcon={<Download />} sx={{ minWidth: 140 }}>Download</Button>
+          <Button onClick={handleShopClick} variant="contained" startIcon={<ShoppingCart />}
+            sx={{ bgcolor: "#764ba2", "&:hover": { bgcolor: "#5c3d82" }, minWidth: 180, fontWeight: 700 }}>
+            🛍️ Shop Accessories
           </Button>
-          <Button onClick={downloadPhoto} startIcon={<Download />}>
-            Download
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleAddToCart}
-            startIcon={<ShoppingCart />}
-          >
-            Add to Cart
-          </Button>
+          {product && onAddToCart && (
+            <Button onClick={handleAddToCart} variant="contained" color="success" startIcon={<ShoppingCart />} sx={{ minWidth: 160, fontWeight: 700 }}>
+              Add to Cart
+            </Button>
+          )}
         </DialogActions>
       </Dialog>
     </Box>

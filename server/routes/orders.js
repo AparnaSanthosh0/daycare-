@@ -55,7 +55,8 @@ router.post('/', auth, async (req, res) => {
         price: product.price,
         name: product.name,
         image: product.image,
-        vendor: product.vendor?._id
+        vendor: product.vendor?._id,
+        customization: item.customization || null // Preserve custom outfit/design data
       });
 
       if (product.vendor) {

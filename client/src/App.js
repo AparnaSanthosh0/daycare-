@@ -65,6 +65,7 @@ import Product3DViewerDemo from './components/Product3DViewerDemo';
 import BabyBottle3DTest from './components/BabyBottle3DTest';
 import ARViewerPage from './pages/ARViewerPage';
 import FaceARPage from './pages/FaceARPage';
+import AlphabetARPage from './pages/AlphabetARPage';
 import CameraDiagnosticsPage from './pages/CameraDiagnosticsPage';
 import MilestoneTrackerPage from './pages/MilestoneTrackerPage';
 import MilestoneCelebrationPage from './pages/MilestoneCelebrationPage';
@@ -211,6 +212,12 @@ function App() {
           <Route 
             path="/face-ar" 
             element={<FaceARPage />} 
+          />
+
+          {/* AR Alphabet Scanner - Public Route */}
+          <Route 
+            path="/alphabet-ar" 
+            element={<AlphabetARPage />} 
           />
 
           {/* Camera Diagnostics - Public Route */}

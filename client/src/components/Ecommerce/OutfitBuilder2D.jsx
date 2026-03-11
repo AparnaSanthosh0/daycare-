@@ -28,8 +28,6 @@ import {
   Button,
   TextField,
   Tooltip,
-  ToggleButton,
-  ToggleButtonGroup,
   Divider,
   Chip,
   Paper,
@@ -37,9 +35,9 @@ import {
   AccordionSummary,
   AccordionDetails,
   FormControl,
-  RadioGroup,
-  FormControlLabel,
-  Radio,
+  Select,
+  InputLabel,
+  MenuItem,
 } from '@mui/material';
 import {
   ShoppingCart,
@@ -1508,65 +1506,21 @@ export default function OutfitBuilder2D({ product, onAddToCart }) {
                 </Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Grid container spacing={2}>
-                  {category === CATEGORIES.GIRLS && GIRLS_GARMENTS.map((g) => (
-                    <Grid item xs={6} sm={3} key={g.value}>
-                      <Paper
-                        onClick={() => setGarmentType(g.value)}
-                        sx={{
-                          p: 2,
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          border: garmentType === g.value ? '3px solid #FF6B9D' : '2px solid transparent',
-                          bgcolor: garmentType === g.value ? '#FFF0F5' : 'white',
-                          transition: 'all 0.2s',
-                          '&:hover': { transform: 'scale(1.05)', boxShadow: 3 },
-                        }}
-                      >
-                        <Typography variant="h6">{g.value === garmentType && '✓ '}{g.label}</Typography>
-                        <Typography variant="caption" color="text.secondary">{g.desc}</Typography>
-                      </Paper>
-                    </Grid>
-                  ))}
-                  {category === CATEGORIES.BOYS && BOYS_GARMENTS.map((g) => (
-                    <Grid item xs={6} sm={3} key={g.value}>
-                      <Paper
-                        onClick={() => setGarmentType(g.value)}
-                        sx={{
-                          p: 2,
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          border: garmentType === g.value ? '3px solid #4169E1' : '2px solid transparent',
-                          bgcolor: garmentType === g.value ? '#E8F0FE' : 'white',
-                          transition: 'all 0.2s',
-                          '&:hover': { transform: 'scale(1.05)', boxShadow: 3 },
-                        }}
-                      >
-                        <Typography variant="h6">{g.value === garmentType && '✓ '}{g.label}</Typography>
-                        <Typography variant="caption" color="text.secondary">{g.desc}</Typography>
-                      </Paper>
-                    </Grid>
-                  ))}
-                  {category === CATEGORIES.TWINS && TWINS_GARMENTS.map((g) => (
-                    <Grid item xs={6} sm={4} key={g.value}>
-                      <Paper
-                        onClick={() => setGarmentType(g.value)}
-                        sx={{
-                          p: 2,
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          border: garmentType === g.value ? '3px solid #9C27B0' : '2px solid transparent',
-                          bgcolor: garmentType === g.value ? '#F3E5F5' : 'white',
-                          transition: 'all 0.2s',
-                          '&:hover': { transform: 'scale(1.05)', boxShadow: 3 },
-                        }}
-                      >
-                        <Typography variant="h6">{g.value === garmentType && '✓ '}{g.label}</Typography>
-                        <Typography variant="caption" color="text.secondary">{g.desc}</Typography>
-                      </Paper>
-                    </Grid>
-                  ))}
-                </Grid>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Select Garment Type</InputLabel>
+                  <Select
+                    value={garmentType}
+                    label="Select Garment Type"
+                    onChange={(e) => setGarmentType(e.target.value)}
+                  >
+                    {(category === CATEGORIES.GIRLS ? GIRLS_GARMENTS
+                      : category === CATEGORIES.BOYS ? BOYS_GARMENTS
+                      : TWINS_GARMENTS
+                    ).map((g) => (
+                      <MenuItem key={g.value} value={g.value}>{g.label} — {g.desc}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </AccordionDetails>
             </Accordion>
 
@@ -1577,30 +1531,18 @@ export default function OutfitBuilder2D({ product, onAddToCart }) {
                 <Typography fontWeight={700}>👗 DRESS SILHOUETTE</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Grid container spacing={2}>
-                  {DRESS_SILHOUETTES.map((s) => (
-                    <Grid item xs={6} sm={4} key={s.value}>
-                      <Paper
-                        onClick={() => setSilhouette(s.value)}
-                        sx={{
-                          p: 2,
-                          textAlign: 'center',
-                          cursor: 'pointer',
-                          border: silhouette === s.value
-                            ? '2px solid #ff6f00'
-                            : '2px solid #e0e0e0',
-                          background: silhouette === s.value ? '#fff3e0' : 'white',
-                          transition: 'all 0.2s',
-                          '&:hover': { borderColor: '#ff8f00', transform: 'translateY(-2px)' },
-                        }}
-                      >
-                        <Typography variant="h4" sx={{ mb: 0.5 }}>{s.icon}</Typography>
-                        <Typography variant="subtitle2" fontWeight={600}>{s.label}</Typography>
-                        <Typography variant="caption" color="text.secondary">{s.desc}</Typography>
-                      </Paper>
-                    </Grid>
-                  ))}
-                </Grid>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Select Silhouette</InputLabel>
+                  <Select
+                    value={silhouette}
+                    label="Select Silhouette"
+                    onChange={(e) => setSilhouette(e.target.value)}
+                  >
+                    {DRESS_SILHOUETTES.map((s) => (
+                      <MenuItem key={s.value} value={s.value}>{s.icon} {s.label} — {s.desc}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </AccordionDetails>
             </Accordion>
             )}
@@ -1635,20 +1577,17 @@ export default function OutfitBuilder2D({ product, onAddToCart }) {
                 <Typography fontWeight={700}>👕 SLEEVES</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <FormControl component="fieldset">
-                  <RadioGroup value={sleeve} onChange={(e) => setSleeve(e.target.value)}>
-                    <Grid container spacing={1}>
-                      {SLEEVES.map((s) => (
-                        <Grid item xs={6} key={s.value}>
-                          <FormControlLabel
-                            value={s.value}
-                            control={<Radio size="small" />}
-                            label={<Typography variant="body2">{s.label}</Typography>}
-                          />
-                        </Grid>
-                      ))}
-                    </Grid>
-                  </RadioGroup>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Select Sleeve Style</InputLabel>
+                  <Select
+                    value={sleeve}
+                    label="Select Sleeve Style"
+                    onChange={(e) => setSleeve(e.target.value)}
+                  >
+                    {SLEEVES.map((s) => (
+                      <MenuItem key={s.value} value={s.value}>{s.label}</MenuItem>
+                    ))}
+                  </Select>
                 </FormControl>
               </AccordionDetails>
             </Accordion>
@@ -1659,22 +1598,18 @@ export default function OutfitBuilder2D({ product, onAddToCart }) {
                 <Typography fontWeight={700}>📏 LENGTH</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <ToggleButtonGroup
-                  value={length}
-                  exclusive
-                  onChange={(_, v) => v && setLength(v)}
-                  fullWidth
-                  size="small"
-                >
-                  {LENGTHS.map((l) => (
-                    <ToggleButton key={l.value} value={l.value}>
-                      <Box>
-                        <Typography variant="body2" fontWeight={600}>{l.label}</Typography>
-                        <Typography variant="caption" display="block">{l.desc}</Typography>
-                      </Box>
-                    </ToggleButton>
-                  ))}
-                </ToggleButtonGroup>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Select Length</InputLabel>
+                  <Select
+                    value={length}
+                    label="Select Length"
+                    onChange={(e) => setLength(e.target.value)}
+                  >
+                    {LENGTHS.map((l) => (
+                      <MenuItem key={l.value} value={l.value}>{l.label} — {l.desc}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </AccordionDetails>
             </Accordion>
 
@@ -1771,23 +1706,18 @@ export default function OutfitBuilder2D({ product, onAddToCart }) {
                 <Typography fontWeight={700}>🌟 PATTERN / PRINT</Typography>
               </AccordionSummary>
               <AccordionDetails>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.5 }}>
-                  {PATTERNS.map((p) => (
-                    <Chip
-                      key={p.value}
-                      label={p.label}
-                      onClick={() => setPattern(p.value)}
-                      variant={pattern === p.value ? 'filled' : 'outlined'}
-                      color={pattern === p.value ? 'primary' : 'default'}
-                      size="medium"
-                      sx={{
-                        fontWeight: pattern === p.value ? 700 : 400,
-                        cursor: 'pointer',
-                        px: 2,
-                      }}
-                    />
-                  ))}
-                </Box>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Select Pattern</InputLabel>
+                  <Select
+                    value={pattern}
+                    label="Select Pattern"
+                    onChange={(e) => setPattern(e.target.value)}
+                  >
+                    {PATTERNS.map((p) => (
+                      <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </AccordionDetails>
             </Accordion>
 
@@ -1839,22 +1769,18 @@ export default function OutfitBuilder2D({ product, onAddToCart }) {
                     <Typography variant="caption" fontWeight={600} gutterBottom display="block">
                       Font Style
                     </Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {FONTS.map((f) => (
-                        <Chip
-                          key={f.value}
-                          label={f.label}
-                          onClick={() => setFontFamily(f.value)}
-                          variant={fontFamily === f.value ? 'filled' : 'outlined'}
-                          color={fontFamily === f.value ? 'primary' : 'default'}
-                          sx={{
-                            fontFamily: f.value,
-                            fontWeight: fontFamily === f.value ? 700 : 400,
-                            cursor: 'pointer',
-                          }}
-                        />
-                      ))}
-                    </Box>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Select Font</InputLabel>
+                      <Select
+                        value={fontFamily}
+                        label="Select Font"
+                        onChange={(e) => setFontFamily(e.target.value)}
+                      >
+                        {FONTS.map((f) => (
+                          <MenuItem key={f.value} value={f.value} sx={{ fontFamily: f.value }}>{f.label}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
                   </Box>
                 </Box>
               </AccordionDetails>

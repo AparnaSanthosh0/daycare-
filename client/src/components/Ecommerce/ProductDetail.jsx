@@ -17,8 +17,10 @@ import {
   CardContent,
   CardMedia,
   Snackbar,
+  Menu,
+  MenuItem,
 } from '@mui/material';
-import { Favorite, FavoriteBorder, ShoppingCart, ArrowBack, ViewInAr, Image } from '@mui/icons-material';
+import { Favorite, FavoriteBorder, ShoppingCart, ArrowBack, ViewInAr, Image, ArrowDropDown, Checkroom, CameraAlt } from '@mui/icons-material';
 import { Fab, Badge } from '@mui/material';
 import ShopHeader from './ShopHeader';
 import api, { API_BASE_URL } from '../../config/api';
@@ -58,7 +60,14 @@ export default function ProductDetail() {
   const [allProducts, setAllProducts] = React.useState([]);
   const [snack, setSnack] = React.useState('');
   const [view3D,      setView3D]     = React.useState(false); // Toggle for 3D view
+  const [arMenuAnchor, setArMenuAnchor] = React.useState(null);
   const sizeOptions = deriveSizeOptions(product?.category, product?.sizeBasis || null);
+
+  // Determine if this product supports AR/customization
+  const productCat = (product?.category || '').toLowerCase();
+  const productName = (product?.name || '').toLowerCase();
+  const isClothing = productCat.includes('cloth') || productCat.includes('dress') || productCat.includes('apparel') || productCat.includes('outfit') || productCat.includes('shirt') || productCat.includes('wear') || productCat.includes('skirt') || productCat.includes('romper');
+  const isFaceAR   = productCat.includes('access') || productCat.includes('hat') || productCat.includes('glass') || productName.includes('makeup') || productName.includes('face paint');
 
   React.useEffect(() => {
     let mounted = true;
@@ -286,6 +295,64 @@ export default function ProductDetail() {
                 </IconButton>
                 <Typography variant="body2" color="text.secondary">Shortlist</Typography>
               </Box>
+
+              {/* ── Customize & AR Dropdown ── */}
+              {product && (
+                <Box sx={{ mb: 2 }}>
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    endIcon={<ArrowDropDown />}
+                    onClick={e => setArMenuAnchor(e.currentTarget)}
+                    sx={{
+                      borderColor: '#764ba2',
+                      color: '#764ba2',
+                      fontWeight: 700,
+                      borderRadius: 2,
+                      py: 1.2,
+                      background: 'linear-gradient(135deg,#667eea11,#764ba211)',
+                      '&:hover': { borderColor: '#667eea', bgcolor: '#667eea18' },
+                    }}
+                  >
+                    ✨ Customize & Try On
+                  </Button>
+                  <Menu
+                    anchorEl={arMenuAnchor}
+                    open={Boolean(arMenuAnchor)}
+                    onClose={() => setArMenuAnchor(null)}
+                    PaperProps={{ sx: { borderRadius: 2, minWidth: 240, boxShadow: 6 } }}
+                  >
+                    {(isClothing) && (
+                      <MenuItem onClick={() => { setArMenuAnchor(null); navigate(`/outfit-ar?productId=${product.id || product._id}`); }}
+                        sx={{ gap: 1.5, py: 1.5 }}>
+                        <Checkroom sx={{ color: '#667eea' }} />
+                        <Box>
+                          <Typography fontWeight={700} fontSize="0.9rem">Customize Outfit</Typography>
+                          <Typography variant="caption" color="text.secondary">Design color, style & add to cart</Typography>
+                        </Box>
+                      </MenuItem>
+                    )}
+                    {(isFaceAR || isClothing) && (
+                      <MenuItem onClick={() => { setArMenuAnchor(null); navigate(`/face-ar?productId=${product.id || product._id}`); }}
+                        sx={{ gap: 1.5, py: 1.5 }}>
+                        <CameraAlt sx={{ color: '#f06292' }} />
+                        <Box>
+                          <Typography fontWeight={700} fontSize="0.9rem">Try Face AR</Typography>
+                          <Typography variant="caption" color="text.secondary">Try on accessories with live camera</Typography>
+                        </Box>
+                      </MenuItem>
+                    )}
+                    <MenuItem onClick={() => { setArMenuAnchor(null); navigate('/alphabet-ar'); }}
+                      sx={{ gap: 1.5, py: 1.5 }}>
+                      <Typography sx={{ fontSize: 20 }}>🔤</Typography>
+                      <Box>
+                        <Typography fontWeight={700} fontSize="0.9rem">AR Alphabet Scanner</Typography>
+                        <Typography variant="caption" color="text.secondary">Fun learning AR for kids</Typography>
+                      </Box>
+                    </MenuItem>
+                  </Menu>
+                </Box>
+              )}
 
               {/* AR Try-On Banner for face accessories / makeup */}
               {(product.category?.toLowerCase().includes('accessory') ||

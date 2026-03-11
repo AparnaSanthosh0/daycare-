@@ -61,7 +61,8 @@ import {
   Payment,
   EmojiEvents,
   SportsEsports,
-  PlayArrow
+  PlayArrow,
+  CameraAlt
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
 import { RAZORPAY_CONFIG } from '../../config/razorpay';
@@ -150,6 +151,8 @@ const ParentDashboard = ({ initialTab }) => {
     milestones: { completed: [], upcoming: [] },
     nutrition: { consumption: [], preferences: [] }
   });
+  const [parentHealthSummary, setParentHealthSummary] = useState(null);
+  const [parentHealthLoading, setParentHealthLoading] = useState(false);
   // Staff information
   const [assignedStaff, setAssignedStaff] = useState([]);
   
@@ -556,6 +559,46 @@ const ParentDashboard = ({ initialTab }) => {
       fetchBillingData();
     }
   }, [activeChildId, fetchChildData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Parent dashboard simplified health workflow (growth -> status -> foods -> daily plan -> alerts)
+  useEffect(() => {
+    const fetchParentHealthSummary = async () => {
+      if (!activeChildId || user?.role !== 'parent') {
+        setParentHealthSummary(null);
+        return;
+      }
+
+      try {
+        setParentHealthLoading(true);
+        const response = await api.get(`/child-health/parent/children/${activeChildId}/summary`);
+        setParentHealthSummary(response.data || null);
+      } catch (error) {
+        // Fallback: derive a lightweight summary from existing reports/meals when endpoint not available.
+        setParentHealthSummary({
+          success: true,
+          nutritionStatus: {
+            prediction: reports?.nutrition?.preferences?.length ? 'Monitor Nutrition' : 'No Analysis Yet'
+          },
+          recommendedFoods: Array.isArray(reports?.nutrition?.preferences) ? reports.nutrition.preferences.slice(0, 5) : [],
+          dailyDietPlan: {
+            breakfast: meals?.plan?.[0]?.breakfast || 'As per daycare meal plan',
+            lunch: meals?.plan?.[0]?.lunch || 'As per daycare meal plan',
+            snack: meals?.plan?.[0]?.snack || 'As per daycare meal plan',
+            dinner: meals?.plan?.[0]?.dinner || 'As per daycare meal plan'
+          },
+          healthAlerts: [],
+          doctorSuggestion: {
+            notes: 'Follow daycare meal plan and consult doctor for updated nutrition analysis.',
+            nextCheckupInDays: 14
+          }
+        });
+      } finally {
+        setParentHealthLoading(false);
+      }
+    };
+
+    fetchParentHealthSummary();
+  }, [activeChildId, user?.role, reports, meals]);
 
   // Simple polling for attendance, activities, meals
   useEffect(() => {
@@ -4533,6 +4576,61 @@ const ParentDashboard = ({ initialTab }) => {
                       ))}
                     </Grid>
                   </Paper>
+
+                  {/* ── AR Learning Section ── */}
+                  <Box mt={4}>
+                    <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CameraAlt sx={{ color: '#667eea' }} /> AR Learning Tools
+                    </Typography>
+                    <Grid container spacing={3}>
+                      <Grid item xs={12} sm={6}>
+                        <Card sx={{ borderRadius: 3, overflow: 'hidden', border: '2px solid #667eea', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 } }}>
+                          <Box sx={{ background: 'linear-gradient(135deg,#667eea,#764ba2)', p: 3, color: 'white', textAlign: 'center' }}>
+                            <Typography variant="h2">🔤</Typography>
+                            <Typography variant="h6" fontWeight="bold" mt={1}>AR Alphabet Scanner</Typography>
+                            <Typography variant="caption" sx={{ opacity: 0.85 }}>Interactive Letter Learning</Typography>
+                          </Box>
+                          <CardContent>
+                            <Typography variant="body2" color="text.secondary" mb={2}>
+                              Scan the 26 AR flashcards to see emoji overlays and hear pronunciations. Makes alphabet learning fun and hands-on!
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                              {['Ages 2-6', '26 Letters', 'Audio Pronunciation', 'Camera Required'].map(tag => (
+                                <Chip key={tag} label={tag} size="small" sx={{ bgcolor: '#667eea22', color: '#667eea', fontWeight: 600 }} />
+                              ))}
+                            </Box>
+                            <Button fullWidth variant="contained" onClick={() => navigate('/alphabet-ar')}
+                              sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5a6fd6' }, borderRadius: 2, fontWeight: 700 }}>
+                              🚀 Open AR Alphabet
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid item xs={12} sm={6}>
+                        <Card sx={{ borderRadius: 3, overflow: 'hidden', border: '2px solid #f06292', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 } }}>
+                          <Box sx={{ background: 'linear-gradient(135deg,#f06292,#ce93d8)', p: 3, color: 'white', textAlign: 'center' }}>
+                            <Typography variant="h2">👋</Typography>
+                            <Typography variant="h6" fontWeight="bold" mt={1}>Face Accessories AR</Typography>
+                            <Typography variant="caption" sx={{ opacity: 0.85 }}>Fun & Creative Play</Typography>
+                          </Box>
+                          <CardContent>
+                            <Typography variant="body2" color="text.secondary" mb={2}>
+                              Try on virtual hats, crowns, glasses and more using your camera. Great for creative play and imagination!
+                            </Typography>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                              {['All Ages', '24 Accessories', 'Photo Capture', 'Camera Required'].map(tag => (
+                                <Chip key={tag} label={tag} size="small" sx={{ bgcolor: '#f0629222', color: '#c2185b', fontWeight: 600 }} />
+                              ))}
+                            </Box>
+                            <Button fullWidth variant="contained" onClick={() => navigate('/face-ar')}
+                              sx={{ bgcolor: '#f06292', '&:hover': { bgcolor: '#e91e8c' }, borderRadius: 2, fontWeight: 700 }}>
+                              🎉 Open Face AR
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    </Grid>
+                  </Box>
                 </Box>
               );
             })()}
@@ -4552,6 +4650,76 @@ const ParentDashboard = ({ initialTab }) => {
                     {appointmentError}
                   </Alert>
                 )}
+
+                <Card sx={{ mb: 3 }}>
+                  <CardHeader
+                    title="Child Growth and Nutrition Summary"
+                    subheader="Simplified parent view: growth progress, nutrition status, recommended foods, daycare diet and alerts"
+                  />
+                  <CardContent>
+                    {parentHealthLoading ? (
+                      <CircularProgress size={24} />
+                    ) : !parentHealthSummary ? (
+                      <Alert severity="info">No health summary available yet for this child.</Alert>
+                    ) : (
+                      <Grid container spacing={2}>
+                        <Grid item xs={12} md={6}>
+                          <Paper variant="outlined" sx={{ p: 2 }}>
+                            <Typography variant="subtitle2" color="text.secondary">Nutrition Status</Typography>
+                            <Typography variant="h6">
+                              {parentHealthSummary?.nutritionStatus?.prediction || 'No Analysis Yet'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Next Checkup: {parentHealthSummary?.doctorSuggestion?.nextCheckupInDays || 14} days
+                            </Typography>
+                          </Paper>
+                        </Grid>
+                        <Grid item xs={12} md={6}>
+                          <Paper variant="outlined" sx={{ p: 2 }}>
+                            <Typography variant="subtitle2" color="text.secondary">Top Recommended Foods</Typography>
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
+                              {(parentHealthSummary?.recommendedFoods || []).slice(0, 5).map((food, idx) => (
+                                <Chip key={`${food}-${idx}`} size="small" label={food} color="success" variant="outlined" />
+                              ))}
+                            </Box>
+                          </Paper>
+                        </Grid>
+
+                        <Grid item xs={12}>
+                          <Paper variant="outlined" sx={{ p: 2 }}>
+                            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Daily Daycare Diet Plan</Typography>
+                            <Grid container spacing={1}>
+                              <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Breakfast:</strong> {parentHealthSummary?.dailyDietPlan?.breakfast || 'N/A'}</Typography></Grid>
+                              <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Lunch:</strong> {parentHealthSummary?.dailyDietPlan?.lunch || 'N/A'}</Typography></Grid>
+                              <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Snack:</strong> {parentHealthSummary?.dailyDietPlan?.snack || 'N/A'}</Typography></Grid>
+                              <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Dinner:</strong> {parentHealthSummary?.dailyDietPlan?.dinner || 'N/A'}</Typography></Grid>
+                            </Grid>
+                          </Paper>
+                        </Grid>
+
+                        <Grid item xs={12}>
+                          <Paper variant="outlined" sx={{ p: 2 }}>
+                            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Health Alerts & Doctor Suggestion</Typography>
+                            {(parentHealthSummary?.healthAlerts || []).length === 0 ? (
+                              <Typography variant="body2" color="text.secondary">No active alerts.</Typography>
+                            ) : (
+                              <List dense>
+                                {(parentHealthSummary?.healthAlerts || []).map((alert, idx) => (
+                                  <ListItem key={idx}>
+                                    <ListItemText primary={typeof alert === 'string' ? alert : JSON.stringify(alert)} />
+                                  </ListItem>
+                                ))}
+                              </List>
+                            )}
+                            <Typography variant="body2" sx={{ mt: 1 }}>
+                              <strong>Doctor Suggestion:</strong> {parentHealthSummary?.doctorSuggestion?.notes || 'Follow balanced diet and continue routine monitoring.'}
+                            </Typography>
+                          </Paper>
+                        </Grid>
+                      </Grid>
+                    )}
+                  </CardContent>
+                </Card>
 
                 <Card sx={{ mb: 3 }}>
                   <CardHeader 
