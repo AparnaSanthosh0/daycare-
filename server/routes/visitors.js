@@ -163,6 +163,8 @@ router.put('/:id/check-out', auth, async (req, res) => {
 router.post('/verify-pickup', auth, async (req, res) => {
   try {
     const { childId, pickupPersonName, idProofType, idProofNumber } = req.body;
+    const normalizedIdProofType = idProofType ? String(idProofType).trim() : '';
+    const normalizedIdProofNumber = idProofNumber ? String(idProofNumber).trim() : '';
 
     if (!childId || !pickupPersonName) {
       return res.status(400).json({ message: 'Child and pickup person name are required' });
@@ -189,8 +191,8 @@ router.post('/verify-pickup', auth, async (req, res) => {
       visitorName: pickupPersonName,
       purpose: 'Authorized Pickup',
       purposeDetails: `Picking up ${child.firstName} ${child.lastName}`,
-      idProofType,
-      idProofNumber,
+      idProofType: normalizedIdProofType,
+      idProofNumber: normalizedIdProofNumber,
       staffName: req.user.userId,
       relatedChild: childId,
       authorizedPickup: true,

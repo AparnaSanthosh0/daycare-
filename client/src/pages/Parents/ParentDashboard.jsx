@@ -634,7 +634,16 @@ const ParentDashboard = ({ initialTab }) => {
       `Growth Status: ${parentHealthSummary.growthProgress?.growth_status || 'N/A'}`,
       '',
       '--- RECOMMENDED FOODS ---',
-      (parentHealthSummary.recommendedFoods || []).join(', ') || 'None',
+      (
+        (parentHealthSummary.recommendedFoods || []).length > 0
+          ? (parentHealthSummary.recommendedFoods || []).join(', ')
+          : [
+              parentHealthSummary.dailyDietPlan?.breakfast,
+              parentHealthSummary.dailyDietPlan?.lunch,
+              parentHealthSummary.dailyDietPlan?.snack,
+              parentHealthSummary.dailyDietPlan?.dinner,
+            ].filter(Boolean).join(', ')
+      ) || 'None',
       '',
       '--- DAILY MEAL PLAN ---',
       `Breakfast: ${parentHealthSummary.dailyDietPlan?.breakfast || 'N/A'}`,
@@ -4921,7 +4930,23 @@ const ParentDashboard = ({ initialTab }) => {
                                                               <Chip key={`${food}-${idx}`} size="small" label={food} color="success" variant="outlined" />
                                                             ))
                                                           ) : (
-                                                            <Typography variant="body2" color="text.secondary">No food recommendations yet.</Typography>
+                                                            [
+                                                              parentHealthSummary?.dailyDietPlan?.breakfast,
+                                                              parentHealthSummary?.dailyDietPlan?.lunch,
+                                                              parentHealthSummary?.dailyDietPlan?.snack,
+                                                              parentHealthSummary?.dailyDietPlan?.dinner,
+                                                            ].filter(Boolean).length > 0 ? (
+                                                              [
+                                                                parentHealthSummary?.dailyDietPlan?.breakfast,
+                                                                parentHealthSummary?.dailyDietPlan?.lunch,
+                                                                parentHealthSummary?.dailyDietPlan?.snack,
+                                                                parentHealthSummary?.dailyDietPlan?.dinner,
+                                                              ].filter(Boolean).map((food, idx) => (
+                                                                <Chip key={`fallback-${idx}`} size="small" label={food} color="info" variant="outlined" />
+                                                              ))
+                                                            ) : (
+                                                              <Typography variant="body2" color="text.secondary">No food recommendations yet.</Typography>
+                                                            )
                                                           )}
                                                         </Box>
                                                       </Paper>

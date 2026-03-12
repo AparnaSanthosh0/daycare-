@@ -127,6 +127,22 @@ const TeacherDashboard = () => {
     }
   };
 
+  const servingSchedule = {
+    breakfast: '08:30 AM',
+    lunch: '12:30 PM',
+    snack: '03:30 PM',
+    dinner: '05:30 PM',
+  };
+
+  const getAllergySafeMeal = (mealValue, allergies) => {
+    if (!mealValue) return '-';
+    const allergyList = (allergies || []).map((a) => String(a || '').toLowerCase().trim());
+    const mealText = String(mealValue);
+    const hasConflict = allergyList.some((allergen) => allergen && mealText.toLowerCase().includes(allergen));
+    if (!hasConflict) return mealText;
+    return `${mealText} (replace allergen ingredient)`;
+  };
+
   // Visitor Management States
   const [visitors, setVisitors] = useState([]);
   const [visitorStats, setVisitorStats] = useState({ total: 0, checkedIn: 0, checkedOut: 0 });
@@ -1100,8 +1116,8 @@ const TeacherDashboard = () => {
           Daily Child Nutrition Workflow
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Today's workflow: Children List, Assigned Meal Plan, Allergy-Safe Meals,
-          Serve Recommended Foods, Update Meal Completion.
+          Daily meal plan, allergy-safe meals, foods to avoid, and serving schedule
+          for each child in one place.
         </Typography>
 
         {teacherHealthLoading ? (
@@ -1115,11 +1131,10 @@ const TeacherDashboard = () => {
                 <TableRow>
                   <TableCell>Child</TableCell>
                   <TableCell>Status</TableCell>
-                  <TableCell>Breakfast</TableCell>
-                  <TableCell>Lunch</TableCell>
-                  <TableCell>Snack</TableCell>
-                  <TableCell>Dinner</TableCell>
+                  <TableCell>Daily Meal Plan</TableCell>
+                  <TableCell>Allergy-Safe Meals</TableCell>
                   <TableCell>Foods to Avoid</TableCell>
+                  <TableCell>Serving Schedule</TableCell>
                   <TableCell>Completion</TableCell>
                 </TableRow>
               </TableHead>
@@ -1130,40 +1145,65 @@ const TeacherDashboard = () => {
                     <TableCell>
                       <Chip size="small" label={row.status || 'N/A'} color="warning" variant="outlined" />
                     </TableCell>
-                    <TableCell>{row.breakfast || '-'}</TableCell>
-                    <TableCell>{row.lunch || '-'}</TableCell>
-                    <TableCell>{row.snack || '-'}</TableCell>
-                    <TableCell>{row.dinner || '-'}</TableCell>
+                    <TableCell>
+                      <Stack spacing={0.5}>
+                        <Typography variant="caption"><strong>Breakfast:</strong> {row.breakfast || '-'}</Typography>
+                        <Typography variant="caption"><strong>Lunch:</strong> {row.lunch || '-'}</Typography>
+                        <Typography variant="caption"><strong>Snack:</strong> {row.snack || '-'}</Typography>
+                        <Typography variant="caption"><strong>Dinner:</strong> {row.dinner || '-'}</Typography>
+                      </Stack>
+                    </TableCell>
+                    <TableCell>
+                      <Stack spacing={0.5}>
+                        <Typography variant="caption"><strong>Breakfast:</strong> {getAllergySafeMeal(row.breakfast, row.allergies)}</Typography>
+                        <Typography variant="caption"><strong>Lunch:</strong> {getAllergySafeMeal(row.lunch, row.allergies)}</Typography>
+                        <Typography variant="caption"><strong>Snack:</strong> {getAllergySafeMeal(row.snack, row.allergies)}</Typography>
+                        <Typography variant="caption"><strong>Dinner:</strong> {getAllergySafeMeal(row.dinner, row.allergies)}</Typography>
+                        {(row.allergies || []).length > 0 && (
+                          <Typography variant="caption" color="warning.main">
+                            Allergies: {(row.allergies || []).join(', ')}
+                          </Typography>
+                        )}
+                      </Stack>
+                    </TableCell>
                     <TableCell>
                       {(row.foodsToAvoid || []).length ? (row.foodsToAvoid || []).join(', ') : '-'}
+                    </TableCell>
+                    <TableCell>
+                      <Stack spacing={0.5}>
+                        <Typography variant="caption"><strong>08:30 AM</strong> Breakfast</Typography>
+                        <Typography variant="caption"><strong>12:30 PM</strong> Lunch</Typography>
+                        <Typography variant="caption"><strong>03:30 PM</strong> Snack</Typography>
+                        <Typography variant="caption"><strong>05:30 PM</strong> Dinner</Typography>
+                      </Stack>
                     </TableCell>
                     <TableCell>
                       <Stack direction="row" spacing={1} flexWrap="wrap">
                         <Button
                           size="small"
                           variant={row.completion?.breakfastDone ? 'contained' : 'outlined'}
-                          onClick={() => updateTeacherMealCompletion(row.childId, { breakfastDone: !row.completion?.breakfastDone })}
+                          onClick={() => updateTeacherMealCompletion(row.childId, { breakfastDone: !row.completion?.breakfastDone, completionNotes: `Served at ${servingSchedule.breakfast}` })}
                         >
                           B
                         </Button>
                         <Button
                           size="small"
                           variant={row.completion?.lunchDone ? 'contained' : 'outlined'}
-                          onClick={() => updateTeacherMealCompletion(row.childId, { lunchDone: !row.completion?.lunchDone })}
+                          onClick={() => updateTeacherMealCompletion(row.childId, { lunchDone: !row.completion?.lunchDone, completionNotes: `Served at ${servingSchedule.lunch}` })}
                         >
                           L
                         </Button>
                         <Button
                           size="small"
                           variant={row.completion?.snackDone ? 'contained' : 'outlined'}
-                          onClick={() => updateTeacherMealCompletion(row.childId, { snackDone: !row.completion?.snackDone })}
+                          onClick={() => updateTeacherMealCompletion(row.childId, { snackDone: !row.completion?.snackDone, completionNotes: `Served at ${servingSchedule.snack}` })}
                         >
                           S
                         </Button>
                         <Button
                           size="small"
                           variant={row.completion?.dinnerDone ? 'contained' : 'outlined'}
-                          onClick={() => updateTeacherMealCompletion(row.childId, { dinnerDone: !row.completion?.dinnerDone })}
+                          onClick={() => updateTeacherMealCompletion(row.childId, { dinnerDone: !row.completion?.dinnerDone, completionNotes: `Served at ${servingSchedule.dinner}` })}
                         >
                           D
                         </Button>
@@ -2365,11 +2405,12 @@ const TeacherDashboard = () => {
           <Grid item xs={12} md={8}>
             <TextField 
               fullWidth 
-              label="ID Proof Number" 
+              label="ID Proof Number (Optional)" 
               name="idProofNumber"
               value={pickupForm.idProofNumber}
               onChange={handlePickupInputChange}
               size="small" 
+              helperText="Optional for pickup verification"
             />
           </Grid>
           <Grid item xs={12} md={4}>
