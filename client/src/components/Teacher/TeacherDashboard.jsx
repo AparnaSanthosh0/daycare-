@@ -33,10 +33,7 @@ import {
   Select,
   FormControl,
   InputLabel,
-  LinearProgress,
   Tooltip,
-  Badge,
-  ButtonGroup,
   Table,
   TableBody,
   TableCell,
@@ -68,7 +65,6 @@ import {
   PlayArrow,
   Stop,
   EmojiEvents,
-  Star,
   CheckCircle,
   Groups,
   Timer,
@@ -3390,6 +3386,7 @@ const TeacherDashboard = () => {
   );
 
   // ── AR Tools Tab ──────────────────────────────────────────────────────────
+  // eslint-disable-next-line no-unused-vars
   const renderARToolsTab = () => (
     <Box>
       <Paper sx={{ p: 4, mb: 3, borderRadius: 3, background: 'linear-gradient(135deg,#667eea 0%,#764ba2 100%)', color: 'white' }}>

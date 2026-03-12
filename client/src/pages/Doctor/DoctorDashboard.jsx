@@ -1078,7 +1078,7 @@ const DoctorDashboard = () => {
     if (activeTab === 7) {
       fetchClinicalChildren();
     }
-  }, [activeTab, fetchEarnings]);
+  }, [activeTab, fetchClinicalChildren, fetchEarnings]);
 
   useEffect(() => {
     if (activeTab === 7 && selectedClinicalChildId) {

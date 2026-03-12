@@ -62,7 +62,8 @@ import {
   EmojiEvents,
   SportsEsports,
   PlayArrow,
-  CameraAlt
+  CameraAlt,
+  Download
 } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../../config/api';
 import { RAZORPAY_CONFIG } from '../../config/razorpay';
@@ -608,6 +609,59 @@ const ParentDashboard = ({ initialTab }) => {
 
     fetchParentHealthSummary();
   }, [activeChildId, user?.role, reports, meals]);
+
+  const handleDownloadParentReport = useCallback(() => {
+    if (!parentHealthSummary) return;
+    const child = parentHealthSummary.child || {};
+    const childName = `${child.firstName || ''} ${child.lastName || ''}`.trim() || 'Child';
+    const now = new Date();
+    const lines = [
+      '='.repeat(60),
+      `  CHILD HEALTH REPORT — ${childName.toUpperCase()}`,
+      `  Generated: ${now.toLocaleString()}`,
+      '='.repeat(60),
+      '',
+      '--- NUTRITION STATUS ---',
+      `Status: ${parentHealthSummary.nutritionStatus?.prediction || 'Not analyzed'}`,
+      `Confidence: ${parentHealthSummary.nutritionStatus?.confidence != null ? Math.round(parentHealthSummary.nutritionStatus.confidence * 100) + '%' : 'N/A'}`,
+      `Last Analyzed: ${parentHealthSummary.measuredAt ? new Date(parentHealthSummary.measuredAt).toLocaleString() : 'Not yet'}`,
+      `Next Checkup: ${parentHealthSummary.doctorSuggestion?.nextCheckupInDays || 14} days`,
+      '',
+      '--- GROWTH PROGRESS ---',
+      `Weight: ${parentHealthSummary.growthProgress?.actual_weight_kg ?? 'N/A'} kg  (expected: ${parentHealthSummary.growthProgress?.expected_weight_kg ?? 'N/A'} kg)`,
+      `Height: ${parentHealthSummary.growthProgress?.actual_height_cm ?? 'N/A'} cm  (expected: ${parentHealthSummary.growthProgress?.expected_height_cm ?? 'N/A'} cm)`,
+      `BMI: ${parentHealthSummary.growthProgress?.bmi ?? 'N/A'}`,
+      `Growth Status: ${parentHealthSummary.growthProgress?.growth_status || 'N/A'}`,
+      '',
+      '--- RECOMMENDED FOODS ---',
+      (parentHealthSummary.recommendedFoods || []).join(', ') || 'None',
+      '',
+      '--- DAILY MEAL PLAN ---',
+      `Breakfast: ${parentHealthSummary.dailyDietPlan?.breakfast || 'N/A'}`,
+      `Lunch:     ${parentHealthSummary.dailyDietPlan?.lunch || 'N/A'}`,
+      `Snack:     ${parentHealthSummary.dailyDietPlan?.snack || 'N/A'}`,
+      `Dinner:    ${parentHealthSummary.dailyDietPlan?.dinner || 'N/A'}`,
+      '',
+      '--- HEALTH ALERTS ---',
+      ...((parentHealthSummary.healthAlerts || []).length > 0
+        ? (parentHealthSummary.healthAlerts).map((a, i) => `${i + 1}. ${typeof a === 'string' ? a : JSON.stringify(a)}`)
+        : ['No active alerts']),
+      '',
+      '--- DOCTOR SUGGESTION ---',
+      parentHealthSummary.doctorSuggestion?.notes || 'Follow balanced diet and continue routine monitoring.',
+      '',
+      '='.repeat(60),
+      '  TinyTots Daycare — Health Management System',
+      '='.repeat(60),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `health-report-${childName.replace(/\s+/g, '-').toLowerCase()}-${now.toISOString().slice(0, 10)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [parentHealthSummary]);
 
   // Simple polling for attendance, activities, meals
   useEffect(() => {
@@ -4725,6 +4779,199 @@ const ParentDashboard = ({ initialTab }) => {
                             )}
                             <Typography variant="body2" sx={{ mt: 1 }}>
                               <strong>Doctor Suggestion:</strong> {parentHealthSummary?.doctorSuggestion?.notes || 'Follow balanced diet and continue routine monitoring.'}
+                                            <Card sx={{ mb: 3, borderRadius: 3, boxShadow: 3 }}>
+                                              <CardHeader
+                                                title="Child Growth and Nutrition Summary"
+                                                subheader="Growth progress · Nutrition status · Recommended foods · Daycare diet · Health alerts"
+                                                action={
+                                                  parentHealthSummary && (
+                                                    <Button
+                                                      variant="outlined"
+                                                      size="small"
+                                                      startIcon={<Download />}
+                                                      onClick={handleDownloadParentReport}
+                                                      sx={{ mt: 1, mr: 1 }}
+                                                    >
+                                                      Download Report
+                                                    </Button>
+                                                  )
+                                                }
+                                              />
+                                              <CardContent>
+                                                {parentHealthLoading ? (
+                                                  <CircularProgress size={24} />
+                                                ) : !parentHealthSummary ? (
+                                                  <Alert severity="info">No health summary available yet for this child. Ask the doctor to run an analysis.</Alert>
+                                                ) : (
+                                                  <Grid container spacing={2}>
+
+                                                    {/* Quick Summary Bar */}
+                                                    <Grid item xs={12}>
+                                                      <Paper sx={{ p: 2, bgcolor: '#f8f9fa', borderRadius: 2, border: '1px solid #e3e8ef' }}>
+                                                        <Grid container spacing={2} alignItems="center" wrap="wrap">
+                                                          <Grid item>
+                                                            <Typography variant="caption" color="text.secondary" display="block">Nutrition Status</Typography>
+                                                            <Chip
+                                                              label={parentHealthSummary?.nutritionStatus?.prediction || 'No Analysis Yet'}
+                                                              color={
+                                                                (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('severe') ? 'error' :
+                                                                (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('moderate') ? 'warning' : 'success'
+                                                              }
+                                                              size="small"
+                                                              sx={{ fontWeight: 700 }}
+                                                            />
+                                                          </Grid>
+                                                          <Grid item>
+                                                            <Divider orientation="vertical" flexItem sx={{ height: 36 }} />
+                                                          </Grid>
+                                                          <Grid item>
+                                                            <Typography variant="caption" color="text.secondary" display="block">Recommended Foods</Typography>
+                                                            <Typography variant="body2" fontWeight={600}>
+                                                              {(parentHealthSummary?.recommendedFoods || []).slice(0, 3).join(', ') || 'N/A'}
+                                                            </Typography>
+                                                          </Grid>
+                                                          <Grid item>
+                                                            <Divider orientation="vertical" flexItem sx={{ height: 36 }} />
+                                                          </Grid>
+                                                          <Grid item>
+                                                            <Typography variant="caption" color="text.secondary" display="block">Next Checkup</Typography>
+                                                            <Typography variant="body2" fontWeight={600}>
+                                                              {parentHealthSummary?.doctorSuggestion?.nextCheckupInDays || 14} days
+                                                            </Typography>
+                                                          </Grid>
+                                                          <Grid item>
+                                                            <Divider orientation="vertical" flexItem sx={{ height: 36 }} />
+                                                          </Grid>
+                                                          <Grid item>
+                                                            <Typography variant="caption" color="text.secondary" display="block">Last Analyzed</Typography>
+                                                            <Typography variant="body2" fontWeight={600}>
+                                                              {parentHealthSummary?.measuredAt ? new Date(parentHealthSummary.measuredAt).toLocaleDateString() : 'Not yet'}
+                                                            </Typography>
+                                                          </Grid>
+                                                        </Grid>
+                                                      </Paper>
+                                                    </Grid>
+
+                                                    {/* View Child Growth Progress */}
+                                                    <Grid item xs={12}>
+                                                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>📈 View Child Growth Progress</Typography>
+                                                      <Grid container spacing={2}>
+                                                        {[
+                                                          { label: 'Weight', actual: parentHealthSummary?.growthProgress?.actual_weight_kg, expected: parentHealthSummary?.growthProgress?.expected_weight_kg, unit: 'kg', emoji: '⚖️' },
+                                                          { label: 'Height', actual: parentHealthSummary?.growthProgress?.actual_height_cm, expected: parentHealthSummary?.growthProgress?.expected_height_cm, unit: 'cm', emoji: '📏' },
+                                                          { label: 'BMI', actual: parentHealthSummary?.growthProgress?.bmi, expected: null, unit: '', emoji: '🏥' },
+                                                        ].map((stat) => (
+                                                          <Grid item xs={12} sm={4} key={stat.label}>
+                                                            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
+                                                              <Typography variant="h5" sx={{ mb: 0.5 }}>{stat.emoji}</Typography>
+                                                              <Typography variant="subtitle2" color="text.secondary">{stat.label}</Typography>
+                                                              <Typography variant="h6" fontWeight={700} color="primary.main">
+                                                                {stat.actual != null ? `${stat.actual} ${stat.unit}` : 'N/A'}
+                                                              </Typography>
+                                                              {stat.expected != null && (
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                  Expected: {stat.expected} {stat.unit}
+                                                                </Typography>
+                                                              )}
+                                                            </Paper>
+                                                          </Grid>
+                                                        ))}
+                                                      </Grid>
+                                                      {parentHealthSummary?.growthProgress?.growth_status && (
+                                                        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                          <Chip label={`Growth Status: ${parentHealthSummary.growthProgress.growth_status}`} color="info" size="small" variant="outlined" />
+                                                        </Box>
+                                                      )}
+                                                    </Grid>
+
+                                                    {/* View Nutrition Status */}
+                                                    <Grid item xs={12} md={6}>
+                                                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
+                                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>🩺 View Nutrition Status</Typography>
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                                          <Chip
+                                                            label={parentHealthSummary?.nutritionStatus?.prediction || 'No Analysis Yet'}
+                                                            color={
+                                                              (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('severe') ? 'error' :
+                                                              (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('moderate') ? 'warning' : 'success'
+                                                            }
+                                                            sx={{ fontWeight: 700, fontSize: '0.85rem' }}
+                                                          />
+                                                        </Box>
+                                                        {parentHealthSummary?.nutritionStatus?.confidence != null && (
+                                                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                                            Confidence: {Math.round((parentHealthSummary.nutritionStatus.confidence || 0) * 100)}%
+                                                          </Typography>
+                                                        )}
+                                                        <Divider sx={{ my: 1 }} />
+                                                        <Typography variant="body2"><strong>Next Checkup:</strong> {parentHealthSummary?.doctorSuggestion?.nextCheckupInDays || 14} days</Typography>
+                                                        <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                                          <strong>Doctor Note:</strong> {parentHealthSummary?.doctorSuggestion?.notes || 'Follow balanced diet and routine monitoring.'}
+                                                        </Typography>
+                                                      </Paper>
+                                                    </Grid>
+
+                                                    {/* Recommended Foods */}
+                                                    <Grid item xs={12} md={6}>
+                                                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
+                                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>🥗 View Recommended Meal Plan</Typography>
+                                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                                                          {(parentHealthSummary?.recommendedFoods || []).length > 0 ? (
+                                                            parentHealthSummary.recommendedFoods.slice(0, 8).map((food, idx) => (
+                                                              <Chip key={`${food}-${idx}`} size="small" label={food} color="success" variant="outlined" />
+                                                            ))
+                                                          ) : (
+                                                            <Typography variant="body2" color="text.secondary">No food recommendations yet.</Typography>
+                                                          )}
+                                                        </Box>
+                                                      </Paper>
+                                                    </Grid>
+
+                                                    {/* Daycare Diet Plan */}
+                                                    <Grid item xs={12}>
+                                                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>🍽️ View Daycare Diet Plan</Typography>
+                                                        <Grid container spacing={1}>
+                                                          {[
+                                                            { meal: 'Breakfast', value: parentHealthSummary?.dailyDietPlan?.breakfast, emoji: '🌅' },
+                                                            { meal: 'Lunch', value: parentHealthSummary?.dailyDietPlan?.lunch, emoji: '☀️' },
+                                                            { meal: 'Snack', value: parentHealthSummary?.dailyDietPlan?.snack, emoji: '🍎' },
+                                                            { meal: 'Dinner', value: parentHealthSummary?.dailyDietPlan?.dinner, emoji: '🌙' },
+                                                          ].map(({ meal, value, emoji }) => (
+                                                            <Grid item xs={12} sm={6} key={meal}>
+                                                              <Box sx={{ p: 1.5, bgcolor: '#f9fafb', borderRadius: 1.5, border: '1px solid #e0e0e0' }}>
+                                                                <Typography variant="body2">
+                                                                  <strong>{emoji} {meal}:</strong> {value || 'Balanced nutritious meal'}
+                                                                </Typography>
+                                                              </Box>
+                                                            </Grid>
+                                                          ))}
+                                                        </Grid>
+                                                      </Paper>
+                                                    </Grid>
+
+                                                    {/* Health Alerts */}
+                                                    <Grid item xs={12}>
+                                                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: (parentHealthSummary?.healthAlerts || []).length > 0 ? '#fff8e1' : 'inherit' }}>
+                                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>⚠️ Health Alerts</Typography>
+                                                        {(parentHealthSummary?.healthAlerts || []).length === 0 ? (
+                                                          <Alert severity="success" sx={{ py: 0.5 }}>No active health alerts — your child is on track!</Alert>
+                                                        ) : (
+                                                          <Stack spacing={1}>
+                                                            {parentHealthSummary.healthAlerts.map((alert, idx) => (
+                                                              <Alert key={idx} severity="warning" sx={{ py: 0.5 }}>
+                                                                {typeof alert === 'string' ? alert : JSON.stringify(alert)}
+                                                              </Alert>
+                                                            ))}
+                                                          </Stack>
+                                                        )}
+                                                      </Paper>
+                                                    </Grid>
+
+                                                  </Grid>
+                                                )}
+                                              </CardContent>
+                                            </Card>
                             </Typography>
                           </Paper>
                         </Grid>
