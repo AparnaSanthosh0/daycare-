@@ -70,8 +70,6 @@ import { RAZORPAY_CONFIG } from '../../config/razorpay';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import MealRecommendation from '../../components/MealRecommendation';
-import AlphabetARScanner from '../../components/AR/AlphabetARScanner';
-import HealthyFoodARScanner from '../../components/AR/HealthyFoodARScanner';
 import NannyServicesTab from '../../components/NannyServicesTab';
 import TransportTracking from '../../components/TransportTracking';
 import SmartSearch from '../../components/Common/SmartSearch';
@@ -130,8 +128,6 @@ const ParentDashboard = ({ initialTab }) => {
   };
   
   const [tab, setTab] = useState(getInitialTab());
-  const [showARGame, setShowARGame] = useState(false);
-  const [showHealthyFoodAR, setShowHealthyFoodAR] = useState(false);
   const [, setLoading] = useState(false);
   const [children, setChildren] = useState([]);
   const [activeChildId, setActiveChildId] = useState('');
@@ -5071,7 +5067,7 @@ const ParentDashboard = ({ initialTab }) => {
                                 <Chip key={tag} label={tag} size="small" sx={{ bgcolor: '#667eea22', color: '#667eea', fontWeight: 600 }} />
                               ))}
                             </Box>
-                            <Button fullWidth variant="contained" onClick={() => setShowARGame(true)}
+                            <Button fullWidth variant="contained" onClick={() => navigate('/alphabet-ar')}
                               sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5a6fd6' }, borderRadius: 2, fontWeight: 700 }}>
                               🚀 Start Card Scanner Game
                             </Button>
@@ -5094,7 +5090,7 @@ const ParentDashboard = ({ initialTab }) => {
                                 <Chip key={tag} label={tag} size="small" sx={{ bgcolor: '#16a34a22', color: '#15803d', fontWeight: 600 }} />
                               ))}
                             </Box>
-                            <Button fullWidth variant="contained" onClick={() => setShowHealthyFoodAR(true)}
+                            <Button fullWidth variant="contained" onClick={() => navigate('/healthy-food-ar')}
                               sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' }, borderRadius: 2, fontWeight: 700 }}>
                               🥗 Start Healthy Food Scanner
                             </Button>
@@ -5103,19 +5099,6 @@ const ParentDashboard = ({ initialTab }) => {
                       </Grid>
                     </Grid>
                   </Box>
-
-                  {/* ── Inline AR Scanner ── */}
-                  {showARGame && (
-                    <Box mt={3} sx={{ borderRadius: 3, overflow: 'hidden', border: '2px solid #667eea' }}>
-                      <AlphabetARScanner onBack={() => setShowARGame(false)} />
-                    </Box>
-                  )}
-
-                  {showHealthyFoodAR && (
-                    <Box mt={3} sx={{ borderRadius: 3, overflow: 'hidden', border: '2px solid #16a34a' }}>
-                      <HealthyFoodARScanner onBack={() => setShowHealthyFoodAR(false)} />
-                    </Box>
-                  )}
                 </Box>
               );
             })()}

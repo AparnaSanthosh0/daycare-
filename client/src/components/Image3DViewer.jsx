@@ -86,7 +86,9 @@ const Image3DViewer = ({
 
   // Handle wheel zoom
   const handleWheel = (e) => {
-    e.preventDefault();
+    if (e.cancelable) {
+      e.preventDefault();
+    }
     const delta = e.deltaY > 0 ? -0.1 : 0.1;
     setZoom(prev => Math.max(0.5, Math.min(3, prev + delta)));
   };

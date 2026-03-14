@@ -66,6 +66,7 @@ import BabyBottle3DTest from './components/BabyBottle3DTest';
 import ARViewerPage from './pages/ARViewerPage';
 import FaceARPage from './pages/FaceARPage';
 import AlphabetARPage from './pages/AlphabetARPage';
+import HealthyFoodARPage from './pages/HealthyFoodARPage';
 import CameraDiagnosticsPage from './pages/CameraDiagnosticsPage';
 import MilestoneTrackerPage from './pages/MilestoneTrackerPage';
 import MilestoneCelebrationPage from './pages/MilestoneCelebrationPage';
@@ -218,6 +219,12 @@ function App() {
           <Route 
             path="/alphabet-ar" 
             element={<AlphabetARPage />} 
+          />
+
+          {/* AR Healthy Food Scanner - Public Route */}
+          <Route 
+            path="/healthy-food-ar" 
+            element={<HealthyFoodARPage />} 
           />
 
           {/* Camera Diagnostics - Public Route */}

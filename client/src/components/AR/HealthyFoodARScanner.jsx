@@ -14,7 +14,7 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { ArrowBack, CameraAlt, FlipCameraIos, Print, Refresh, VolumeUp } from '@mui/icons-material';
+import { ArrowBack, CameraAlt, FlipCameraIos, Print, VolumeUp } from '@mui/icons-material';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 import Image3DViewer from '../Image3DViewer';
 
@@ -30,6 +30,22 @@ const FOODS = {
   SODA: { word: 'Soda', emoji: '🥤', healthy: false, color: '#6d4c41' },
   DONUT: { word: 'Donut', emoji: '🍩', healthy: false, color: '#ab47bc' },
 };
+
+function resolveFoodKey(rawInput) {
+  const raw = String(rawInput || '').trim().toUpperCase();
+  if (!raw) return '';
+
+  const normalized = raw.replace(/[^A-Z]/g, '');
+  if (FOODS[raw]) return raw;
+  if (FOODS[normalized]) return normalized;
+
+  const lowered = raw.toLowerCase();
+  const byWord = Object.keys(FOODS).find((k) => lowered.includes(FOODS[k].word.toLowerCase()));
+  if (byWord) return byWord;
+
+  const byKey = Object.keys(FOODS).find((k) => lowered.includes(k.toLowerCase()));
+  return byKey || '';
+}
 
 let lastSpoken = '';
 function speak(text) {
@@ -88,6 +104,11 @@ function buildFood3DImage(foodKey, info) {
   return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
 }
 
+function qrImageUrl(text) {
+  const data = encodeURIComponent(String(text || '').trim().toUpperCase());
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=${data}`;
+}
+
 const HealthyFoodARScanner = ({ onBack }) => {
   const html5QrRef = useRef(null);
   const html5ContainerIdRef = useRef(`healthy-food-reader-${Math.random().toString(36).slice(2, 8)}`);
@@ -101,9 +122,7 @@ const HealthyFoodARScanner = ({ onBack }) => {
   const [detected, setDetected] = useState(null);
 
   const onFoodDetected = useCallback((rawInput) => {
-    const raw = String(rawInput || '').trim().toUpperCase();
-    const normalized = raw.replace(/[^A-Z]/g, '');
-    const key = FOODS[raw] ? raw : (FOODS[normalized] ? normalized : '');
+    const key = resolveFoodKey(rawInput);
     if (!key) return;
 
     const item = FOODS[key];
@@ -135,6 +154,16 @@ const HealthyFoodARScanner = ({ onBack }) => {
     unlockSpeech();
 
     try {
+      if (html5QrRef.current) {
+        try {
+          await html5QrRef.current.stop();
+        } catch (_) {}
+        try {
+          await html5QrRef.current.clear();
+        } catch (_) {}
+        html5QrRef.current = null;
+      }
+
       const reader = new Html5Qrcode(html5ContainerIdRef.current, { verbose: false });
       html5QrRef.current = reader;
 
@@ -144,7 +173,13 @@ const HealthyFoodARScanner = ({ onBack }) => {
           fps: 10,
           qrbox: { width: 300, height: 300 },
           aspectRatio: 1.333,
-          formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          formatsToSupport: [
+            Html5QrcodeSupportedFormats.QR_CODE,
+            Html5QrcodeSupportedFormats.CODE_128,
+            Html5QrcodeSupportedFormats.CODE_39,
+            Html5QrcodeSupportedFormats.EAN_13,
+            Html5QrcodeSupportedFormats.UPC_A,
+          ],
         },
         (decodedText) => onFoodDetected(decodedText),
         () => {}
@@ -220,7 +255,7 @@ const HealthyFoodARScanner = ({ onBack }) => {
             />
             {!cameraStarted && !loading && (
               <Box sx={{ p: 2, textAlign: 'center' }}>
-                <Typography variant="body2" sx={{ color: '#e2e8f0' }}>Start camera and show a QR food card (e.g. CARROT)</Typography>
+                <Typography variant="body2" sx={{ color: '#e2e8f0' }}>Start camera and show a food card code (QR/Barcode text like CARROT)</Typography>
               </Box>
             )}
           </Box>
@@ -275,15 +310,21 @@ const HealthyFoodARScanner = ({ onBack }) => {
             <Button variant="contained" startIcon={<Print />} onClick={handlePrint}>Print Cards</Button>
           </Box>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Create QR cards with these texts: {Object.keys(FOODS).join(', ')}. When scanned, kids will see 3D preview and healthy/unhealthy label.
+            Real QR codes are generated below automatically. Print these cards and scan them to see 3D food preview + healthy/unhealthy result.
           </Alert>
           <Grid container spacing={2}>
             {Object.entries(FOODS).map(([key, item]) => (
               <Grid item xs={6} sm={4} md={3} key={key}>
                 <Paper sx={{ p: 2, textAlign: 'center', border: `2px solid ${item.color}`, borderRadius: 2 }}>
+                  <Box
+                    component="img"
+                    src={qrImageUrl(key)}
+                    alt={`${item.word} QR`}
+                    sx={{ width: 120, height: 120, objectFit: 'contain', border: '1px solid #e5e7eb', borderRadius: 1, mb: 1 }}
+                  />
                   <Typography variant="h3">{item.emoji}</Typography>
                   <Typography variant="h6" fontWeight={800}>{item.word}</Typography>
-                  <Typography variant="caption" color="text.secondary">QR text: {key}</Typography>
+                  <Typography variant="caption" color="text.secondary">Scan code: {key}</Typography>
                   <Box sx={{ mt: 1 }}>
                     <Chip size="small" color={item.healthy ? 'success' : 'error'} label={item.healthy ? 'Healthy' : 'Unhealthy'} />
                   </Box>
