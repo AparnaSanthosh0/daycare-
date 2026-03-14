@@ -26,6 +26,7 @@ import { useShop } from '../../contexts/ShopContext';
 import { recommendForProduct, recommendForUser, collectSignalsFromContext } from '../../utils/recommendations';
 import { deriveSizeOptions } from '../../utils/sizes';
 import Image3DViewer from '../Image3DViewer';
+import DressCustomizer from './DressCustomizer';
 
 function toAbsoluteImageUrl(maybePath) {
   if (!maybePath) return null;
@@ -303,43 +304,18 @@ export default function ProductDetail() {
                 <Typography variant="body2" color="text.secondary">Shortlist</Typography>
               </Box>
 
-              {/* AR Try-On Banner for face accessories / makeup */}
-              {(product.category?.toLowerCase().includes('accessory') ||
-                product.category?.toLowerCase().includes('hat') ||
-                product.category?.toLowerCase().includes('glasses') ||
-                product.name?.toLowerCase().includes('face paint') ||
-                product.name?.toLowerCase().includes('makeup')) && (
-                <Box
-                  sx={{
-                    mb: 2,
-                    p: 2,
-                    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                    borderRadius: 2,
-                    color: 'white',
-                  }}
-                >
-                  <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                    ✨ Try It On in AR!
-                  </Typography>
-                  <Typography variant="caption" display="block" mb={1}>
-                    See how this product looks on you using your camera
-                  </Typography>
-                  <Button
-                    variant="contained"
-                    size="small"
-                    fullWidth
-                    onClick={() => navigate(`/face-ar?productId=${product.id}`)}
-                    sx={{
-                      bgcolor: 'white',
-                      color: '#667eea',
-                      fontWeight: 'bold',
-                      '&:hover': {
-                        bgcolor: 'rgba(255, 255, 255, 0.9)',
-                      },
+              {/* Dress Customizer for clothing items */}
+              {isClothing && (
+                <Box sx={{ mb: 2 }}>
+                  <DressCustomizer
+                    productImage={images?.[0] || product.image}
+                    productName={product.name}
+                    productPrice={product.price}
+                    onAddToCart={(note) => {
+                      addToCart(product, selectedSize || null, 1, note);
+                      setSnack('Added to cart with customization!');
                     }}
-                  >
-                    Try Face AR Now
-                  </Button>
+                  />
                 </Box>
               )}
 

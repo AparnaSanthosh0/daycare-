@@ -70,6 +70,8 @@ import { RAZORPAY_CONFIG } from '../../config/razorpay';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 import MealRecommendation from '../../components/MealRecommendation';
+import AlphabetARScanner from '../../components/AR/AlphabetARScanner';
+import HealthyFoodARScanner from '../../components/AR/HealthyFoodARScanner';
 import NannyServicesTab from '../../components/NannyServicesTab';
 import TransportTracking from '../../components/TransportTracking';
 import SmartSearch from '../../components/Common/SmartSearch';
@@ -128,6 +130,8 @@ const ParentDashboard = ({ initialTab }) => {
   };
   
   const [tab, setTab] = useState(getInitialTab());
+  const [showARGame, setShowARGame] = useState(false);
+  const [showHealthyFoodAR, setShowHealthyFoodAR] = useState(false);
   const [, setLoading] = useState(false);
   const [children, setChildren] = useState([]);
   const [activeChildId, setActiveChildId] = useState('');
@@ -5067,7 +5071,7 @@ const ParentDashboard = ({ initialTab }) => {
                                 <Chip key={tag} label={tag} size="small" sx={{ bgcolor: '#667eea22', color: '#667eea', fontWeight: 600 }} />
                               ))}
                             </Box>
-                            <Button fullWidth variant="contained" onClick={() => navigate('/alphabet-ar')}
+                            <Button fullWidth variant="contained" onClick={() => setShowARGame(true)}
                               sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5a6fd6' }, borderRadius: 2, fontWeight: 700 }}>
                               🚀 Start Card Scanner Game
                             </Button>
@@ -5075,30 +5079,43 @@ const ParentDashboard = ({ initialTab }) => {
                         </Card>
                       </Grid>
                       <Grid item xs={12} sm={6}>
-                        <Card sx={{ borderRadius: 3, overflow: 'hidden', border: '2px solid #f06292', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 } }}>
-                          <Box sx={{ background: 'linear-gradient(135deg,#f06292,#ce93d8)', p: 3, color: 'white', textAlign: 'center' }}>
-                            <Typography variant="h2">👋</Typography>
-                            <Typography variant="h6" fontWeight="bold" mt={1}>Face Accessories AR</Typography>
-                            <Typography variant="caption" sx={{ opacity: 0.85 }}>Fun & Creative Play</Typography>
+                        <Card sx={{ borderRadius: 3, overflow: 'hidden', border: '2px solid #16a34a', transition: 'all 0.2s', '&:hover': { transform: 'translateY(-4px)', boxShadow: 6 } }}>
+                          <Box sx={{ background: 'linear-gradient(135deg,#22c55e,#16a34a)', p: 3, color: 'white', textAlign: 'center' }}>
+                            <Typography variant="h2">🥕</Typography>
+                            <Typography variant="h6" fontWeight="bold" mt={1}>AR Healthy Food Game</Typography>
+                            <Typography variant="caption" sx={{ opacity: 0.9 }}>Scan Food Cards and Learn</Typography>
                           </Box>
                           <CardContent>
                             <Typography variant="body2" color="text.secondary" mb={2}>
-                              Try on virtual hats, crowns, glasses and more using your camera. Great for creative play and imagination!
+                              Scan food cards like CARROT or BURGER. Kids see a 3D food view and instantly learn Healthy vs Unhealthy.
                             </Typography>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
-                              {['All Ages', '24 Accessories', 'Photo Capture', 'Camera Required'].map(tag => (
-                                <Chip key={tag} label={tag} size="small" sx={{ bgcolor: '#f0629222', color: '#c2185b', fontWeight: 600 }} />
+                              {['Ages 3-7', 'Healthy vs Unhealthy', 'Food Cards', 'Camera Required'].map(tag => (
+                                <Chip key={tag} label={tag} size="small" sx={{ bgcolor: '#16a34a22', color: '#15803d', fontWeight: 600 }} />
                               ))}
                             </Box>
-                            <Button fullWidth variant="contained" onClick={() => navigate('/face-ar')}
-                              sx={{ bgcolor: '#f06292', '&:hover': { bgcolor: '#e91e8c' }, borderRadius: 2, fontWeight: 700 }}>
-                              🎉 Open Face AR
+                            <Button fullWidth variant="contained" onClick={() => setShowHealthyFoodAR(true)}
+                              sx={{ bgcolor: '#16a34a', '&:hover': { bgcolor: '#15803d' }, borderRadius: 2, fontWeight: 700 }}>
+                              🥗 Start Healthy Food Scanner
                             </Button>
                           </CardContent>
                         </Card>
                       </Grid>
                     </Grid>
                   </Box>
+
+                  {/* ── Inline AR Scanner ── */}
+                  {showARGame && (
+                    <Box mt={3} sx={{ borderRadius: 3, overflow: 'hidden', border: '2px solid #667eea' }}>
+                      <AlphabetARScanner onBack={() => setShowARGame(false)} />
+                    </Box>
+                  )}
+
+                  {showHealthyFoodAR && (
+                    <Box mt={3} sx={{ borderRadius: 3, overflow: 'hidden', border: '2px solid #16a34a' }}>
+                      <HealthyFoodARScanner onBack={() => setShowHealthyFoodAR(false)} />
+                    </Box>
+                  )}
                 </Box>
               );
             })()}
@@ -5145,28 +5162,17 @@ const ParentDashboard = ({ initialTab }) => {
                     ) : (
                       <Grid container spacing={2}>
                         <Grid item xs={12}>
-                          <Paper sx={{ p: 2, bgcolor: '#f8f9fa', borderRadius: 2, border: '1px solid #e3e8ef' }}>
-                            <Grid container spacing={2} alignItems="center" wrap="wrap">
+                          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                            <Grid container spacing={1.5} alignItems="center">
                               <Grid item>
-                                <Typography variant="caption" color="text.secondary" display="block">Nutrition Status</Typography>
                                 <Chip
                                   label={parentHealthSummary?.nutritionStatus?.prediction || 'No Analysis Yet'}
                                   color={
                                     (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('severe') ? 'error' :
                                     (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('moderate') ? 'warning' : 'success'
                                   }
-                                  size="small"
                                   sx={{ fontWeight: 700 }}
                                 />
-                              </Grid>
-                              <Grid item>
-                                <Divider orientation="vertical" flexItem sx={{ height: 36 }} />
-                              </Grid>
-                              <Grid item>
-                                <Typography variant="caption" color="text.secondary" display="block">Current Meal Choice</Typography>
-                                <Typography variant="body2" fontWeight={600}>
-                                  {mealSubscriptionData?.currentSubscription?.selectedPlanTitle || 'Admin Approved Daycare Meal Plan'}
-                                </Typography>
                               </Grid>
                               <Grid item>
                                 <Divider orientation="vertical" flexItem sx={{ height: 36 }} />

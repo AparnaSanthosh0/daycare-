@@ -549,6 +549,8 @@ const TeacherDashboard = () => {
     }
     if (newValue === 2) {
       fetchTeacherActivities();
+    }
+    if (newValue === 3) {
       fetchMyAfterSchoolSuggestions();
       fetchTeacherAfterSchoolPrograms();
     }
@@ -2021,14 +2023,23 @@ const TeacherDashboard = () => {
         </Grid>
       </Grid>
 
-      <Grid container spacing={3} sx={{ mt: 0.5 }}>
+
+    </Box>
+  );
+
+  const renderCurriculumTab = () => (
+    <Box>
+      <Typography variant="h5" sx={{ fontWeight: 600, mb: 3 }}>
+        Curriculum & Learning
+      </Typography>
+      <Grid container spacing={3}>
         <Grid item xs={12} lg={7}>
           <Paper elevation={0} sx={{ p: 3, borderRadius: 2 }}>
             <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: '#1abc9c' }}>
               Suggest After-School Program
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Submit a program idea to admin. Approved suggestions become visible in the parent dashboard.
+              Submit curriculum-focused after-school ideas to admin. Approved suggestions appear in parent dashboard.
             </Typography>
             {afterSchoolSuggestionFeedback.text && (
               <Alert severity={afterSchoolSuggestionFeedback.type || 'info'} sx={{ mb: 2 }}>
@@ -2068,60 +2079,22 @@ const TeacherDashboard = () => {
                 />
               </Grid>
               <Grid item xs={6} sm={3}>
-                <TextField
-                  fullWidth
-                  type="number"
-                  label="Age Min"
-                  value={afterSchoolSuggestionForm.ageMin}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, ageMin: e.target.value }))}
-                />
+                <TextField fullWidth type="number" label="Age Min" value={afterSchoolSuggestionForm.ageMin} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, ageMin: e.target.value }))} />
               </Grid>
               <Grid item xs={6} sm={3}>
-                <TextField
-                  fullWidth
-                  type="number"
-                  label="Age Max"
-                  value={afterSchoolSuggestionForm.ageMax}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, ageMax: e.target.value }))}
-                />
+                <TextField fullWidth type="number" label="Age Max" value={afterSchoolSuggestionForm.ageMax} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, ageMax: e.target.value }))} />
               </Grid>
               <Grid item xs={6} sm={3}>
-                <TextField
-                  fullWidth
-                  type="time"
-                  label="Start Time"
-                  InputLabelProps={{ shrink: true }}
-                  value={afterSchoolSuggestionForm.startTime}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, startTime: e.target.value }))}
-                />
+                <TextField fullWidth type="time" label="Start Time" InputLabelProps={{ shrink: true }} value={afterSchoolSuggestionForm.startTime} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, startTime: e.target.value }))} />
               </Grid>
               <Grid item xs={6} sm={3}>
-                <TextField
-                  fullWidth
-                  type="time"
-                  label="End Time"
-                  InputLabelProps={{ shrink: true }}
-                  value={afterSchoolSuggestionForm.endTime}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, endTime: e.target.value }))}
-                />
+                <TextField fullWidth type="time" label="End Time" InputLabelProps={{ shrink: true }} value={afterSchoolSuggestionForm.endTime} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, endTime: e.target.value }))} />
               </Grid>
               <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  type="number"
-                  label="Fee"
-                  value={afterSchoolSuggestionForm.feeAmount}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, feeAmount: e.target.value }))}
-                />
+                <TextField fullWidth type="number" label="Fee" value={afterSchoolSuggestionForm.feeAmount} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, feeAmount: e.target.value }))} />
               </Grid>
               <Grid item xs={12} sm={4}>
-                <TextField
-                  select
-                  fullWidth
-                  label="Fee Frequency"
-                  value={afterSchoolSuggestionForm.feeFrequency}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, feeFrequency: e.target.value }))}
-                >
+                <TextField select fullWidth label="Fee Frequency" value={afterSchoolSuggestionForm.feeFrequency} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, feeFrequency: e.target.value }))}>
                   <MenuItem value="per session">Per Session</MenuItem>
                   <MenuItem value="weekly">Weekly</MenuItem>
                   <MenuItem value="monthly">Monthly</MenuItem>
@@ -2129,69 +2102,25 @@ const TeacherDashboard = () => {
                 </TextField>
               </Grid>
               <Grid item xs={12} sm={4}>
-                <TextField
-                  fullWidth
-                  type="number"
-                  label="Capacity"
-                  value={afterSchoolSuggestionForm.capacity}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, capacity: e.target.value }))}
-                />
+                <TextField fullWidth type="number" label="Capacity" value={afterSchoolSuggestionForm.capacity} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, capacity: e.target.value }))} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  type="date"
-                  label="Start Date"
-                  InputLabelProps={{ shrink: true }}
-                  value={afterSchoolSuggestionForm.startDate}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, startDate: e.target.value }))}
-                />
+                <TextField fullWidth type="date" label="Start Date" InputLabelProps={{ shrink: true }} value={afterSchoolSuggestionForm.startDate} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, startDate: e.target.value }))} />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Location"
-                  value={afterSchoolSuggestionForm.location}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, location: e.target.value }))}
-                />
+                <TextField fullWidth label="Location" value={afterSchoolSuggestionForm.location} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, location: e.target.value }))} />
               </Grid>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Days (comma separated)"
-                  value={afterSchoolSuggestionForm.days.join(', ')}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({
-                    ...prev,
-                    days: e.target.value.split(',').map((d) => d.trim()).filter(Boolean),
-                  }))}
-                />
+                <TextField fullWidth label="Days (comma separated)" value={afterSchoolSuggestionForm.days.join(', ')} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, days: e.target.value.split(',').map((d) => d.trim()).filter(Boolean) }))} />
               </Grid>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  label="Requirements"
-                  value={afterSchoolSuggestionForm.requirements}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, requirements: e.target.value }))}
-                />
+                <TextField fullWidth multiline minRows={2} label="Requirements" value={afterSchoolSuggestionForm.requirements} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, requirements: e.target.value }))} />
               </Grid>
               <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  multiline
-                  minRows={2}
-                  label="Suggestion Notes to Admin"
-                  value={afterSchoolSuggestionForm.suggestionNotes}
-                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, suggestionNotes: e.target.value }))}
-                />
+                <TextField fullWidth multiline minRows={2} label="Suggestion Notes to Admin" value={afterSchoolSuggestionForm.suggestionNotes} onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, suggestionNotes: e.target.value }))} />
               </Grid>
               <Grid item xs={12}>
-                <Button
-                  variant="contained"
-                  onClick={handleSubmitAfterSchoolSuggestion}
-                  sx={{ backgroundColor: '#1abc9c', textTransform: 'none', '&:hover': { backgroundColor: '#16a085' } }}
-                >
+                <Button variant="contained" onClick={handleSubmitAfterSchoolSuggestion} sx={{ backgroundColor: '#1abc9c', textTransform: 'none', '&:hover': { backgroundColor: '#16a085' } }}>
                   Submit Suggestion
                 </Button>
               </Grid>
@@ -2213,18 +2142,10 @@ const TeacherDashboard = () => {
                   <Paper key={item._id} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
                       <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{item.programName}</Typography>
-                      <Chip
-                        size="small"
-                        label={String(item.status || 'pending').toUpperCase()}
-                        color={item.status === 'active' ? 'success' : item.status === 'cancelled' ? 'default' : 'warning'}
-                      />
+                      <Chip size="small" label={String(item.status || 'pending').toUpperCase()} color={item.status === 'active' ? 'success' : item.status === 'cancelled' ? 'default' : 'warning'} />
                     </Box>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      {item.programType} • {item.schedule?.days?.join(', ') || 'No days'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" display="block">
-                      {item.schedule?.startTime || '--:--'} - {item.schedule?.endTime || '--:--'} • {item.location || 'No location'}
-                    </Typography>
+                    <Typography variant="caption" color="text.secondary" display="block">{item.programType} • {item.schedule?.days?.join(', ') || 'No days'}</Typography>
+                    <Typography variant="caption" color="text.secondary" display="block">{item.schedule?.startTime || '--:--'} - {item.schedule?.endTime || '--:--'} • {item.location || 'No location'}</Typography>
                   </Paper>
                 ))}
               </Stack>
@@ -2251,40 +2172,17 @@ const TeacherDashboard = () => {
             {teacherAfterSchoolPrograms.slice(0, 9).map((program) => (
               <Grid item xs={12} md={6} lg={4} key={program._id}>
                 <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
-                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>
-                    {program.programName}
-                  </Typography>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>{program.programName}</Typography>
                   <Chip size="small" label={program.programType || 'Program'} color="primary" sx={{ mb: 1 }} />
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                    {program.description || 'No description'}
-                  </Typography>
-                  <Typography variant="caption" display="block" color="text.secondary">
-                    {program.schedule?.days?.join(', ') || 'Schedule TBD'}
-                  </Typography>
-                  <Typography variant="caption" display="block" color="text.secondary">
-                    {program.schedule?.startTime || '--:--'} - {program.schedule?.endTime || '--:--'}
-                  </Typography>
-                  <Typography variant="caption" display="block" color="text.secondary">
-                    Location: {program.location || 'N/A'}
-                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>{program.description || 'No description'}</Typography>
+                  <Typography variant="caption" display="block" color="text.secondary">{program.schedule?.days?.join(', ') || 'Schedule TBD'}</Typography>
+                  <Typography variant="caption" display="block" color="text.secondary">{program.schedule?.startTime || '--:--'} - {program.schedule?.endTime || '--:--'}</Typography>
+                  <Typography variant="caption" display="block" color="text.secondary">Location: {program.location || 'N/A'}</Typography>
                 </Paper>
               </Grid>
             ))}
           </Grid>
         )}
-      </Paper>
-    </Box>
-  );
-
-  const renderCurriculumTab = () => (
-    <Box>
-      <Typography variant="h5" sx={{ fontWeight: 600, mb: 3 }}>
-        Curriculum & Learning
-      </Typography>
-      <Paper elevation={0} sx={{ p: 4, border: '1px solid #e0e0e0', borderRadius: 2 }}>
-        <Typography variant="body1" color="text.secondary">
-          Curriculum management content coming soon...
-        </Typography>
       </Paper>
     </Box>
   );

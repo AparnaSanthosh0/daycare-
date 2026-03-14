@@ -8,6 +8,7 @@ import {
   FlipCameraIos, Refresh, CheckCircle
 } from '@mui/icons-material';
 import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
+import Image3DViewer from '../Image3DViewer';
 
 // ── Alphabet Data ─────────────────────────────────────────────────────────────
 const ALPHABET = {
@@ -77,6 +78,74 @@ function unlockSpeech() {
   window.speechSynthesis.cancel();
 }
 
+function buildLetter3DImage(letter, info) {
+  const safeLetter = String(letter || '').toUpperCase();
+  const safeWord = String(info?.word || 'Object');
+  const safeEmoji = String(info?.emoji || '⭐');
+  const bg = String(info?.color || '#4caf50');
+
+  // Check if a custom image exists in public/alphabet-images/<letter>.png
+  // The Image3DViewer accepts a URL, so we build a path first;
+  // the fallback SVG is returned as data URI if that file isn't hosted.
+  // We always return the rich SVG so it works offline/in dev.
+  const lighter = bg + 'cc';
+  const shadow = bg.replace(/^#/, '');
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="900" viewBox="0 0 800 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f0f9ff"/>
+      <stop offset="100%" stop-color="#e8f4fd"/>
+    </linearGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0.4" y2="1">
+      <stop offset="0%" stop-color="${lighter}"/>
+      <stop offset="100%" stop-color="${bg}"/>
+    </linearGradient>
+    <linearGradient id="letterGrad" x1="0.2" y1="0" x2="0.8" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.98"/>
+      <stop offset="60%" stop-color="#f0f0f0" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#cccccc" stop-opacity="0.85"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="6" dy="10" stdDeviation="10" flood-color="#00000055"/>
+    </filter>
+    <filter id="glow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="${bg}" flood-opacity="0.6"/>
+    </filter>
+    <clipPath id="cardClip">
+      <rect x="40" y="40" rx="60" ry="60" width="720" height="820"/>
+    </clipPath>
+  </defs>
+
+  <!-- Outer background -->
+  <rect width="800" height="900" fill="url(#bg)"/>
+
+  <!-- 3D Card shadow layer -->
+  <rect x="60" y="60" rx="60" ry="60" width="720" height="820" fill="#00000022"/>
+
+  <!-- Main card -->
+  <rect x="40" y="40" rx="60" ry="60" width="720" height="820" fill="url(#card)" filter="url(#shadow)"/>
+
+  <!-- Glossy shine top -->
+  <ellipse cx="280" cy="130" rx="220" ry="90" fill="#ffffff" opacity="0.18"/>
+
+  <!-- Big emoji character -->
+  <text x="400" y="340" font-family="Segoe UI Emoji, Apple Color Emoji, Noto Color Emoji, Arial" font-size="240" text-anchor="middle" dominant-baseline="middle" filter="url(#shadow)">${safeEmoji}</text>
+
+  <!-- 3D Letter shadow (depth) -->
+  <text x="416" y="668" font-family="Arial Black, Impact, sans-serif" font-size="300" font-weight="900" text-anchor="middle" fill="#00000033">${safeLetter}</text>
+
+  <!-- 3D Letter highlight -->
+  <text x="400" y="660" font-family="Arial Black, Impact, sans-serif" font-size="300" font-weight="900" text-anchor="middle" fill="url(#letterGrad)" filter="url(#glow)">${safeLetter}</text>
+
+  <!-- Word label banner -->
+  <rect x="150" y="800" rx="30" ry="30" width="500" height="72" fill="#ffffff" opacity="0.82"/>
+  <text x="400" y="847" font-family="Arial Rounded MT Bold, Arial, sans-serif" font-size="44" font-weight="bold" text-anchor="middle" fill="${bg}">${safeLetter} for ${safeWord}</text>
+</svg>`;
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 const AlphabetARScanner = ({ onBack }) => {
   const videoRef = useRef(null);
@@ -95,6 +164,7 @@ const AlphabetARScanner = ({ onBack }) => {
   const [error, setError] = useState('');
   const [facingMode, setFacingMode] = useState('environment');
   const [detected, setDetected] = useState(null); // current letter data
+  const [detectedLetter, setDetectedLetter] = useState('');
   const [scannedLetters, setScannedLetters] = useState(new Set());
   const [supported, setSupported] = useState(null); // null=unknown, true/false for BarcodeDetector
 
@@ -103,6 +173,7 @@ const AlphabetARScanner = ({ onBack }) => {
     const raw = (rawValue.match(/[A-Z]/) || [])[0] || '';
     if (raw && ALPHABET[raw] && raw !== lastDetectedRef.current) {
       lastDetectedRef.current = raw;
+      setDetectedLetter(raw);
       setDetected(ALPHABET[raw]);
       setScannedLetters(prev => new Set([...prev, raw]));
       speak(ALPHABET[raw].phrase);
@@ -198,6 +269,7 @@ const AlphabetARScanner = ({ onBack }) => {
     }
     setCameraStarted(false);
     setDetected(null);
+    setDetectedLetter('');
     lastDetectedRef.current = null;
   }, []);
 
@@ -270,12 +342,7 @@ const AlphabetARScanner = ({ onBack }) => {
             const rawValue = String(barcodes[0].rawValue || '').trim().toUpperCase();
             const raw = (rawValue.match(/[A-Z]/) || [])[0] || '';
             if (raw && ALPHABET[raw]) {
-              if (raw !== lastDetectedRef.current) {
-                lastDetectedRef.current = raw;
-                setDetected(ALPHABET[raw]);
-                setScannedLetters(prev => new Set([...prev, raw]));
-                speak(ALPHABET[raw].phrase);
-              }
+              onLetterDetected(raw);
             }
           } else {
             if (lastDetectedRef.current) {
@@ -475,6 +542,23 @@ const AlphabetARScanner = ({ onBack }) => {
                 </Paper>
               )}
             </Box>
+          )}
+
+          {/* 3D preview for scanned letter */}
+          {cameraStarted && detected && detectedLetter && (
+            <Paper sx={{ mt: 2, p: 2, width: '100%', maxWidth: 760 }}>
+              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                3D Letter Preview: {detectedLetter} for {detected.word}
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Rotate and zoom the object to explore the scanned letter in a playful 3D view.
+              </Typography>
+              <Image3DViewer
+                imageUrl={buildLetter3DImage(detectedLetter, detected)}
+                title={`${detectedLetter} for ${detected.word}`}
+                height="360px"
+              />
+            </Paper>
           )}
 
           {cameraStarted && (
