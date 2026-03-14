@@ -238,6 +238,15 @@ const DoctorDashboard = () => {
     () => clinicalChildren.find((child) => child.id === selectedClinicalChildId) || null,
     [clinicalChildren, selectedClinicalChildId]
   );
+  const clinicalComputedBmi = useMemo(() => {
+    const weight = Number(clinicalForm.weightKg);
+    const heightCm = Number(clinicalForm.heightCm);
+    if (!Number.isFinite(weight) || !Number.isFinite(heightCm) || weight <= 0 || heightCm <= 0) {
+      return selectedClinicalChild?.latestBmi ?? clinicalResult?.growthAnalysis?.bmi ?? null;
+    }
+    const bmi = weight / Math.pow(heightCm / 100, 2);
+    return Number.isFinite(bmi) ? Number(bmi.toFixed(2)) : null;
+  }, [clinicalForm.weightKg, clinicalForm.heightCm, selectedClinicalChild, clinicalResult]);
   const clinicalTimeline = useMemo(() => {
     const source = Array.isArray(clinicalReportHistory) ? [...clinicalReportHistory] : [];
     return source
@@ -415,6 +424,8 @@ const DoctorDashboard = () => {
           id: c._id,
           name: `${c.firstName || ''} ${c.lastName || ''}`.trim(),
           gender: c.gender,
+          allergies: c.allergies || [],
+          hasAllergy: Boolean((c.allergies || []).length),
           ageMonths: c.dateOfBirth ? Math.max(1, Math.floor((new Date() - new Date(c.dateOfBirth)) / (30.4375 * 24 * 60 * 60 * 1000))) : 0,
           latestStatus: c.healthStatus || null,
           latestConfidence: null,
@@ -456,14 +467,51 @@ const DoctorDashboard = () => {
           followUpDays: latest?.doctorReview?.followUpDays ?? prev.followUpDays,
           doctorNotes: latest?.doctorReview?.notes ?? prev.doctorNotes
         }));
+      } else {
+        const selectedChild = clinicalChildren.find((child) => child.id === childId) || null;
+        setClinicalForm((prev) => ({
+          ...prev,
+          weightKg: selectedChild?.latestInputs?.weightKg ?? '',
+          heightCm: selectedChild?.latestInputs?.heightCm ?? '',
+          muacCm: selectedChild?.latestInputs?.muacCm ?? '',
+          hemoglobin: selectedChild?.latestInputs?.hemoglobin ?? '',
+          hasAllergy: selectedChild?.hasAllergy ?? Boolean((selectedChild?.allergies || []).length),
+          doctorNotes: selectedChild?.latestDoctorReview?.notes || '',
+          followUpDays: selectedChild?.latestDoctorReview?.followUpDays ?? 14,
+        }));
       }
     } catch (err) {
       // Fallback to empty report if dedicated endpoint is not available yet.
       console.warn('Clinical report endpoint unavailable, using empty fallback report view.');
       setClinicalResult(null);
       setClinicalReportHistory([]);
+      const selectedChild = clinicalChildren.find((child) => child.id === childId) || null;
+      setClinicalForm((prev) => ({
+        ...prev,
+        weightKg: selectedChild?.latestInputs?.weightKg ?? '',
+        heightCm: selectedChild?.latestInputs?.heightCm ?? '',
+        muacCm: selectedChild?.latestInputs?.muacCm ?? '',
+        hemoglobin: selectedChild?.latestInputs?.hemoglobin ?? '',
+        hasAllergy: selectedChild?.hasAllergy ?? Boolean((selectedChild?.allergies || []).length),
+        doctorNotes: selectedChild?.latestDoctorReview?.notes || '',
+        followUpDays: selectedChild?.latestDoctorReview?.followUpDays ?? 14,
+      }));
     }
-  }, []);
+  }, [clinicalChildren]);
+
+  useEffect(() => {
+    if (activeTab !== 7 || !selectedClinicalChildId || !selectedClinicalChild) return;
+    setClinicalForm((prev) => ({
+      ...prev,
+      weightKg: selectedClinicalChild?.latestInputs?.weightKg ?? prev.weightKg,
+      heightCm: selectedClinicalChild?.latestInputs?.heightCm ?? prev.heightCm,
+      muacCm: selectedClinicalChild?.latestInputs?.muacCm ?? prev.muacCm,
+      hemoglobin: selectedClinicalChild?.latestInputs?.hemoglobin ?? prev.hemoglobin,
+      hasAllergy: selectedClinicalChild?.hasAllergy ?? Boolean((selectedClinicalChild?.allergies || []).length),
+      doctorNotes: selectedClinicalChild?.latestDoctorReview?.notes || prev.doctorNotes,
+      followUpDays: selectedClinicalChild?.latestDoctorReview?.followUpDays ?? prev.followUpDays,
+    }));
+  }, [activeTab, selectedClinicalChildId, selectedClinicalChild]);
 
   const handleRunClinicalAnalysis = async () => {
     try {
@@ -3588,6 +3636,14 @@ const DoctorDashboard = () => {
                   Selected Child: <strong>{selectedClinicalChild?.name || 'No child selected'}</strong>
                   {selectedClinicalChild?.ageMonths ? ` • Age: ${Math.floor(selectedClinicalChild.ageMonths / 12)} years` : ''}
                 </Alert>
+                {Boolean((selectedClinicalChild?.allergies || []).length) && (
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    Allergy Types: {(selectedClinicalChild?.allergies || []).join(', ')}
+                  </Alert>
+                )}
+                <Alert severity="warning" sx={{ mb: 2 }}>
+                  Source of growth data: Weight/Height/MUAC/Hemoglobin are entered by the doctor during measurement and saved in child health records. When available, the form auto-fills from the latest saved report for this child.
+                </Alert>
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -3623,6 +3679,14 @@ const DoctorDashboard = () => {
                       type="number"
                       value={clinicalForm.hemoglobin}
                       onChange={(e) => setClinicalForm((prev) => ({ ...prev, hemoglobin: e.target.value }))}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      label="BMI (auto-calculated)"
+                      value={clinicalComputedBmi ?? ''}
+                      InputProps={{ readOnly: true }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
@@ -3734,12 +3798,30 @@ const DoctorDashboard = () => {
                       </Grid>
                     </Grid>
 
-                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Recommended Foods</Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                      {(clinicalResult.nutrientFoodRecommendations?.recommended_foods || []).slice(0, 10).map((food, idx) => (
-                        <Chip key={`${food}-${idx}`} label={food} color="success" variant="outlined" />
-                      ))}
-                    </Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Recommended Meal Plan</Typography>
+                    <Grid container spacing={1} sx={{ mb: 1 }}>
+                      {(() => {
+                        const primaryPlan = (clinicalResult.nutrientFoodRecommendations?.recommended_meal_options || [])[0];
+                        const meals = primaryPlan
+                          ? [
+                              { label: 'Breakfast', value: primaryPlan.breakfast },
+                              { label: 'Lunch', value: primaryPlan.lunch },
+                              { label: 'Snack', value: primaryPlan.snack },
+                              { label: 'Dinner', value: primaryPlan.dinner },
+                            ]
+                          : [];
+
+                        return meals.length > 0 ? meals.map((meal) => (
+                          <Grid item xs={12} sm={6} key={meal.label}>
+                            <Typography variant="body2"><strong>{meal.label}:</strong> {meal.value || 'N/A'}</Typography>
+                          </Grid>
+                        )) : (
+                          <Grid item xs={12}>
+                            <Typography color="text.secondary">No recommended meals available.</Typography>
+                          </Grid>
+                        );
+                      })()}
+                    </Grid>
 
                     <Typography variant="subtitle2" sx={{ mt: 2, mb: 1 }}>Daily Diet Plan</Typography>
                     <Grid container spacing={1}>

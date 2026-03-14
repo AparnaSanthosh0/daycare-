@@ -37,7 +37,9 @@ router.get('/nannies', auth, async (req, res) => {
       role: 'staff',
       'staff.staffType': 'nanny',
       isActive: true
-    }).select('firstName lastName phone staff.yearsOfExperience staff.qualification');
+    }).select(
+      'firstName lastName phone staff.yearsOfExperience staff.qualification staff.certificateUrl staff.documents staff.serviceArea staff.certification'
+    );
     
     console.log('Active nannies found:', nannies.length);
     

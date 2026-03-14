@@ -104,6 +104,60 @@ const TeacherDashboard = () => {
   const [vaOpen, setVaOpen] = useState(false);
   const [teacherHealthPlan, setTeacherHealthPlan] = useState([]);
   const [teacherHealthLoading, setTeacherHealthLoading] = useState(false);
+  const todayIso = new Date().toISOString().split('T')[0];
+  const [growthForm, setGrowthForm] = useState({
+    childId: '',
+    weightKg: '',
+    heightCm: '',
+    muacCm: '',
+    hemoglobin: '',
+    dietaryPreference: 'vegetarian',
+    hasAllergy: false,
+    teacherNotes: ''
+  });
+  const [growthSaving, setGrowthSaving] = useState(false);
+  const [growthFeedback, setGrowthFeedback] = useState({ type: '', text: '' });
+  const [teacherActivities, setTeacherActivities] = useState([]);
+  const [teacherActivitiesLoading, setTeacherActivitiesLoading] = useState(false);
+  const [activityForm, setActivityForm] = useState({
+    title: '',
+    date: todayIso,
+    category: 'learning',
+    program: 'general',
+    child: '',
+    description: ''
+  });
+  const [activityFeedback, setActivityFeedback] = useState({ type: '', text: '' });
+  const [teacherMessages, setTeacherMessages] = useState([]);
+  const [teacherMessagesLoading, setTeacherMessagesLoading] = useState(false);
+  const [messageForm, setMessageForm] = useState({
+    to: 'parent',
+    subject: '',
+    body: ''
+  });
+  const [messageFeedback, setMessageFeedback] = useState({ type: '', text: '' });
+  const [afterSchoolSuggestionForm, setAfterSchoolSuggestionForm] = useState({
+    programName: '',
+    programType: 'Homework Help',
+    description: '',
+    ageMin: 4,
+    ageMax: 8,
+    days: ['Monday', 'Wednesday'],
+    startTime: '16:00',
+    endTime: '17:00',
+    feeAmount: 0,
+    feeFrequency: 'monthly',
+    capacity: 15,
+    startDate: todayIso,
+    location: 'Activity Room',
+    requirements: '',
+    suggestionNotes: ''
+  });
+  const [afterSchoolSuggestionFeedback, setAfterSchoolSuggestionFeedback] = useState({ type: '', text: '' });
+  const [myAfterSchoolSuggestions, setMyAfterSchoolSuggestions] = useState([]);
+  const [myAfterSchoolSuggestionsLoading, setMyAfterSchoolSuggestionsLoading] = useState(false);
+  const [teacherAfterSchoolPrograms, setTeacherAfterSchoolPrograms] = useState([]);
+  const [teacherAfterSchoolProgramsLoading, setTeacherAfterSchoolProgramsLoading] = useState(false);
 
   const fetchTeacherHealthPlan = async () => {
     try {
@@ -124,6 +178,224 @@ const TeacherDashboard = () => {
       fetchTeacherHealthPlan();
     } catch (error) {
       console.error('Failed to update teacher meal completion:', error);
+    }
+  };
+
+  const getStudentName = (childId) => {
+    const student = students.find((item) => item._id === childId);
+    return student ? `${student.firstName} ${student.lastName || ''}`.trim() : 'General classroom';
+  };
+
+  const fetchTeacherActivities = async () => {
+    try {
+      setTeacherActivitiesLoading(true);
+      const response = await api.get('/staff-ops/activities');
+      setTeacherActivities(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Failed to fetch teacher activities:', error);
+      setTeacherActivities([]);
+    } finally {
+      setTeacherActivitiesLoading(false);
+    }
+  };
+
+  const fetchTeacherMessages = async () => {
+    try {
+      setTeacherMessagesLoading(true);
+      const response = await api.get('/staff-ops/messages');
+      setTeacherMessages(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Failed to fetch teacher messages:', error);
+      setTeacherMessages([]);
+    } finally {
+      setTeacherMessagesLoading(false);
+    }
+  };
+
+  const handleGrowthChildChange = (childId) => {
+    const selectedChild = students.find((student) => student._id === childId);
+    setGrowthForm((prev) => ({
+      ...prev,
+      childId,
+      hasAllergy: Boolean(selectedChild?.allergies?.length),
+    }));
+  };
+
+  const handleGrowthSubmit = async () => {
+    if (!growthForm.childId || !growthForm.weightKg || !growthForm.heightCm) {
+      setGrowthFeedback({ type: 'error', text: 'Select a child and enter both weight and height.' });
+      return;
+    }
+
+    try {
+      setGrowthSaving(true);
+      setGrowthFeedback({ type: '', text: '' });
+      await api.post(`/child-health/teacher/children/${growthForm.childId}/growth-record`, {
+        weightKg: Number(growthForm.weightKg),
+        heightCm: Number(growthForm.heightCm),
+        muacCm: growthForm.muacCm === '' ? undefined : Number(growthForm.muacCm),
+        hemoglobin: growthForm.hemoglobin === '' ? undefined : Number(growthForm.hemoglobin),
+        dietaryPreference: growthForm.dietaryPreference,
+        hasAllergy: growthForm.hasAllergy,
+        teacherNotes: growthForm.teacherNotes,
+      });
+      setGrowthFeedback({ type: 'success', text: 'Growth data saved and meal workflow refreshed.' });
+      setGrowthForm({
+        childId: '',
+        weightKg: '',
+        heightCm: '',
+        muacCm: '',
+        hemoglobin: '',
+        dietaryPreference: 'vegetarian',
+        hasAllergy: false,
+        teacherNotes: ''
+      });
+      fetchTeacherHealthPlan();
+    } catch (error) {
+      console.error('Failed to save growth record:', error);
+      setGrowthFeedback({ type: 'error', text: error.response?.data?.message || 'Failed to save growth data.' });
+    } finally {
+      setGrowthSaving(false);
+    }
+  };
+
+  const applyActivityTemplate = (template) => {
+    setActivityForm((prev) => ({
+      ...prev,
+      title: template.title,
+      category: template.category,
+      description: template.description,
+    }));
+    setActivityFeedback({ type: 'info', text: `${template.title} loaded into the activity form.` });
+  };
+
+  const handleCreateActivity = async () => {
+    if (!activityForm.title || !activityForm.date) {
+      setActivityFeedback({ type: 'error', text: 'Activity title and date are required.' });
+      return;
+    }
+
+    try {
+      setActivityFeedback({ type: '', text: '' });
+      await api.post('/staff-ops/activities', {
+        title: activityForm.title,
+        date: activityForm.date,
+        category: activityForm.category,
+        program: activityForm.program,
+        child: activityForm.child || null,
+        description: activityForm.description,
+      });
+      setActivityForm({
+        title: '',
+        date: todayIso,
+        category: 'learning',
+        program: 'general',
+        child: '',
+        description: ''
+      });
+      setActivityFeedback({ type: 'success', text: 'Activity scheduled successfully.' });
+      fetchTeacherActivities();
+    } catch (error) {
+      console.error('Failed to create activity:', error);
+      setActivityFeedback({ type: 'error', text: error.response?.data?.message || 'Failed to schedule activity.' });
+    }
+  };
+
+  const applyMessageTemplate = (subject, body) => {
+    setMessageForm((prev) => ({ ...prev, subject, body }));
+    setMessageFeedback({ type: 'info', text: 'Message template loaded.' });
+  };
+
+  const handleSendMessage = async () => {
+    if (!messageForm.subject || !messageForm.body) {
+      setMessageFeedback({ type: 'error', text: 'Subject and message are required.' });
+      return;
+    }
+
+    try {
+      setMessageFeedback({ type: '', text: '' });
+      await api.post('/staff-ops/messages', messageForm);
+      setMessageForm({ to: 'parent', subject: '', body: '' });
+      setMessageFeedback({ type: 'success', text: 'Message sent successfully.' });
+      fetchTeacherMessages();
+    } catch (error) {
+      console.error('Failed to send teacher message:', error);
+      setMessageFeedback({ type: 'error', text: error.response?.data?.message || 'Failed to send message.' });
+    }
+  };
+
+  const fetchMyAfterSchoolSuggestions = async () => {
+    try {
+      setMyAfterSchoolSuggestionsLoading(true);
+      const response = await api.get('/afterschool/my-suggestions');
+      setMyAfterSchoolSuggestions(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Failed to fetch teacher after-school suggestions:', error);
+      setMyAfterSchoolSuggestions([]);
+    } finally {
+      setMyAfterSchoolSuggestionsLoading(false);
+    }
+  };
+
+  const fetchTeacherAfterSchoolPrograms = async () => {
+    try {
+      setTeacherAfterSchoolProgramsLoading(true);
+      const response = await api.get('/afterschool/programs');
+      const list = Array.isArray(response.data) ? response.data : [];
+      const activePrograms = list.filter((item) => item?.status === 'active');
+      setTeacherAfterSchoolPrograms(activePrograms);
+    } catch (error) {
+      console.error('Failed to fetch after-school programs:', error);
+      setTeacherAfterSchoolPrograms([]);
+    } finally {
+      setTeacherAfterSchoolProgramsLoading(false);
+    }
+  };
+
+  const handleSubmitAfterSchoolSuggestion = async () => {
+    if (!afterSchoolSuggestionForm.programName || !afterSchoolSuggestionForm.description) {
+      setAfterSchoolSuggestionFeedback({ type: 'error', text: 'Program name and description are required.' });
+      return;
+    }
+
+    try {
+      setAfterSchoolSuggestionFeedback({ type: '', text: '' });
+      await api.post('/afterschool/suggestions', {
+        programName: afterSchoolSuggestionForm.programName,
+        programType: afterSchoolSuggestionForm.programType,
+        description: afterSchoolSuggestionForm.description,
+        ageGroup: {
+          min: Number(afterSchoolSuggestionForm.ageMin),
+          max: Number(afterSchoolSuggestionForm.ageMax),
+        },
+        schedule: {
+          days: afterSchoolSuggestionForm.days,
+          startTime: afterSchoolSuggestionForm.startTime,
+          endTime: afterSchoolSuggestionForm.endTime,
+        },
+        fees: {
+          amount: Number(afterSchoolSuggestionForm.feeAmount),
+          frequency: afterSchoolSuggestionForm.feeFrequency,
+        },
+        capacity: Number(afterSchoolSuggestionForm.capacity),
+        startDate: afterSchoolSuggestionForm.startDate,
+        location: afterSchoolSuggestionForm.location,
+        requirements: afterSchoolSuggestionForm.requirements,
+        suggestionNotes: afterSchoolSuggestionForm.suggestionNotes,
+      });
+
+      setAfterSchoolSuggestionFeedback({ type: 'success', text: 'Suggestion submitted for admin approval.' });
+      setAfterSchoolSuggestionForm((prev) => ({
+        ...prev,
+        programName: '',
+        description: '',
+        requirements: '',
+        suggestionNotes: ''
+      }));
+      fetchMyAfterSchoolSuggestions();
+    } catch (error) {
+      console.error('Failed to submit after-school suggestion:', error);
+      setAfterSchoolSuggestionFeedback({ type: 'error', text: error.response?.data?.message || 'Failed to submit suggestion.' });
     }
   };
 
@@ -274,6 +546,14 @@ const TeacherDashboard = () => {
     }
     if (newValue === 1) {
       fetchTeacherHealthPlan();
+    }
+    if (newValue === 2) {
+      fetchTeacherActivities();
+      fetchMyAfterSchoolSuggestions();
+      fetchTeacherAfterSchoolPrograms();
+    }
+    if (newValue === 4) {
+      fetchTeacherMessages();
     }
   };
 
@@ -1111,6 +1391,149 @@ const TeacherDashboard = () => {
         Weekly Meal Planning
       </Typography>
 
+      <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 3, border: '1px solid #dbe6e4', background: 'linear-gradient(145deg, #f8fffd 0%, #f1fbf8 100%)' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+          <Box>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Child Growth Entry
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Enter latest measurements to update nutrition planning instantly.
+            </Typography>
+          </Box>
+          <Chip
+            label={(() => {
+              const w = Number(growthForm.weightKg);
+              const h = Number(growthForm.heightCm);
+              if (!w || !h) return 'BMI: --';
+              const bmi = w / Math.pow(h / 100, 2);
+              return `BMI: ${Number.isFinite(bmi) ? bmi.toFixed(1) : '--'}`;
+            })()}
+            color="primary"
+            variant="outlined"
+          />
+        </Box>
+
+        {growthFeedback.text && <Alert severity={growthFeedback.type || 'info'} sx={{ mb: 2 }}>{growthFeedback.text}</Alert>}
+
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={5}>
+            <TextField
+              select
+              fullWidth
+              label="Child"
+              value={growthForm.childId}
+              onChange={(e) => handleGrowthChildChange(e.target.value)}
+            >
+              <MenuItem value="">Select Child</MenuItem>
+              {students.map((student) => (
+                <MenuItem key={student._id} value={student._id}>
+                  {student.firstName} {student.lastName}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={7}>
+            <Grid container spacing={1.5}>
+              <Grid item xs={6} sm={3}>
+                <TextField
+                  fullWidth
+                  label="Weight (kg)"
+                  type="number"
+                  value={growthForm.weightKg}
+                  onChange={(e) => setGrowthForm((prev) => ({ ...prev, weightKg: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <TextField
+                  fullWidth
+                  label="Height (cm)"
+                  type="number"
+                  value={growthForm.heightCm}
+                  onChange={(e) => setGrowthForm((prev) => ({ ...prev, heightCm: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <TextField
+                  fullWidth
+                  label="MUAC (cm)"
+                  type="number"
+                  value={growthForm.muacCm}
+                  onChange={(e) => setGrowthForm((prev) => ({ ...prev, muacCm: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <TextField
+                  fullWidth
+                  label="Hemoglobin"
+                  type="number"
+                  value={growthForm.hemoglobin}
+                  onChange={(e) => setGrowthForm((prev) => ({ ...prev, hemoglobin: e.target.value }))}
+                />
+              </Grid>
+            </Grid>
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <TextField
+              select
+              fullWidth
+              label="Dietary Preference"
+              value={growthForm.dietaryPreference}
+              onChange={(e) => setGrowthForm((prev) => ({ ...prev, dietaryPreference: e.target.value }))}
+            >
+              <MenuItem value="vegetarian">Vegetarian</MenuItem>
+              <MenuItem value="non-vegetarian">Non-Vegetarian</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField
+              select
+              fullWidth
+              label="Allergy Flag"
+              value={growthForm.hasAllergy ? 'yes' : 'no'}
+              onChange={(e) => setGrowthForm((prev) => ({ ...prev, hasAllergy: e.target.value === 'yes' }))}
+            >
+              <MenuItem value="no">No known allergy</MenuItem>
+              <MenuItem value="yes">Has allergy / restriction</MenuItem>
+            </TextField>
+          </Grid>
+          <Grid item xs={12} md={4}>
+            <Paper variant="outlined" sx={{ p: 1.5, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <Typography variant="caption" color="text.secondary">Entry Status</Typography>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {growthForm.childId ? 'Child selected' : 'Select child first'}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                {growthForm.hasAllergy ? 'Allergy-aware meal workflow enabled' : 'Standard meal workflow'}
+              </Typography>
+            </Paper>
+          </Grid>
+
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              multiline
+              minRows={2}
+              label="Teacher Notes"
+              value={growthForm.teacherNotes}
+              onChange={(e) => setGrowthForm((prev) => ({ ...prev, teacherNotes: e.target.value }))}
+              placeholder="Observed eating pattern, low appetite, recent illness..."
+            />
+          </Grid>
+          <Grid item xs={12}>
+            <Button
+              variant="contained"
+              onClick={handleGrowthSubmit}
+              disabled={growthSaving}
+              sx={{ px: 3, py: 1.2, borderRadius: 2, backgroundColor: '#1abc9c', '&:hover': { backgroundColor: '#16a085' } }}
+            >
+              {growthSaving ? 'Saving Growth Data...' : 'Save Growth Record'}
+            </Button>
+          </Grid>
+        </Grid>
+      </Paper>
+
       <Paper elevation={0} sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
         <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
           Daily Child Nutrition Workflow
@@ -1131,6 +1554,7 @@ const TeacherDashboard = () => {
                 <TableRow>
                   <TableCell>Child</TableCell>
                   <TableCell>Status</TableCell>
+                  <TableCell>Child Growth</TableCell>
                   <TableCell>Daily Meal Plan</TableCell>
                   <TableCell>Allergy-Safe Meals</TableCell>
                   <TableCell>Foods to Avoid</TableCell>
@@ -1144,6 +1568,16 @@ const TeacherDashboard = () => {
                     <TableCell>{row.name}</TableCell>
                     <TableCell>
                       <Chip size="small" label={row.status || 'N/A'} color="warning" variant="outlined" />
+                    </TableCell>
+                    <TableCell>
+                      <Stack spacing={0.5}>
+                        <Typography variant="caption"><strong>Weight:</strong> {row.growth?.weightKg ?? '-'} kg</Typography>
+                        <Typography variant="caption" color="text.secondary">Expected: {row.growth?.expectedWeightKg ?? '-'} kg</Typography>
+                        <Typography variant="caption"><strong>Height:</strong> {row.growth?.heightCm ?? '-'} cm</Typography>
+                        <Typography variant="caption" color="text.secondary">Expected: {row.growth?.expectedHeightCm ?? '-'} cm</Typography>
+                        <Typography variant="caption"><strong>BMI:</strong> {row.growth?.bmi ?? '-'}</Typography>
+                        <Typography variant="caption" color="warning.main"><strong>Status:</strong> {row.growth?.growthStatus || 'N/A'}</Typography>
+                      </Stack>
                     </TableCell>
                     <TableCell>
                       <Stack spacing={0.5}>
@@ -1422,380 +1856,422 @@ const TeacherDashboard = () => {
       <Typography variant="h5" sx={{ fontWeight: 600, mb: 3 }}>
         Activities Management
       </Typography>
-      
-      {/* Activity Management */}
+
       <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <SchoolIcon sx={{ color: '#1abc9c' }} />
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Activity Management
-          </Typography>
-        </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Conduct daily learning activities and track progress in skill development.
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: '#1abc9c' }}>
+          Quick Activity Actions
         </Typography>
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} sm={6} md={3}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ color: '#1abc9c', fontWeight: 600, mb: 1 }}>
-                  Learning Activities
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Plan and conduct educational sessions
-                </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Load a template, adjust the details, and save it into the live teacher activity feed.
+        </Typography>
+        <Grid container spacing={2}>
+          {[
+            { title: 'Learning Circle', category: 'learning', description: 'Circle time with letters, colors, and guided speaking practice.' },
+            { title: 'Progress Check', category: 'progress', description: 'Observe fine motor skills, participation, and concept retention.' },
+            { title: 'Special Event', category: 'event', description: 'Plan a themed group activity, celebration, or outdoor session.' },
+            { title: 'Participation Log', category: 'participation', description: 'Record which children joined and how actively they engaged.' },
+          ].map((template) => (
+            <Grid item xs={12} sm={6} md={3} key={template.title}>
+              <Button
+                fullWidth
+                variant={template.category === 'learning' ? 'contained' : 'outlined'}
+                onClick={() => applyActivityTemplate(template)}
+                sx={{
+                  py: 1.5,
+                  textTransform: 'none',
+                  backgroundColor: template.category === 'learning' ? '#1abc9c' : 'transparent',
+                  borderColor: '#1abc9c',
+                  color: template.category === 'learning' ? '#ffffff' : '#1abc9c',
+                  '&:hover': {
+                    backgroundColor: template.category === 'learning' ? '#16a085' : 'rgba(26, 188, 156, 0.08)',
+                    borderColor: '#16a085'
+                  }
+                }}
+              >
+                {template.title}
+              </Button>
+            </Grid>
+          ))}
+        </Grid>
+      </Paper>
+
+      <Grid container spacing={3}>
+        <Grid item xs={12} lg={6}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2, height: '100%' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+              Schedule Activity
+            </Typography>
+            {activityFeedback.text && <Alert severity={activityFeedback.type || 'info'} sx={{ mb: 2 }}>{activityFeedback.text}</Alert>}
+            <Grid container spacing={2}>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Activity Title"
+                  value={activityForm.title}
+                  onChange={(e) => setActivityForm((prev) => ({ ...prev, title: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="date"
+                  label="Date"
+                  InputLabelProps={{ shrink: true }}
+                  value={activityForm.date}
+                  onChange={(e) => setActivityForm((prev) => ({ ...prev, date: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Category"
+                  value={activityForm.category}
+                  onChange={(e) => setActivityForm((prev) => ({ ...prev, category: e.target.value }))}
+                >
+                  <MenuItem value="learning">Learning</MenuItem>
+                  <MenuItem value="progress">Progress</MenuItem>
+                  <MenuItem value="event">Event</MenuItem>
+                  <MenuItem value="participation">Participation</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Program"
+                  value={activityForm.program}
+                  onChange={(e) => setActivityForm((prev) => ({ ...prev, program: e.target.value }))}
+                >
+                  <MenuItem value="general">General</MenuItem>
+                  <MenuItem value="early-learning">Early Learning</MenuItem>
+                  <MenuItem value="after-school">After School</MenuItem>
+                  <MenuItem value="wellness">Wellness</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Child"
+                  value={activityForm.child}
+                  onChange={(e) => setActivityForm((prev) => ({ ...prev, child: e.target.value }))}
+                >
+                  <MenuItem value="">Whole Classroom</MenuItem>
+                  {students.map((student) => (
+                    <MenuItem key={student._id} value={student._id}>
+                      {student.firstName} {student.lastName}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={4}
+                  label="Observation / Plan"
+                  value={activityForm.description}
+                  onChange={(e) => setActivityForm((prev) => ({ ...prev, description: e.target.value }))}
+                  placeholder="What will be done, what to observe, and any expected outcomes..."
+                />
+              </Grid>
+              <Grid item xs={12}>
                 <Button
                   variant="contained"
-                  fullWidth
-                  onClick={() => alert('Start Activity feature - Coming soon!')}
-                  sx={{
-                    backgroundColor: '#1abc9c',
-                    color: '#ffffff',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': { backgroundColor: '#16a085' }
-                  }}
+                  onClick={handleCreateActivity}
+                  sx={{ backgroundColor: '#1abc9c', textTransform: 'none', '&:hover': { backgroundColor: '#16a085' } }}
                 >
-                  Start Activity
+                  Save Activity
                 </Button>
-              </CardContent>
-            </Card>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={3}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ color: '#1abc9c', fontWeight: 600, mb: 1 }}>
-                  Progress Tracking
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Record learning milestones and achievements
-                </Typography>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  onClick={() => alert('Track Progress feature - Coming soon!')}
-                  sx={{
-                    borderColor: '#1abc9c',
-                    color: '#1abc9c',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': { 
-                      borderColor: '#16a085',
-                      backgroundColor: 'rgba(26, 188, 156, 0.1)'
-                    }
-                  }}
-                >
-                  Track Progress
-                </Button>
-              </CardContent>
-            </Card>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={3}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ color: '#1abc9c', fontWeight: 600, mb: 1 }}>
-                  Special Events
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Organize games and special activities
-                </Typography>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  onClick={() => alert('Plan Event feature - Coming soon!')}
-                  sx={{
-                    borderColor: '#1abc9c',
-                    color: '#1abc9c',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': { 
-                      borderColor: '#16a085',
-                      backgroundColor: 'rgba(26, 188, 156, 0.1)'
-                    }
-                  }}
-                >
-                  Plan Event
-                </Button>
-              </CardContent>
-            </Card>
-          </Grid>
-          
-          <Grid item xs={12} sm={6} md={3}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ color: '#1abc9c', fontWeight: 600, mb: 1 }}>
-                  Participation
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Track attendance in activities
-                </Typography>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  onClick={() => alert('Record Participation feature - Coming soon!')}
-                  sx={{
-                    borderColor: '#1abc9c',
-                    color: '#1abc9c',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': { 
-                      borderColor: '#16a085',
-                      backgroundColor: 'rgba(26, 188, 156, 0.1)'
-                    }
-                  }}
-                >
-                  Record Participation
-                </Button>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* Daily Reports & Observations */}
-      <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 2, color: '#1abc9c' }}>
-          Daily Reports & Observations
-        </Typography>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              multiline
-              rows={4}
-              label="Activity Report"
-              placeholder="Describe today's activities, child behavior, and observations..."
-              variant="outlined"
-              sx={{ mb: 2 }}
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Box sx={{ border: '2px dashed #e0e0e0', borderRadius: 2, p: 3, textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Upload Photos/Videos
-              </Typography>
-              <Button
-                variant="contained"
-                sx={{
-                  backgroundColor: '#1abc9c',
-                  textTransform: 'none',
-                  '&:hover': { backgroundColor: '#16a085' }
-                }}
-              >
-                Choose Files
-              </Button>
-            </Box>
-          </Grid>
-        </Grid>
-      </Paper>
-
-      {/* Meal Consumption & Nap Time */}
-      <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
-          Meal Consumption & Nap Time Tracking
-        </Typography>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', p: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                🍽️ Meal Consumption
-              </Typography>
-              <TextField
-                select
-                fullWidth
-                label="Child Name"
-                size="small"
-                sx={{ mb: 2 }}
-                defaultValue=""
-              >
-                <MenuItem value="">Select Child</MenuItem>
-                {students.map((s) => (
-                  <MenuItem key={s._id} value={s._id}>{s.firstName} {s.lastName}</MenuItem>
-                ))}
-              </TextField>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <TextField
-                    select
-                    fullWidth
-                    label="Meal Type"
-                    size="small"
-                    defaultValue=""
-                  >
-                    <MenuItem value="breakfast">Breakfast</MenuItem>
-                    <MenuItem value="morning-snack">Morning Snack</MenuItem>
-                    <MenuItem value="lunch">Lunch</MenuItem>
-                    <MenuItem value="afternoon-snack">Afternoon Snack</MenuItem>
-                  </TextField>
-                </Grid>
-                <Grid item xs={6}>
-                  <TextField
-                    select
-                    fullWidth
-                    label="Amount Eaten"
-                    size="small"
-                    defaultValue=""
-                  >
-                    <MenuItem value="all">All</MenuItem>
-                    <MenuItem value="most">Most</MenuItem>
-                    <MenuItem value="half">Half</MenuItem>
-                    <MenuItem value="little">Little</MenuItem>
-                    <MenuItem value="none">None</MenuItem>
-                  </TextField>
-                </Grid>
               </Grid>
-              <Button
-                fullWidth
-                variant="contained"
-                sx={{
-                  mt: 2,
-                  backgroundColor: '#1abc9c',
-                  textTransform: 'none',
-                  '&:hover': { backgroundColor: '#16a085' }
-                }}
-              >
-                Record Meal
-              </Button>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', p: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 2 }}>
-                😴 Nap Time Tracking
-              </Typography>
-              <TextField
-                select
-                fullWidth
-                label="Child Name"
-                size="small"
-                sx={{ mb: 2 }}
-                defaultValue=""
-              >
-                <MenuItem value="">Select Child</MenuItem>
-                {students.map((s) => (
-                  <MenuItem key={s._id} value={s._id}>{s.firstName} {s.lastName}</MenuItem>
+            </Grid>
+          </Paper>
+        </Grid>
+        <Grid item xs={12} lg={6}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2, height: '100%' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+              Recent Activity Feed
+            </Typography>
+            {teacherActivitiesLoading ? (
+              <CircularProgress size={24} />
+            ) : teacherActivities.length === 0 ? (
+              <Alert severity="info">No activities recorded yet. Save the first activity to start the feed.</Alert>
+            ) : (
+              <Stack spacing={2}>
+                {teacherActivities.slice(0, 6).map((item) => (
+                  <Paper key={item._id} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'flex-start' }}>
+                      <Box>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.title}</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                          {item.description || 'No description added.'}
+                        </Typography>
+                      </Box>
+                      <Chip size="small" label={item.category || 'general'} color="info" variant="outlined" />
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                      {new Date(item.date || item.createdAt).toLocaleDateString()} • {getStudentName(item.child)}
+                    </Typography>
+                  </Paper>
                 ))}
-              </TextField>
-              <Grid container spacing={2}>
-                <Grid item xs={6}>
-                  <TextField
-                    fullWidth
-                    label="Sleep Start"
-                    type="time"
-                    size="small"
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-                <Grid item xs={6}>
-                  <TextField
-                    fullWidth
-                    label="Wake Up"
-                    type="time"
-                    size="small"
-                    InputLabelProps={{ shrink: true }}
-                  />
-                </Grid>
-              </Grid>
-              <TextField
-                fullWidth
-                label="Notes"
-                size="small"
-                sx={{ mt: 2 }}
-                placeholder="Sleep quality, behavior..."
-              />
-              <Button
-                fullWidth
-                variant="contained"
-                sx={{
-                  mt: 2,
-                  backgroundColor: '#1abc9c',
-                  textTransform: 'none',
-                  '&:hover': { backgroundColor: '#16a085' }
-                }}
-              >
-                Record Nap Time
-              </Button>
-            </Card>
-          </Grid>
+              </Stack>
+            )}
+          </Paper>
         </Grid>
-      </Paper>
+      </Grid>
 
-      {/* After-School Programs */}
-      <Paper elevation={0} sx={{ p: 3, borderRadius: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
-          📚 After-School Programs & Homework Help
-        </Typography>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={4}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', p: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
-                Homework Help
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Assist children with their homework
-              </Typography>
-              <Button
-                fullWidth
-                variant="outlined"
-                sx={{
-                  borderColor: '#1abc9c',
-                  color: '#1abc9c',
-                  textTransform: 'none',
-                  '&:hover': { borderColor: '#16a085' }
-                }}
-              >
-                Start Session
-              </Button>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', p: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
-                Extra Learning
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Conduct additional learning activities
-              </Typography>
-              <Button
-                fullWidth
-                variant="outlined"
-                sx={{
-                  borderColor: '#1abc9c',
-                  color: '#1abc9c',
-                  textTransform: 'none',
-                  '&:hover': { borderColor: '#16a085' }
-                }}
-              >
-                Plan Activity
-              </Button>
-            </Card>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', p: 2 }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>
-                Skills Development
-              </Typography>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Track progress in special skills
-              </Typography>
-              <Button
-                fullWidth
-                variant="outlined"
-                sx={{
-                  borderColor: '#1abc9c',
-                  color: '#1abc9c',
-                  textTransform: 'none',
-                  '&:hover': { borderColor: '#16a085' }
-                }}
-              >
-                Record Progress
-              </Button>
-            </Card>
-          </Grid>
+      <Grid container spacing={3} sx={{ mt: 0.5 }}>
+        <Grid item xs={12} lg={7}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: '#1abc9c' }}>
+              Suggest After-School Program
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Submit a program idea to admin. Approved suggestions become visible in the parent dashboard.
+            </Typography>
+            {afterSchoolSuggestionFeedback.text && (
+              <Alert severity={afterSchoolSuggestionFeedback.type || 'info'} sx={{ mb: 2 }}>
+                {afterSchoolSuggestionFeedback.text}
+              </Alert>
+            )}
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Program Name"
+                  value={afterSchoolSuggestionForm.programName}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, programName: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Program Type"
+                  value={afterSchoolSuggestionForm.programType}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, programType: e.target.value }))}
+                >
+                  {['Homework Help', 'Dance', 'Sports', 'Music', 'Art & Craft', 'Coding', 'Language Learning', 'Chess', 'Drama', 'Yoga', 'Swimming', 'Other'].map((type) => (
+                    <MenuItem key={type} value={type}>{type}</MenuItem>
+                  ))}
+                </TextField>
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={3}
+                  label="Description"
+                  value={afterSchoolSuggestionForm.description}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, description: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Age Min"
+                  value={afterSchoolSuggestionForm.ageMin}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, ageMin: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Age Max"
+                  value={afterSchoolSuggestionForm.ageMax}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, ageMax: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <TextField
+                  fullWidth
+                  type="time"
+                  label="Start Time"
+                  InputLabelProps={{ shrink: true }}
+                  value={afterSchoolSuggestionForm.startTime}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, startTime: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={6} sm={3}>
+                <TextField
+                  fullWidth
+                  type="time"
+                  label="End Time"
+                  InputLabelProps={{ shrink: true }}
+                  value={afterSchoolSuggestionForm.endTime}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, endTime: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Fee"
+                  value={afterSchoolSuggestionForm.feeAmount}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, feeAmount: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Fee Frequency"
+                  value={afterSchoolSuggestionForm.feeFrequency}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, feeFrequency: e.target.value }))}
+                >
+                  <MenuItem value="per session">Per Session</MenuItem>
+                  <MenuItem value="weekly">Weekly</MenuItem>
+                  <MenuItem value="monthly">Monthly</MenuItem>
+                  <MenuItem value="free">Free</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Capacity"
+                  value={afterSchoolSuggestionForm.capacity}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, capacity: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  type="date"
+                  label="Start Date"
+                  InputLabelProps={{ shrink: true }}
+                  value={afterSchoolSuggestionForm.startDate}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Location"
+                  value={afterSchoolSuggestionForm.location}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, location: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  label="Days (comma separated)"
+                  value={afterSchoolSuggestionForm.days.join(', ')}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({
+                    ...prev,
+                    days: e.target.value.split(',').map((d) => d.trim()).filter(Boolean),
+                  }))}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  label="Requirements"
+                  value={afterSchoolSuggestionForm.requirements}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, requirements: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  multiline
+                  minRows={2}
+                  label="Suggestion Notes to Admin"
+                  value={afterSchoolSuggestionForm.suggestionNotes}
+                  onChange={(e) => setAfterSchoolSuggestionForm((prev) => ({ ...prev, suggestionNotes: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Button
+                  variant="contained"
+                  onClick={handleSubmitAfterSchoolSuggestion}
+                  sx={{ backgroundColor: '#1abc9c', textTransform: 'none', '&:hover': { backgroundColor: '#16a085' } }}
+                >
+                  Submit Suggestion
+                </Button>
+              </Grid>
+            </Grid>
+          </Paper>
         </Grid>
+        <Grid item xs={12} lg={5}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2 }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+              My After-School Suggestions
+            </Typography>
+            {myAfterSchoolSuggestionsLoading ? (
+              <CircularProgress size={24} />
+            ) : myAfterSchoolSuggestions.length === 0 ? (
+              <Alert severity="info">No suggestions submitted yet.</Alert>
+            ) : (
+              <Stack spacing={1.5}>
+                {myAfterSchoolSuggestions.slice(0, 8).map((item) => (
+                  <Paper key={item._id} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>{item.programName}</Typography>
+                      <Chip
+                        size="small"
+                        label={String(item.status || 'pending').toUpperCase()}
+                        color={item.status === 'active' ? 'success' : item.status === 'cancelled' ? 'default' : 'warning'}
+                      />
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      {item.programType} • {item.schedule?.days?.join(', ') || 'No days'}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" display="block">
+                      {item.schedule?.startTime || '--:--'} - {item.schedule?.endTime || '--:--'} • {item.location || 'No location'}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </Paper>
+        </Grid>
+      </Grid>
+
+      <Paper elevation={0} sx={{ p: 3, mt: 3, borderRadius: 2 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            Admin Approved After-School Programs
+          </Typography>
+          <Button variant="outlined" size="small" onClick={fetchTeacherAfterSchoolPrograms} sx={{ textTransform: 'none' }}>
+            Refresh
+          </Button>
+        </Box>
+        {teacherAfterSchoolProgramsLoading ? (
+          <CircularProgress size={24} />
+        ) : teacherAfterSchoolPrograms.length === 0 ? (
+          <Alert severity="info">No active after-school programs available yet.</Alert>
+        ) : (
+          <Grid container spacing={2}>
+            {teacherAfterSchoolPrograms.slice(0, 9).map((program) => (
+              <Grid item xs={12} md={6} lg={4} key={program._id}>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
+                  <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>
+                    {program.programName}
+                  </Typography>
+                  <Chip size="small" label={program.programType || 'Program'} color="primary" sx={{ mb: 1 }} />
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {program.description || 'No description'}
+                  </Typography>
+                  <Typography variant="caption" display="block" color="text.secondary">
+                    {program.schedule?.days?.join(', ') || 'Schedule TBD'}
+                  </Typography>
+                  <Typography variant="caption" display="block" color="text.secondary">
+                    {program.schedule?.startTime || '--:--'} - {program.schedule?.endTime || '--:--'}
+                  </Typography>
+                  <Typography variant="caption" display="block" color="text.secondary">
+                    Location: {program.location || 'N/A'}
+                  </Typography>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+        )}
       </Paper>
     </Box>
   );
@@ -1818,203 +2294,117 @@ const TeacherDashboard = () => {
       <Typography variant="h5" sx={{ fontWeight: 600, mb: 3 }}>
         Messages & Communication
       </Typography>
-      
-      {/* Childcare & Supervision */}
+
       <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <ChildCareIcon sx={{ color: '#FFB800' }} />
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
-            Childcare & Supervision
-          </Typography>
-        </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Monitor and care for children throughout the day. Maintain proper hygiene, safety, and comfort.
+        <Typography variant="h6" sx={{ fontWeight: 600, mb: 1, color: '#1abc9c' }}>
+          Quick Message Templates
         </Typography>
-        
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={4}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ color: '#66BB6A', fontWeight: 600, mb: 1 }}>
-                  Safety Check
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Ensure all children are safe and accounted for
-                </Typography>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  sx={{
-                    borderColor: '#90EE90',
-                    color: '#66BB6A',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': { 
-                      borderColor: '#66BB6A',
-                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
-                    }
-                  }}
-                >
-                  Conduct Safety Check
-                </Button>
-              </CardContent>
-            </Card>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Use these templates to send faster parent and team updates from the teacher dashboard.
+        </Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} sm={4}>
+            <Button fullWidth variant="outlined" onClick={() => applyMessageTemplate('Meal update', 'Today your child completed the planned meals and responded well to the schedule.')} sx={{ textTransform: 'none', borderColor: '#1abc9c', color: '#1abc9c' }}>
+              Meal Update
+            </Button>
           </Grid>
-          
-          <Grid item xs={12} md={4}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ color: '#81C784', fontWeight: 600, mb: 1 }}>
-                  Hygiene Monitor
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Track hand washing, bathroom breaks, and cleanliness
-                </Typography>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  sx={{
-                    borderColor: '#90EE90',
-                    color: '#66BB6A',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': { 
-                      borderColor: '#66BB6A',
-                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
-                    }
-                  }}
-                >
-                  Log Hygiene Activity
-                </Button>
-              </CardContent>
-            </Card>
+          <Grid item xs={12} sm={4}>
+            <Button fullWidth variant="outlined" onClick={() => applyMessageTemplate('Activity follow-up', 'Sharing a quick update from today\'s classroom activity and participation.')} sx={{ textTransform: 'none', borderColor: '#1abc9c', color: '#1abc9c' }}>
+              Activity Follow-Up
+            </Button>
           </Grid>
-          
-          <Grid item xs={12} md={4}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ color: '#A5D6A7', fontWeight: 600, mb: 1 }}>
-                  Health Alerts
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Report unusual behavior, illness, or injuries
-                </Typography>
-                <Button
-                  variant="outlined"
-                  fullWidth
-                  sx={{
-                    borderColor: '#90EE90',
-                    color: '#66BB6A',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': { 
-                      borderColor: '#66BB6A',
-                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
-                    }
-                  }}
-                >
-                  Report Health Issue
-                </Button>
-              </CardContent>
-            </Card>
+          <Grid item xs={12} sm={4}>
+            <Button fullWidth variant="outlined" onClick={() => applyMessageTemplate('Health observation', 'Observed a small health-related concern today. Please review and follow up if needed.')} sx={{ textTransform: 'none', borderColor: '#1abc9c', color: '#1abc9c' }}>
+              Health Observation
+            </Button>
           </Grid>
         </Grid>
       </Paper>
 
-      {/* Meal & Health Monitoring */}
-      <Paper elevation={0} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Typography variant="h6" sx={{ fontWeight: 600, mb: 3, color: '#1abc9c' }}>
-          Meal & Health Monitoring
-        </Typography>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={4}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ color: '#66BB6A', fontWeight: 600, mb: 1 }}>
-                  Meal Distribution
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Ensure children receive correct meals according to plan
-                </Typography>
-                <Button
-                  variant="outlined"
+      <Grid container spacing={3}>
+        <Grid item xs={12} lg={6}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2, height: '100%' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+              Compose Message
+            </Typography>
+            {messageFeedback.text && <Alert severity={messageFeedback.type || 'info'} sx={{ mb: 2 }}>{messageFeedback.text}</Alert>}
+            <Grid container spacing={2}>
+              <Grid item xs={12} sm={4}>
+                <TextField
+                  select
                   fullWidth
-                  sx={{
-                    borderColor: '#90EE90',
-                    color: '#66BB6A',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': { 
-                      borderColor: '#66BB6A',
-                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
-                    }
-                  }}
+                  label="Recipient"
+                  value={messageForm.to}
+                  onChange={(e) => setMessageForm((prev) => ({ ...prev, to: e.target.value }))}
                 >
-                  View Meal Plan
-                </Button>
-              </CardContent>
-            </Card>
-          </Grid>
-          
-          <Grid item xs={12} md={4}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ color: '#81C784', fontWeight: 600, mb: 1 }}>
-                  Allergy Tracking
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Monitor food allergies and dietary restrictions
-                </Typography>
-                <Button
-                  variant="outlined"
+                  <MenuItem value="parent">Parent</MenuItem>
+                  <MenuItem value="admin">Admin</MenuItem>
+                  <MenuItem value="staff">Staff</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} sm={8}>
+                <TextField
                   fullWidth
-                  sx={{
-                    borderColor: '#90EE90',
-                    color: '#66BB6A',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': { 
-                      borderColor: '#66BB6A',
-                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
-                    }
-                  }}
-                >
-                  Check Allergies
-                </Button>
-              </CardContent>
-            </Card>
-          </Grid>
-          
-          <Grid item xs={12} md={4}>
-            <Card elevation={0} sx={{ border: '1px solid #e0e0e0', height: '100%' }}>
-              <CardContent>
-                <Typography variant="h6" sx={{ color: '#A5D6A7', fontWeight: 600, mb: 1 }}>
-                  Health Records
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Record minor health issues and first aid
-                </Typography>
-                <Button
-                  variant="outlined"
+                  label="Subject"
+                  value={messageForm.subject}
+                  onChange={(e) => setMessageForm((prev) => ({ ...prev, subject: e.target.value }))}
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <TextField
                   fullWidth
-                  sx={{
-                    borderColor: '#90EE90',
-                    color: '#66BB6A',
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    '&:hover': { 
-                      borderColor: '#66BB6A',
-                      backgroundColor: 'rgba(144, 238, 144, 0.1)'
-                    }
-                  }}
+                  multiline
+                  minRows={5}
+                  label="Message"
+                  value={messageForm.body}
+                  onChange={(e) => setMessageForm((prev) => ({ ...prev, body: e.target.value }))}
+                  placeholder="Write the update you want to send..."
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Button
+                  variant="contained"
+                  onClick={handleSendMessage}
+                  sx={{ backgroundColor: '#1abc9c', textTransform: 'none', '&:hover': { backgroundColor: '#16a085' } }}
                 >
-                  Log Health Issue
+                  Send Message
                 </Button>
-              </CardContent>
-            </Card>
-          </Grid>
+              </Grid>
+            </Grid>
+          </Paper>
         </Grid>
-      </Paper>
+        <Grid item xs={12} lg={6}>
+          <Paper elevation={0} sx={{ p: 3, borderRadius: 2, height: '100%' }}>
+            <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+              Recent Messages
+            </Typography>
+            {teacherMessagesLoading ? (
+              <CircularProgress size={24} />
+            ) : teacherMessages.length === 0 ? (
+              <Alert severity="info">No messages sent yet from this dashboard.</Alert>
+            ) : (
+              <Stack spacing={2}>
+                {teacherMessages.slice(0, 6).map((item) => (
+                  <Paper key={item._id} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'flex-start' }}>
+                      <Box>
+                        <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.subject || 'Untitled message'}</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                          {item.body || 'No message body provided.'}
+                        </Typography>
+                      </Box>
+                      <Chip size="small" label={String(item.to || 'parent').toUpperCase()} color="primary" variant="outlined" />
+                    </Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                      {new Date(item.at || item.createdAt).toLocaleString()}
+                    </Typography>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </Paper>
+        </Grid>
+      </Grid>
     </Box>
   );
 
@@ -3764,9 +4154,6 @@ const TeacherDashboard = () => {
         {currentTab === 10 && renderStoriesTab()}
         {currentTab === 11 && renderGamesTab()}
       </Box>
-      
-      {/* Voice Assistant */}
-      <VoiceAssistant open={vaOpen} onClose={handleVaClose} />
       
       {/* Blockchain Attendance Dialogs */}
       {selectedChildForBlockchain && (

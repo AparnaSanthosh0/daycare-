@@ -133,6 +133,8 @@ const AdminDashboard = () => {
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentDialog, setPaymentDialog] = useState({ open: false, payment: null });
   const [payoutForm, setPayoutForm] = useState({ payoutMethod: 'bank_transfer', payoutDetails: {}, payoutTransactionId: '' });
+  const [afterSchoolSuggestions, setAfterSchoolSuggestions] = useState([]);
+  const [afterSchoolLoading, setAfterSchoolLoading] = useState(false);
 
   // Fetch dashboard data
   const fetchDashboardData = async () => {
@@ -228,6 +230,33 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchAfterSchoolSuggestions = async () => {
+    try {
+      setAfterSchoolLoading(true);
+      const response = await api.get('/afterschool/suggestions');
+      setAfterSchoolSuggestions(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Error fetching after-school suggestions:', error);
+      setAfterSchoolSuggestions([]);
+    } finally {
+      setAfterSchoolLoading(false);
+    }
+  };
+
+  const handleAfterSchoolSuggestionAction = async (id, action) => {
+    try {
+      const endpoint = action === 'approve'
+        ? `/afterschool/suggestions/${id}/approve`
+        : `/afterschool/suggestions/${id}/reject`;
+      await api.patch(endpoint);
+      setSuccess(`Suggestion ${action === 'approve' ? 'approved' : 'rejected'} successfully.`);
+      fetchAfterSchoolSuggestions();
+    } catch (error) {
+      console.error(`Failed to ${action} suggestion:`, error);
+      setError(error.response?.data?.message || `Failed to ${action} suggestion`);
+    }
+  };
+
 
   // Fetch all users with details
   const fetchAllUsersData = async () => {
@@ -252,6 +281,7 @@ const AdminDashboard = () => {
     fetchAllUsersData();
     fetchNannyData();
     fetchPendingPayments();
+    fetchAfterSchoolSuggestions();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1117,6 +1147,7 @@ const AdminDashboard = () => {
           <Tab label="Vaccination Records" />
           <Tab label="Payment Management" />
           <Tab label="Reports & Analytics" />
+          <Tab label="After School Programs" />
         </Tabs>
 
         <Box sx={{ mt: 3 }}>
@@ -1707,6 +1738,101 @@ const AdminDashboard = () => {
                   </Card>
                 </Grid>
               </Grid>
+            </Box>
+          )}
+
+          {/* After School Programs Tab */}
+          {tabValue === 12 && (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Box>
+                  <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                    After School Program Suggestions
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Teachers submit ideas here. Approve to make them visible to parents.
+                  </Typography>
+                </Box>
+                <Button variant="outlined" onClick={fetchAfterSchoolSuggestions} sx={{ textTransform: 'none' }}>
+                  Refresh Suggestions
+                </Button>
+              </Box>
+
+              {afterSchoolLoading ? (
+                <CircularProgress size={24} />
+              ) : afterSchoolSuggestions.length === 0 ? (
+                <Alert severity="info">No teacher suggestions found.</Alert>
+              ) : (
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Program</TableCell>
+                        <TableCell>Type</TableCell>
+                        <TableCell>Teacher</TableCell>
+                        <TableCell>Status</TableCell>
+                        <TableCell>Schedule</TableCell>
+                        <TableCell>Notes</TableCell>
+                        <TableCell align="right">Actions</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {afterSchoolSuggestions.map((item) => (
+                        <TableRow key={item._id}>
+                          <TableCell>
+                            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                              {item.programName}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {item.description}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>{item.programType}</TableCell>
+                          <TableCell>
+                            {item.createdBy ? `${item.createdBy.firstName || ''} ${item.createdBy.lastName || ''}`.trim() : 'Unknown'}
+                          </TableCell>
+                          <TableCell>
+                            <Chip
+                              size="small"
+                              label={String(item.status || 'pending').toUpperCase()}
+                              color={item.status === 'active' ? 'success' : item.status === 'cancelled' ? 'default' : 'warning'}
+                            />
+                          </TableCell>
+                          <TableCell>
+                            {item.schedule?.days?.join(', ') || '-'}
+                            <Typography variant="caption" display="block" color="text.secondary">
+                              {item.schedule?.startTime || '--:--'} - {item.schedule?.endTime || '--:--'}
+                            </Typography>
+                          </TableCell>
+                          <TableCell>{item.suggestionNotes || '-'}</TableCell>
+                          <TableCell align="right">
+                            <Button
+                              size="small"
+                              color="success"
+                              startIcon={<CheckCircle />}
+                              disabled={item.status === 'active'}
+                              onClick={() => handleAfterSchoolSuggestionAction(item._id, 'approve')}
+                              sx={{ mr: 1, textTransform: 'none' }}
+                            >
+                              Approve
+                            </Button>
+                            <Button
+                              size="small"
+                              color="error"
+                              startIcon={<Cancel />}
+                              disabled={item.status === 'cancelled'}
+                              onClick={() => handleAfterSchoolSuggestionAction(item._id, 'reject')}
+                              sx={{ textTransform: 'none' }}
+                            >
+                              Reject
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
             </Box>
           )}
         </Box>

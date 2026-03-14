@@ -17,17 +17,15 @@ import {
   CardContent,
   CardMedia,
   Snackbar,
-  Menu,
-  MenuItem,
 } from '@mui/material';
-import { Favorite, FavoriteBorder, ShoppingCart, ArrowBack, ViewInAr, Image, ArrowDropDown, Checkroom, CameraAlt } from '@mui/icons-material';
+import { Favorite, FavoriteBorder, ShoppingCart, ArrowBack } from '@mui/icons-material';
 import { Fab, Badge } from '@mui/material';
 import ShopHeader from './ShopHeader';
 import api, { API_BASE_URL } from '../../config/api';
 import { useShop } from '../../contexts/ShopContext';
 import { recommendForProduct, recommendForUser, collectSignalsFromContext } from '../../utils/recommendations';
 import { deriveSizeOptions } from '../../utils/sizes';
-import Product3DImageViewer from '../Product3DImageViewer';
+import Image3DViewer from '../Image3DViewer';
 
 function toAbsoluteImageUrl(maybePath) {
   if (!maybePath) return null;
@@ -57,10 +55,9 @@ export default function ProductDetail() {
   const [product, setProduct] = React.useState(null);
   const [selectedSize, setSelectedSize] = React.useState(null);
   const [images, setImages] = React.useState([]);
+  const [imageViewMode, setImageViewMode] = React.useState('normal');
   const [allProducts, setAllProducts] = React.useState([]);
   const [snack, setSnack] = React.useState('');
-  const [view3D,      setView3D]     = React.useState(false); // Toggle for 3D view
-  const [arMenuAnchor, setArMenuAnchor] = React.useState(null);
   const sizeOptions = deriveSizeOptions(product?.category, product?.sizeBasis || null);
 
   // Determine if this product supports AR/customization
@@ -162,8 +159,6 @@ export default function ProductDetail() {
     return () => { mounted = false; };
   }, [id, recordView, pushRecentlyViewed]);
 
-  const [activeImage, setActiveImage] = React.useState(0);
-
   const canAdd = product && product.stockQty > 0 && ((sizeOptions.length === 0) || !!selectedSize);
   const similarProducts = React.useMemo(() => {
     if (!product || !allProducts?.length) return [];
@@ -195,61 +190,73 @@ export default function ProductDetail() {
         ) : (
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
-              {/* Toggle between 2D and 3D view - Available for ALL products */}
-              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2 }}>
-                <ToggleButtonGroup
-                  value={view3D ? '3d' : '2d'}
-                  exclusive
-                  onChange={(e, newValue) => {
-                    if (newValue !== null) {
-                      setView3D(newValue === '3d');
-                    }
-                  }}
-                  size="small"
-                  sx={{ backgroundColor: 'white', borderRadius: 2 }}
-                >
-                  <ToggleButton value="2d" sx={{ px: 3 }}>
-                    <Image sx={{ mr: 1 }} />
-                    Images
-                  </ToggleButton>
-                  <ToggleButton value="3d" sx={{ px: 3 }}>
-                    <ViewInAr sx={{ mr: 1 }} />
-                    3D View
-                  </ToggleButton>
-                </ToggleButtonGroup>
-              </Box>
-
-              {/* 3D Viewer or Image Gallery */}
-              {view3D ? (
-                <Box sx={{ height: 500 }}>
-                  {/* Use enhanced Product3DImageViewer for all products - shows actual product image with 3D effects */}
-                  <Product3DImageViewer
-                    imageUrl={toAbsoluteImageUrl(product.image)}
-                    productName={product.name}
-                    autoRotate={true}
-                    height={500}
-                    backgroundColor="#f8f9fa"
-                    showControls={true}
-                  />
+              <Box sx={{ border: '1px solid #e2e8f0', borderRadius: 2, bgcolor: 'white', p: 1.5 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 1, flexWrap: 'wrap' }}>
+                  <Typography variant="subtitle1" fontWeight={700}>Product View</Typography>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={imageViewMode}
+                    onChange={(_, value) => {
+                      if (value) setImageViewMode(value);
+                    }}
+                  >
+                    <ToggleButton value="normal">Normal View</ToggleButton>
+                    <ToggleButton value="interactive">Rotate / Zoom</ToggleButton>
+                  </ToggleButtonGroup>
                 </Box>
-              ) : (
-                <Grid container spacing={1}>
-                  <Grid item xs={2}>
-                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                      {images.map((img, idx) => (
-                        <Box key={idx} onClick={() => setActiveImage(idx)} sx={{ p: 0.5, border: idx === activeImage ? '2px solid #ff6f00' : '1px solid #eee', borderRadius: 1, cursor: 'pointer' }}>
-                          <img src={img} alt={`thumb-${idx}`} style={{ width: '100%', aspectRatio: '1/1', objectFit: 'cover' }} onError={(e)=>{e.currentTarget.src='/logo192.svg';}} />
-                        </Box>
-                      ))}
-                    </Box>
-                  </Grid>
-                  <Grid item xs={10}>
-                    <Box sx={{ bgcolor: '#f3f4f6', borderRadius: 2, p: 1 }}>
-                      <img src={images[activeImage] || product.image} alt={product.name} style={{ width: '100%', maxHeight: 520, objectFit: 'contain' }} onError={(e)=>{e.currentTarget.src='/logo192.svg';}} />
-                    </Box>
-                  </Grid>
-                </Grid>
-              )}
+
+                {imageViewMode === 'interactive' ? (
+                  <Image3DViewer
+                    imageUrl={images[0] || toAbsoluteImageUrl(product.image) || '/logo192.svg'}
+                    autoRotate={false}
+                    height={500}
+                    backgroundColor="#f8fafc"
+                  />
+                ) : (
+                  <Box
+                    component="img"
+                    src={images[0] || toAbsoluteImageUrl(product.image) || '/logo192.svg'}
+                    alt={product.name}
+                    sx={{ width: '100%', height: 500, objectFit: 'contain', borderRadius: 1.5, bgcolor: '#f8fafc' }}
+                    onError={(e) => { e.currentTarget.src = '/logo192.svg'; }}
+                  />
+                )}
+
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                  Switch to interactive mode to rotate, zoom, and inspect the product in detail.
+                </Typography>
+
+                {(images || []).length > 1 && (
+                  <Box sx={{ display: 'flex', gap: 1, mt: 1.5, overflowX: 'auto' }}>
+                    {images.map((img, index) => (
+                      <Box
+                        key={`${img}-${index}`}
+                        component="img"
+                        src={img}
+                        alt={`${product.name}-${index + 1}`}
+                        sx={{
+                          width: 72,
+                          height: 72,
+                          objectFit: 'cover',
+                          borderRadius: 1,
+                          border: '1px solid #cbd5e1',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                        }}
+                        onClick={() => setImages((prev) => {
+                          const next = [...prev];
+                          const selected = next[index];
+                          next.splice(index, 1);
+                          next.unshift(selected);
+                          return next;
+                        })}
+                        onError={(e) => { e.currentTarget.src = '/logo192.svg'; }}
+                      />
+                    ))}
+                  </Box>
+                )}
+              </Box>
             </Grid>
             <Grid item xs={12} md={6}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
@@ -295,64 +302,6 @@ export default function ProductDetail() {
                 </IconButton>
                 <Typography variant="body2" color="text.secondary">Shortlist</Typography>
               </Box>
-
-              {/* ── Customize & AR Dropdown ── */}
-              {product && (
-                <Box sx={{ mb: 2 }}>
-                  <Button
-                    fullWidth
-                    variant="outlined"
-                    endIcon={<ArrowDropDown />}
-                    onClick={e => setArMenuAnchor(e.currentTarget)}
-                    sx={{
-                      borderColor: '#764ba2',
-                      color: '#764ba2',
-                      fontWeight: 700,
-                      borderRadius: 2,
-                      py: 1.2,
-                      background: 'linear-gradient(135deg,#667eea11,#764ba211)',
-                      '&:hover': { borderColor: '#667eea', bgcolor: '#667eea18' },
-                    }}
-                  >
-                    ✨ Customize & Try On
-                  </Button>
-                  <Menu
-                    anchorEl={arMenuAnchor}
-                    open={Boolean(arMenuAnchor)}
-                    onClose={() => setArMenuAnchor(null)}
-                    PaperProps={{ sx: { borderRadius: 2, minWidth: 240, boxShadow: 6 } }}
-                  >
-                    {(isClothing) && (
-                      <MenuItem onClick={() => { setArMenuAnchor(null); navigate(`/outfit-ar?productId=${product.id || product._id}`); }}
-                        sx={{ gap: 1.5, py: 1.5 }}>
-                        <Checkroom sx={{ color: '#667eea' }} />
-                        <Box>
-                          <Typography fontWeight={700} fontSize="0.9rem">Customize Outfit</Typography>
-                          <Typography variant="caption" color="text.secondary">Design color, style & add to cart</Typography>
-                        </Box>
-                      </MenuItem>
-                    )}
-                    {(isFaceAR || isClothing) && (
-                      <MenuItem onClick={() => { setArMenuAnchor(null); navigate(`/face-ar?productId=${product.id || product._id}`); }}
-                        sx={{ gap: 1.5, py: 1.5 }}>
-                        <CameraAlt sx={{ color: '#f06292' }} />
-                        <Box>
-                          <Typography fontWeight={700} fontSize="0.9rem">Try Face AR</Typography>
-                          <Typography variant="caption" color="text.secondary">Try on accessories with live camera</Typography>
-                        </Box>
-                      </MenuItem>
-                    )}
-                    <MenuItem onClick={() => { setArMenuAnchor(null); navigate('/alphabet-ar'); }}
-                      sx={{ gap: 1.5, py: 1.5 }}>
-                      <Typography sx={{ fontSize: 20 }}>🔤</Typography>
-                      <Box>
-                        <Typography fontWeight={700} fontSize="0.9rem">AR Alphabet Scanner</Typography>
-                        <Typography variant="caption" color="text.secondary">Fun learning AR for kids</Typography>
-                      </Box>
-                    </MenuItem>
-                  </Menu>
-                </Box>
-              )}
 
               {/* AR Try-On Banner for face accessories / makeup */}
               {(product.category?.toLowerCase().includes('accessory') ||

@@ -1,14 +1,59 @@
 const express = require('express');
 const { body, validationResult } = require('express-validator');
 const Child = require('../models/Child');
+const FeeStructure = require('../models/FeeStructure');
 const User = require('../models/User');
 const auth = require('../middleware/auth');
 const { authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
+function isDoctorMealSubscriptionActive(subscription = {}) {
+  if (subscription.preference !== 'doctor_recommended' || subscription.status !== 'active') return false;
+  const now = new Date();
+  const startDate = subscription.startDate ? new Date(subscription.startDate) : null;
+  const endDate = subscription.endDate ? new Date(subscription.endDate) : null;
+  if (startDate && startDate > now) return false;
+  if (subscription.durationType === 'specific_period' && endDate && endDate < now) return false;
+  return true;
+}
+
 // Admin middleware
 const adminOnly = [auth, authorize('admin')];
+
+const normalizeStringList = (value) => {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => String(item || '').trim())
+      .filter(Boolean);
+  }
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+};
+
+const normalizeAddonList = (value) => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((addon) => ({
+      name: String(addon?.name || '').trim(),
+      amount: Number(addon?.amount || 0),
+      description: String(addon?.description || '').trim(),
+    }))
+    .filter((addon) => addon.name);
+};
+
+async function verifyParentChildAccess(user, childId) {
+  const child = await Child.findById(childId);
+  if (!child) return { allowed: false, child: null, reason: 'Child not found' };
+  if (user.role === 'parent') {
+    const allowed = Array.isArray(child.parents) && child.parents.some((parentId) => parentId.toString() === user.userId);
+    if (!allowed) return { allowed: false, child: null, reason: 'Access denied' };
+  }
+  return { allowed: true, child, reason: '' };
+}
 
 // Get billing stats (admin only)
 router.get('/stats', adminOnly, async (req, res) => {
@@ -61,6 +106,217 @@ router.get('/payments', adminOnly, async (req, res) => {
     res.json(payments);
   } catch (error) {
     console.error('Error fetching payments:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get fee structures
+router.get('/fee-structures', auth, async (req, res) => {
+  try {
+    const { program, active, published } = req.query;
+    const query = {};
+
+    if (program) {
+      query.program = program;
+    }
+
+    if (req.user.role === 'admin') {
+      if (active !== undefined) query.isActive = active === 'true';
+      if (published !== undefined) query.isPublished = published === 'true';
+    } else {
+      query.isActive = true;
+      query.isPublished = true;
+    }
+
+    const feeStructures = await FeeStructure.find(query)
+      .sort({ baseAmount: 1, createdAt: -1 });
+
+    res.json(feeStructures);
+  } catch (error) {
+    console.error('Error fetching fee structures:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Create fee structure (admin only)
+router.post('/fee-structures', adminOnly, [
+  body('name').notEmpty().withMessage('Name is required'),
+  body('baseAmount').isNumeric().withMessage('Base amount must be numeric')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
+    }
+
+    const payload = {
+      name: String(req.body.name || '').trim(),
+      description: String(req.body.description || '').trim(),
+      program: req.body.program || 'all',
+      billingCycle: req.body.billingCycle || 'monthly',
+      baseAmount: Number(req.body.baseAmount || 0),
+      includedServices: normalizeStringList(req.body.includedServices),
+      optionalAddons: normalizeAddonList(req.body.optionalAddons),
+      isPublished: req.body.isPublished !== false,
+      isActive: req.body.isActive !== false,
+      createdBy: req.user.userId,
+      updatedBy: req.user.userId,
+    };
+
+    const existing = await FeeStructure.findOne({ name: payload.name, program: payload.program });
+    if (existing) {
+      return res.status(409).json({ message: 'A fee structure with this name and program already exists' });
+    }
+
+    const feeStructure = await FeeStructure.create(payload);
+    res.status(201).json({ message: 'Fee structure created successfully', feeStructure });
+  } catch (error) {
+    console.error('Error creating fee structure:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update fee structure (admin only)
+router.put('/fee-structures/:id', adminOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const feeStructure = await FeeStructure.findById(id);
+
+    if (!feeStructure) {
+      return res.status(404).json({ message: 'Fee structure not found' });
+    }
+
+    const nextName = req.body.name !== undefined ? String(req.body.name || '').trim() : feeStructure.name;
+    const nextProgram = req.body.program !== undefined ? req.body.program : feeStructure.program;
+    if (nextName !== feeStructure.name || nextProgram !== feeStructure.program) {
+      const duplicate = await FeeStructure.findOne({
+        _id: { $ne: id },
+        name: nextName,
+        program: nextProgram,
+      });
+      if (duplicate) {
+        return res.status(409).json({ message: 'A fee structure with this name and program already exists' });
+      }
+    }
+
+    if (req.body.name !== undefined) feeStructure.name = nextName;
+    if (req.body.description !== undefined) feeStructure.description = String(req.body.description || '').trim();
+    if (req.body.program !== undefined) feeStructure.program = nextProgram;
+    if (req.body.billingCycle !== undefined) feeStructure.billingCycle = req.body.billingCycle;
+    if (req.body.baseAmount !== undefined) feeStructure.baseAmount = Number(req.body.baseAmount || 0);
+    if (req.body.includedServices !== undefined) feeStructure.includedServices = normalizeStringList(req.body.includedServices);
+    if (req.body.optionalAddons !== undefined) feeStructure.optionalAddons = normalizeAddonList(req.body.optionalAddons);
+    if (req.body.isPublished !== undefined) feeStructure.isPublished = Boolean(req.body.isPublished);
+    if (req.body.isActive !== undefined) feeStructure.isActive = Boolean(req.body.isActive);
+    feeStructure.updatedBy = req.user.userId;
+
+    await feeStructure.save();
+    res.json({ message: 'Fee structure updated successfully', feeStructure });
+  } catch (error) {
+    console.error('Error updating fee structure:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Deactivate fee structure (admin only)
+router.delete('/fee-structures/:id', adminOnly, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const feeStructure = await FeeStructure.findById(id);
+
+    if (!feeStructure) {
+      return res.status(404).json({ message: 'Fee structure not found' });
+    }
+
+    feeStructure.isActive = false;
+    feeStructure.isPublished = false;
+    feeStructure.updatedBy = req.user.userId;
+    await feeStructure.save();
+
+    res.json({ message: 'Fee structure deactivated successfully' });
+  } catch (error) {
+    console.error('Error deactivating fee structure:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get fee options for a child (parent/admin)
+router.get('/fee-structures/child/:childId/options', auth, async (req, res) => {
+  try {
+    const { childId } = req.params;
+    const access = await verifyParentChildAccess(req.user, childId);
+    if (!access.allowed) {
+      return res.status(access.reason === 'Child not found' ? 404 : 403).json({ message: access.reason });
+    }
+
+    const child = access.child;
+    const options = await FeeStructure.find({
+      isActive: true,
+      isPublished: true,
+      program: { $in: [child.program, 'all'] },
+    }).sort({ baseAmount: 1, createdAt: -1 });
+
+    res.json({
+      childId,
+      childName: `${child.firstName} ${child.lastName}`,
+      program: child.program,
+      currentSelection: child.feeStructureSelection || null,
+      options,
+    });
+  } catch (error) {
+    console.error('Error fetching child fee options:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Select fee structure for a child (parent/admin)
+router.put('/fee-structures/child/:childId/select', auth, [
+  body('feeStructureId').notEmpty().withMessage('Fee structure ID is required')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ message: 'Validation errors', errors: errors.array() });
+    }
+
+    const { childId } = req.params;
+    const { feeStructureId } = req.body;
+
+    const access = await verifyParentChildAccess(req.user, childId);
+    if (!access.allowed) {
+      return res.status(access.reason === 'Child not found' ? 404 : 403).json({ message: access.reason });
+    }
+
+    const feeStructure = await FeeStructure.findOne({ _id: feeStructureId, isActive: true, isPublished: true });
+    if (!feeStructure) {
+      return res.status(404).json({ message: 'Fee structure not found or unavailable' });
+    }
+
+    const child = access.child;
+    if (feeStructure.program !== 'all' && feeStructure.program !== child.program) {
+      return res.status(400).json({ message: 'Selected fee structure is not available for this child program' });
+    }
+
+    child.feeStructureSelection = {
+      feeStructureId: feeStructure._id,
+      feeName: feeStructure.name,
+      billingCycle: feeStructure.billingCycle,
+      baseAmount: Number(feeStructure.baseAmount || 0),
+      includedServices: feeStructure.includedServices || [],
+      optionalAddons: feeStructure.optionalAddons || [],
+      selectedAt: new Date(),
+      selectedBy: req.user.userId,
+    };
+    child.tuitionRate = Number(feeStructure.baseAmount || 0);
+    await child.save();
+
+    res.json({
+      message: 'Fee structure selected successfully',
+      selection: child.feeStructureSelection,
+      tuitionRate: child.tuitionRate,
+    });
+  } catch (error) {
+    console.error('Error selecting fee structure:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -188,15 +444,49 @@ router.get('/invoices/child/:childId', auth, async (req, res) => {
       return res.status(404).json({ message: 'Child not found' });
     }
 
-    // Generate sample invoice for the child
+    const selectedFeeStructure = child.feeStructureSelection || null;
+    const hasSelectedFee = Boolean(selectedFeeStructure?.feeStructureId && selectedFeeStructure?.feeName);
+    const tuitionAmount = Number(hasSelectedFee ? selectedFeeStructure.baseAmount : (child.tuitionRate || 500));
+    const hasActiveDoctorMealSubscription = isDoctorMealSubscriptionActive(child.mealSubscription || {});
+    const mealSubscriptionFee = hasActiveDoctorMealSubscription ? Number(child.mealSubscription?.extraFee || 0) : 0;
+    const invoiceItems = [
+      {
+        name: hasSelectedFee
+          ? `${selectedFeeStructure.feeName} (${selectedFeeStructure.billingCycle || 'monthly'})`
+          : `Monthly tuition for ${child.firstName} ${child.lastName}`,
+        amount: tuitionAmount,
+      }
+    ];
+
+    if (hasSelectedFee && Array.isArray(selectedFeeStructure.includedServices) && selectedFeeStructure.includedServices.length > 0) {
+      selectedFeeStructure.includedServices.forEach((serviceName) => {
+        invoiceItems.push({
+          name: `Included: ${serviceName}`,
+          amount: 0,
+        });
+      });
+    }
+
+    if (hasActiveDoctorMealSubscription && mealSubscriptionFee > 0) {
+      invoiceItems.push({
+        name: `Doctor meal subscription${child.mealSubscription?.selectedPlanTitle ? ` - ${child.mealSubscription.selectedPlanTitle}` : ''}`,
+        amount: mealSubscriptionFee,
+      });
+    }
+
     const invoices = [{
       _id: `inv_${childId}`,
       invoiceNumber: 'INV-001',
       childId: childId,
-      amount: child.tuitionRate || 500,
+      amount: invoiceItems.reduce((sum, item) => sum + Number(item.amount || 0), 0),
       dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
       status: 'pending',
-      description: `Monthly tuition for ${child.firstName} ${child.lastName}`,
+      description: hasActiveDoctorMealSubscription
+        ? `Monthly tuition and doctor meal subscription for ${child.firstName} ${child.lastName}`
+        : `Monthly tuition for ${child.firstName} ${child.lastName}`,
+      items: invoiceItems,
+      feeStructureSelection: selectedFeeStructure,
+      mealSubscription: child.mealSubscription || null,
       createdAt: new Date()
     }];
     

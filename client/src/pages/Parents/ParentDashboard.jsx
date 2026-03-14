@@ -154,11 +154,34 @@ const ParentDashboard = ({ initialTab }) => {
   });
   const [parentHealthSummary, setParentHealthSummary] = useState(null);
   const [parentHealthLoading, setParentHealthLoading] = useState(false);
+  const [mealSubscriptionData, setMealSubscriptionData] = useState({
+    approvedDaycarePlan: null,
+    doctorSuggestedPlans: [],
+    pricing: {},
+    currentSubscription: null,
+    doctorSuggestionNotes: ''
+  });
+  const [mealSubscriptionLoading, setMealSubscriptionLoading] = useState(false);
+  const [mealSubscriptionSaving, setMealSubscriptionSaving] = useState(false);
+  const [mealSubscriptionForm, setMealSubscriptionForm] = useState({
+    preference: 'approved_daycare',
+    selectedPlanTitle: '',
+    durationType: 'specific_period',
+    startDate: new Date().toISOString().slice(0, 10),
+    endDate: ''
+  });
+  const [mealSubscriptionMessage, setMealSubscriptionMessage] = useState({ type: '', text: '' });
+  const [nannyServiceNotes, setNannyServiceNotes] = useState([]);
+  const [nannyNotesLoading, setNannyNotesLoading] = useState(false);
   // Staff information
   const [assignedStaff, setAssignedStaff] = useState([]);
   
   // Billing states
   const [billingData, setBillingData] = useState({ invoices: [], payments: [] });
+  const [feeOptionsData, setFeeOptionsData] = useState({ options: [], currentSelection: null, program: '' });
+  const [feeSelectionLoading, setFeeSelectionLoading] = useState(false);
+  const [feeSelectionSaving, setFeeSelectionSaving] = useState(false);
+  const [feeSelectionMessage, setFeeSelectionMessage] = useState({ type: '', text: '' });
   const [paymentDialog, setPaymentDialog] = useState({ open: false, invoice: null });
   const [paymentLoading, setPaymentLoading] = useState(false);
 
@@ -226,6 +249,8 @@ const ParentDashboard = ({ initialTab }) => {
   const [selectedProgram, setSelectedProgram] = useState(null);
   const [enrollmentLoading, setEnrollmentLoading] = useState(false);
   const [afterSchoolMessage, setAfterSchoolMessage] = useState({ type: '', text: '' });
+  const [parentTeacherMessages, setParentTeacherMessages] = useState([]);
+  const [parentTeacherMessagesLoading, setParentTeacherMessagesLoading] = useState(false);
   const [addChildSuccess, setAddChildSuccess] = useState('');
   const [addChildError, setAddChildError] = useState('');
 
@@ -558,8 +583,11 @@ const ParentDashboard = ({ initialTab }) => {
     if (activeChildId) {
       fetchChildData(activeChildId);
       fetchBillingData();
+      if (user?.role === 'parent') {
+        fetchFeeOptions();
+      }
     }
-  }, [activeChildId, fetchChildData]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeChildId, fetchChildData, user?.role]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Parent dashboard simplified health workflow (growth -> status -> foods -> daily plan -> alerts)
   useEffect(() => {
@@ -596,6 +624,22 @@ const ParentDashboard = ({ initialTab }) => {
             snack: meals?.plan?.[0]?.snack || 'As per daycare meal plan',
             dinner: meals?.plan?.[0]?.dinner || 'As per daycare meal plan'
           },
+          mealPlanOptions: [
+            {
+              title: 'Plan A',
+              breakfast: meals?.plan?.[0]?.breakfast || 'Oats porridge with fruit',
+              lunch: meals?.plan?.[0]?.lunch || 'Rice and lentils with vegetables',
+              snack: meals?.plan?.[0]?.snack || 'Yogurt with banana',
+              dinner: meals?.plan?.[0]?.dinner || 'Soft khichdi with spinach'
+            },
+            {
+              title: 'Plan B',
+              breakfast: 'Milk and banana mash',
+              lunch: 'Vegetable pulao with dal',
+              snack: 'Fruit and nuts powder milk',
+              dinner: 'Chapati roll with mixed vegetables'
+            }
+          ],
           healthAlerts: [],
           doctorSuggestion: {
             notes: 'Follow daycare meal plan and consult doctor for updated nutrition analysis.',
@@ -609,6 +653,142 @@ const ParentDashboard = ({ initialTab }) => {
 
     fetchParentHealthSummary();
   }, [activeChildId, user?.role, reports, meals]);
+
+  useEffect(() => {
+    const fetchMealSubscriptionOptions = async () => {
+      if (!activeChildId || user?.role !== 'parent') {
+        setMealSubscriptionData({
+          approvedDaycarePlan: null,
+          doctorSuggestedPlans: [],
+          pricing: {},
+          currentSubscription: null,
+          doctorSuggestionNotes: ''
+        });
+        return;
+      }
+
+      try {
+        setMealSubscriptionLoading(true);
+        const response = await api.get(`/meal-plans/parent/children/${activeChildId}/subscription-options`);
+        const data = response.data || {};
+        const currentSubscription = data.currentSubscription || null;
+        const doctorSuggestedPlans = data.doctorSuggestedPlans || [];
+
+        setMealSubscriptionData({
+          approvedDaycarePlan: data.approvedDaycarePlan || null,
+          doctorSuggestedPlans,
+          pricing: data.pricing || {},
+          currentSubscription,
+          doctorSuggestionNotes: data.doctorSuggestionNotes || ''
+        });
+
+        setMealSubscriptionForm({
+          preference: currentSubscription?.preference || 'approved_daycare',
+          selectedPlanTitle: currentSubscription?.selectedPlanTitle || doctorSuggestedPlans?.[0]?.title || '',
+          durationType: currentSubscription?.durationType || 'specific_period',
+          startDate: currentSubscription?.startDate ? new Date(currentSubscription.startDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+          endDate: currentSubscription?.endDate ? new Date(currentSubscription.endDate).toISOString().slice(0, 10) : ''
+        });
+      } catch (error) {
+        console.error('Error fetching meal subscription options:', error);
+      } finally {
+        setMealSubscriptionLoading(false);
+      }
+    };
+
+    fetchMealSubscriptionOptions();
+  }, [activeChildId, user?.role]);
+
+  useEffect(() => {
+    const fetchNannyServiceNotes = async () => {
+      if (user?.role !== 'parent') {
+        setNannyServiceNotes([]);
+        return;
+      }
+
+      try {
+        setNannyNotesLoading(true);
+        const response = await api.get('/nanny/bookings/parent');
+        const bookings = Array.isArray(response.data) ? response.data : [];
+
+        const notes = bookings
+          .flatMap((booking) => (booking?.serviceNotes || []).map((note) => ({
+            bookingId: booking._id,
+            nannyName: booking.nannyName || 'Assigned Nanny',
+            childName: booking?.child?.name || 'Child',
+            serviceDate: booking.serviceDate,
+            noteText: note?.note || '',
+            timestamp: note?.timestamp || booking.updatedAt,
+          })))
+          .filter((entry) => entry.noteText)
+          .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+          .slice(0, 5);
+
+        setNannyServiceNotes(notes);
+      } catch (error) {
+        console.error('Error loading nanny service notes:', error);
+        setNannyServiceNotes([]);
+      } finally {
+        setNannyNotesLoading(false);
+      }
+    };
+
+    fetchNannyServiceNotes();
+  }, [user?.role]);
+
+  const saveMealSubscription = async () => {
+    if (!activeChildId) return;
+    try {
+      setMealSubscriptionSaving(true);
+      const response = await api.put(`/meal-plans/parent/children/${activeChildId}/subscription`, mealSubscriptionForm);
+      setMealSubscriptionMessage({ type: 'success', text: response.data?.message || 'Meal subscription updated successfully.' });
+      const optionsResponse = await api.get(`/meal-plans/parent/children/${activeChildId}/subscription-options`);
+      setMealSubscriptionData({
+        approvedDaycarePlan: optionsResponse.data?.approvedDaycarePlan || null,
+        doctorSuggestedPlans: optionsResponse.data?.doctorSuggestedPlans || [],
+        pricing: optionsResponse.data?.pricing || {},
+        currentSubscription: optionsResponse.data?.currentSubscription || null,
+        doctorSuggestionNotes: optionsResponse.data?.doctorSuggestionNotes || ''
+      });
+      await fetchBillingData();
+    } catch (error) {
+      console.error('Error saving meal subscription:', error);
+      setMealSubscriptionMessage({ type: 'error', text: error.response?.data?.message || 'Failed to save meal subscription' });
+    } finally {
+      setMealSubscriptionSaving(false);
+    }
+  };
+
+  const removeMealSubscription = async () => {
+    if (!activeChildId) return;
+    try {
+      setMealSubscriptionSaving(true);
+      const response = await api.delete(`/meal-plans/parent/children/${activeChildId}/subscription`);
+      setMealSubscriptionMessage({ type: 'success', text: response.data?.message || 'Meal subscription removed successfully.' });
+      const optionsResponse = await api.get(`/meal-plans/parent/children/${activeChildId}/subscription-options`);
+      setMealSubscriptionData({
+        approvedDaycarePlan: optionsResponse.data?.approvedDaycarePlan || null,
+        doctorSuggestedPlans: optionsResponse.data?.doctorSuggestedPlans || [],
+        pricing: optionsResponse.data?.pricing || {},
+        currentSubscription: optionsResponse.data?.currentSubscription || null,
+        doctorSuggestionNotes: optionsResponse.data?.doctorSuggestionNotes || ''
+      });
+      setMealSubscriptionForm((prev) => ({
+        ...prev,
+        preference: 'approved_daycare',
+        selectedPlanTitle: optionsResponse.data?.doctorSuggestedPlans?.[0]?.title || '',
+        durationType: 'specific_period',
+        startDate: new Date().toISOString().slice(0, 10),
+        endDate: ''
+      }));
+      await fetchBillingData();
+    } catch (error) {
+      console.error('Error removing meal subscription:', error);
+      setMealSubscriptionMessage({ type: 'error', text: error.response?.data?.message || 'Failed to remove meal subscription' });
+    } finally {
+      setMealSubscriptionSaving(false);
+    }
+  };
 
   const handleDownloadParentReport = useCallback(() => {
     if (!parentHealthSummary) return;
@@ -1230,6 +1410,46 @@ const ParentDashboard = ({ initialTab }) => {
     }
   };
 
+  const fetchFeeOptions = useCallback(async () => {
+    if (!activeChildId || user?.role !== 'parent') return;
+
+    try {
+      setFeeSelectionLoading(true);
+      setFeeSelectionMessage({ type: '', text: '' });
+      const response = await api.get(`/billing/fee-structures/child/${activeChildId}/options`);
+      setFeeOptionsData({
+        options: Array.isArray(response.data?.options) ? response.data.options : [],
+        currentSelection: response.data?.currentSelection || null,
+        program: response.data?.program || profile?.program || '',
+      });
+    } catch (error) {
+      console.error('Error fetching fee options:', error);
+      setFeeOptionsData({ options: [], currentSelection: null, program: profile?.program || '' });
+    } finally {
+      setFeeSelectionLoading(false);
+    }
+  }, [activeChildId, user?.role, profile?.program]);
+
+  const handleSelectFeeStructure = async (feeStructureId) => {
+    if (!activeChildId || !feeStructureId) return;
+
+    try {
+      setFeeSelectionSaving(true);
+      setFeeSelectionMessage({ type: '', text: '' });
+      await api.put(`/billing/fee-structures/child/${activeChildId}/select`, { feeStructureId });
+      await Promise.all([fetchFeeOptions(), fetchChildData(activeChildId), fetchBillingData()]);
+      setFeeSelectionMessage({ type: 'success', text: 'Fee structure selected successfully.' });
+    } catch (error) {
+      console.error('Error selecting fee structure:', error);
+      setFeeSelectionMessage({
+        type: 'error',
+        text: error?.response?.data?.message || 'Failed to select fee structure.'
+      });
+    } finally {
+      setFeeSelectionSaving(false);
+    }
+  };
+
   // Process payment
   const processPayment = async (invoice) => {
     setPaymentLoading(true);
@@ -1409,6 +1629,20 @@ const ParentDashboard = ({ initialTab }) => {
       setMyEnrollments(response.data || []);
     } catch (error) {
       console.error('Error fetching enrollments:', error);
+    }
+  };
+
+  const fetchParentTeacherMessages = async () => {
+    try {
+      setParentTeacherMessagesLoading(true);
+      const response = await api.get('/staff-ops/messages');
+      const items = Array.isArray(response.data) ? response.data : [];
+      setParentTeacherMessages(items.filter((item) => item.to === 'parent'));
+    } catch (error) {
+      console.error('Error fetching teacher messages:', error);
+      setParentTeacherMessages([]);
+    } finally {
+      setParentTeacherMessagesLoading(false);
     }
   };
 
@@ -1604,6 +1838,21 @@ const ParentDashboard = ({ initialTab }) => {
       fetchOrders();
     }
   }, [tab, fetchOrders]);
+
+  useEffect(() => {
+    if (tab === 2 && user?.role === 'parent') {
+      fetchAfterSchoolPrograms();
+      fetchMyEnrollments();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, user?.role]);
+
+  useEffect(() => {
+    if (tab === 6 && user?.role === 'parent') {
+      fetchParentTeacherMessages();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, user?.role]);
 
   // Schedule display component (kept for future use)
   // const ScheduleCard = () => {
@@ -3344,6 +3593,36 @@ const ParentDashboard = ({ initialTab }) => {
 
                 {/* Nanny Booking Section */}
                 <Box id="nanny-booking-section" sx={{ scrollMarginTop: '20px' }}>
+                  <Paper elevation={0} sx={{ p: 3, mb: 3, border: '1px solid #e0e0e0', borderRadius: 2 }}>
+                    <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                      📝 Latest Nanny Service Notes
+                    </Typography>
+                    {nannyNotesLoading ? (
+                      <Typography color="text.secondary">Loading nanny notes...</Typography>
+                    ) : nannyServiceNotes.length === 0 ? (
+                      <Typography color="text.secondary">No service notes from nanny yet.</Typography>
+                    ) : (
+                      <List dense sx={{ py: 0 }}>
+                        {nannyServiceNotes.map((entry, idx) => (
+                          <ListItem key={`${entry.bookingId}-${idx}`} sx={{ px: 0, alignItems: 'flex-start' }}>
+                            <ListItemText
+                              primary={`${entry.nannyName} • ${entry.childName}`}
+                              secondary={
+                                <>
+                                  <Typography component="span" variant="body2" color="text.primary">
+                                    {entry.noteText}
+                                  </Typography>
+                                  <Typography component="div" variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                                    {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : 'Recent update'}
+                                  </Typography>
+                                </>
+                              }
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
+                  </Paper>
                   <NannyServicesTab />
                 </Box>
 
@@ -3962,6 +4241,82 @@ const ParentDashboard = ({ initialTab }) => {
             {/* Tab 5: Billing & Payments */}
             {tab === 5 && (
               <Box>
+                {/* Fee Structure Selection */}
+                <Card sx={{ mb: 3 }}>
+                  <CardHeader
+                    title="Daycare Fee Structure"
+                    subheader={`Program: ${feeOptionsData.program || profile?.program || 'N/A'}`}
+                  />
+                  <CardContent>
+                    {feeSelectionMessage.text && (
+                      <Alert severity={feeSelectionMessage.type || 'info'} sx={{ mb: 2 }}>
+                        {feeSelectionMessage.text}
+                      </Alert>
+                    )}
+
+                    {feeSelectionLoading ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                        <CircularProgress size={28} />
+                      </Box>
+                    ) : (
+                      <>
+                        {feeOptionsData.currentSelection?.feeName && (
+                          <Alert severity="success" sx={{ mb: 2 }}>
+                            Current Plan: {feeOptionsData.currentSelection.feeName} (${Number(feeOptionsData.currentSelection.baseAmount || 0).toFixed(2)} / {feeOptionsData.currentSelection.billingCycle || 'monthly'})
+                          </Alert>
+                        )}
+
+                        {Array.isArray(feeOptionsData.options) && feeOptionsData.options.length > 0 ? (
+                          <Grid container spacing={2}>
+                            {feeOptionsData.options.map((feeOption) => {
+                              const isSelected = String(feeOptionsData.currentSelection?.feeStructureId || '') === String(feeOption._id || '');
+                              return (
+                                <Grid item xs={12} md={6} key={feeOption._id}>
+                                  <Card variant="outlined" sx={{ height: '100%', borderColor: isSelected ? 'success.main' : 'divider' }}>
+                                    <CardContent>
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                                        <Typography variant="h6">{feeOption.name}</Typography>
+                                        <Chip size="small" color={isSelected ? 'success' : 'default'} label={isSelected ? 'Selected' : (feeOption.program || 'all')} />
+                                      </Box>
+                                      <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                                        {feeOption.description || 'Structured daycare fee plan'}
+                                      </Typography>
+                                      <Typography variant="h5" color="primary.main" sx={{ mb: 1.5 }}>
+                                        ${Number(feeOption.baseAmount || 0).toFixed(2)} / {feeOption.billingCycle || 'monthly'}
+                                      </Typography>
+
+                                      {Array.isArray(feeOption.includedServices) && feeOption.includedServices.length > 0 && (
+                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 1.5 }}>
+                                          {feeOption.includedServices.map((service, index) => (
+                                            <Chip key={`${service}-${index}`} size="small" variant="outlined" label={service} />
+                                          ))}
+                                        </Box>
+                                      )}
+
+                                      <Button
+                                        variant={isSelected ? 'outlined' : 'contained'}
+                                        disabled={feeSelectionSaving || isSelected}
+                                        onClick={() => handleSelectFeeStructure(feeOption._id)}
+                                        fullWidth
+                                      >
+                                        {isSelected ? 'Selected Plan' : (feeSelectionSaving ? 'Saving...' : 'Choose This Plan')}
+                                      </Button>
+                                    </CardContent>
+                                  </Card>
+                                </Grid>
+                              );
+                            })}
+                          </Grid>
+                        ) : (
+                          <Typography variant="body2" color="text.secondary">
+                            No fee structures are available yet. Please contact admin.
+                          </Typography>
+                        )}
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
                 {/* Child Tuition Overview */}
                 <Card sx={{ mb: 3 }}>
                   <CardHeader 
@@ -4039,6 +4394,17 @@ const ParentDashboard = ({ initialTab }) => {
                                     Due: {new Date(invoice.dueDate).toLocaleDateString()}
                                   </Typography>
                                 </Box>
+                                {(invoice.items || []).length > 0 && (
+                                  <Box sx={{ mb: 2, p: 1.5, borderRadius: 1.5, bgcolor: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Fee Breakdown</Typography>
+                                    {(invoice.items || []).map((item, index) => (
+                                      <Box key={`${item.name || 'item'}-${index}`} sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                        <Typography variant="body2" color="text.secondary">{item.name}</Typography>
+                                        <Typography variant="body2" fontWeight={600}>${Number(item.amount || 0).toFixed(2)}</Typography>
+                                      </Box>
+                                    ))}
+                                  </Box>
+                                )}
                                 <Button
                                   variant="contained"
                                   fullWidth
@@ -4110,12 +4476,42 @@ const ParentDashboard = ({ initialTab }) => {
 
             {/* Tab 6: Messages */}
             {tab === 6 && (
-              <Paper sx={{ p: 4, textAlign: 'center' }}>
-                <Message sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }} />
-                <Typography variant="h5" gutterBottom>Messages Coming Soon</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Communicate with staff and teachers
-                </Typography>
+              <Paper sx={{ p: 4 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                  <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                    Teacher Messages
+                  </Typography>
+                  <Button variant="outlined" onClick={fetchParentTeacherMessages} sx={{ textTransform: 'none' }}>
+                    Refresh
+                  </Button>
+                </Box>
+
+                {parentTeacherMessagesLoading ? (
+                  <CircularProgress size={24} />
+                ) : parentTeacherMessages.length === 0 ? (
+                  <Alert severity="info">No teacher messages available yet.</Alert>
+                ) : (
+                  <Stack spacing={2}>
+                    {parentTeacherMessages.map((msg) => (
+                      <Paper key={msg._id} variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                        <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, alignItems: 'flex-start' }}>
+                          <Box>
+                            <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                              {msg.subject || 'No subject'}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                              {msg.body || 'No message body'}
+                            </Typography>
+                          </Box>
+                          <Chip size="small" label="Teacher" color="primary" variant="outlined" />
+                        </Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                          {msg.byName ? `From: ${msg.byName} • ` : ''}{formatDate(msg.at)}
+                        </Typography>
+                      </Paper>
+                    ))}
+                  </Stack>
+                )}
               </Paper>
             )}
 
@@ -4664,7 +5060,7 @@ const ParentDashboard = ({ initialTab }) => {
                           </Box>
                           <CardContent>
                             <Typography variant="body2" color="text.secondary" mb={2}>
-                              Scan the 26 AR flashcards to see emoji overlays and hear pronunciations. Makes alphabet learning fun and hands-on!
+                              {'Camera scans card "A", then 3D Apple appears, then audio says "A for Apple". Works for all 26 letters and makes learning interactive.'}
                             </Typography>
                             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
                               {['Ages 2-6', '26 Letters', 'Audio Pronunciation', 'Camera Required'].map(tag => (
@@ -4673,7 +5069,7 @@ const ParentDashboard = ({ initialTab }) => {
                             </Box>
                             <Button fullWidth variant="contained" onClick={() => navigate('/alphabet-ar')}
                               sx={{ bgcolor: '#667eea', '&:hover': { bgcolor: '#5a6fd6' }, borderRadius: 2, fontWeight: 700 }}>
-                              🚀 Open AR Alphabet
+                              🚀 Start Card Scanner Game
                             </Button>
                           </CardContent>
                         </Card>
@@ -4723,281 +5119,362 @@ const ParentDashboard = ({ initialTab }) => {
                   </Alert>
                 )}
 
-                <Card sx={{ mb: 3 }}>
+                <Card sx={{ mb: 3, borderRadius: 3, boxShadow: 3 }}>
                   <CardHeader
                     title="Child Growth and Nutrition Summary"
-                    subheader="Simplified parent view: growth progress, nutrition status, recommended foods, daycare diet and alerts"
+                    subheader="Growth progress · Nutrition status · Recommended meals · Daycare plan · Subscription options"
+                    action={
+                      parentHealthSummary && (
+                        <Button
+                          variant="outlined"
+                          size="small"
+                          startIcon={<Download />}
+                          onClick={handleDownloadParentReport}
+                          sx={{ mt: 1, mr: 1 }}
+                        >
+                          Download Report
+                        </Button>
+                      )
+                    }
                   />
                   <CardContent>
                     {parentHealthLoading ? (
                       <CircularProgress size={24} />
                     ) : !parentHealthSummary ? (
-                      <Alert severity="info">No health summary available yet for this child.</Alert>
+                      <Alert severity="info">No health summary available yet for this child. Ask the doctor to run an analysis.</Alert>
                     ) : (
                       <Grid container spacing={2}>
-                        <Grid item xs={12} md={6}>
-                          <Paper variant="outlined" sx={{ p: 2 }}>
-                            <Typography variant="subtitle2" color="text.secondary">Nutrition Status</Typography>
-                            <Typography variant="h6">
-                              {parentHealthSummary?.nutritionStatus?.prediction || 'No Analysis Yet'}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Last analyzed: {parentHealthSummary?.measuredAt ? new Date(parentHealthSummary.measuredAt).toLocaleString() : 'Not yet'}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              Next Checkup: {parentHealthSummary?.doctorSuggestion?.nextCheckupInDays || 14} days
-                            </Typography>
-                          </Paper>
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                          <Paper variant="outlined" sx={{ p: 2 }}>
-                            <Typography variant="subtitle2" color="text.secondary">Top Recommended Foods</Typography>
-                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
-                              {(parentHealthSummary?.recommendedFoods || []).slice(0, 5).map((food, idx) => (
-                                <Chip key={`${food}-${idx}`} size="small" label={food} color="success" variant="outlined" />
-                              ))}
-                            </Box>
-                          </Paper>
-                        </Grid>
-
                         <Grid item xs={12}>
-                          <Paper variant="outlined" sx={{ p: 2 }}>
-                            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Daily Daycare Diet Plan</Typography>
-                            <Grid container spacing={1}>
-                              <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Breakfast:</strong> {parentHealthSummary?.dailyDietPlan?.breakfast || 'N/A'}</Typography></Grid>
-                              <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Lunch:</strong> {parentHealthSummary?.dailyDietPlan?.lunch || 'N/A'}</Typography></Grid>
-                              <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Snack:</strong> {parentHealthSummary?.dailyDietPlan?.snack || 'N/A'}</Typography></Grid>
-                              <Grid item xs={12} sm={6}><Typography variant="body2"><strong>Dinner:</strong> {parentHealthSummary?.dailyDietPlan?.dinner || 'N/A'}</Typography></Grid>
+                          <Paper sx={{ p: 2, bgcolor: '#f8f9fa', borderRadius: 2, border: '1px solid #e3e8ef' }}>
+                            <Grid container spacing={2} alignItems="center" wrap="wrap">
+                              <Grid item>
+                                <Typography variant="caption" color="text.secondary" display="block">Nutrition Status</Typography>
+                                <Chip
+                                  label={parentHealthSummary?.nutritionStatus?.prediction || 'No Analysis Yet'}
+                                  color={
+                                    (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('severe') ? 'error' :
+                                    (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('moderate') ? 'warning' : 'success'
+                                  }
+                                  size="small"
+                                  sx={{ fontWeight: 700 }}
+                                />
+                              </Grid>
+                              <Grid item>
+                                <Divider orientation="vertical" flexItem sx={{ height: 36 }} />
+                              </Grid>
+                              <Grid item>
+                                <Typography variant="caption" color="text.secondary" display="block">Current Meal Choice</Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                  {mealSubscriptionData?.currentSubscription?.selectedPlanTitle || 'Admin Approved Daycare Meal Plan'}
+                                </Typography>
+                              </Grid>
+                              <Grid item>
+                                <Divider orientation="vertical" flexItem sx={{ height: 36 }} />
+                              </Grid>
+                              <Grid item>
+                                <Typography variant="caption" color="text.secondary" display="block">Next Checkup</Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                  {parentHealthSummary?.doctorSuggestion?.nextCheckupInDays || 14} days
+                                </Typography>
+                              </Grid>
+                              <Grid item>
+                                <Divider orientation="vertical" flexItem sx={{ height: 36 }} />
+                              </Grid>
+                              <Grid item>
+                                <Typography variant="caption" color="text.secondary" display="block">Last Analyzed</Typography>
+                                <Typography variant="body2" fontWeight={600}>
+                                  {parentHealthSummary?.measuredAt ? new Date(parentHealthSummary.measuredAt).toLocaleDateString() : 'Not yet'}
+                                </Typography>
+                              </Grid>
                             </Grid>
                           </Paper>
                         </Grid>
 
                         <Grid item xs={12}>
-                          <Paper variant="outlined" sx={{ p: 2 }}>
-                            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>Health Alerts & Doctor Suggestion</Typography>
-                            {(parentHealthSummary?.healthAlerts || []).length === 0 ? (
-                              <Typography variant="body2" color="text.secondary">No active alerts.</Typography>
-                            ) : (
-                              <List dense>
-                                {(parentHealthSummary?.healthAlerts || []).map((alert, idx) => (
-                                  <ListItem key={idx}>
-                                    <ListItemText primary={typeof alert === 'string' ? alert : JSON.stringify(alert)} />
-                                  </ListItem>
-                                ))}
-                              </List>
+                          <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>📈 View Child Growth Progress</Typography>
+                          <Grid container spacing={2}>
+                            {[
+                              { label: 'Weight', actual: parentHealthSummary?.growthProgress?.actual_weight_kg, expected: parentHealthSummary?.growthProgress?.expected_weight_kg, unit: 'kg', emoji: '⚖️' },
+                              { label: 'Height', actual: parentHealthSummary?.growthProgress?.actual_height_cm, expected: parentHealthSummary?.growthProgress?.expected_height_cm, unit: 'cm', emoji: '📏' },
+                              { label: 'BMI', actual: parentHealthSummary?.growthProgress?.bmi, expected: null, unit: '', emoji: '🏥' },
+                            ].map((stat) => (
+                              <Grid item xs={12} sm={4} key={stat.label}>
+                                <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
+                                  <Typography variant="h5" sx={{ mb: 0.5 }}>{stat.emoji}</Typography>
+                                  <Typography variant="subtitle2" color="text.secondary">{stat.label}</Typography>
+                                  <Typography variant="h6" fontWeight={700} color="primary.main">
+                                    {stat.actual != null ? `${stat.actual} ${stat.unit}` : 'N/A'}
+                                  </Typography>
+                                  {stat.expected != null && (
+                                    <Typography variant="caption" color="text.secondary">
+                                      Expected: {stat.expected} {stat.unit}
+                                    </Typography>
+                                  )}
+                                </Paper>
+                              </Grid>
+                            ))}
+                          </Grid>
+                        </Grid>
+
+                        <Grid item xs={12} md={6}>
+                          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
+                            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>🩺 View Nutrition Status</Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                              <Chip
+                                label={parentHealthSummary?.nutritionStatus?.prediction || 'No Analysis Yet'}
+                                color={
+                                  (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('severe') ? 'error' :
+                                  (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('moderate') ? 'warning' : 'success'
+                                }
+                                sx={{ fontWeight: 700, fontSize: '0.85rem' }}
+                              />
+                            </Box>
+                            {parentHealthSummary?.nutritionStatus?.confidence != null && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                                Confidence: {Math.round((parentHealthSummary.nutritionStatus.confidence || 0) * 100)}%
+                              </Typography>
                             )}
-                            <Typography variant="body2" sx={{ mt: 1 }}>
-                              <strong>Doctor Suggestion:</strong> {parentHealthSummary?.doctorSuggestion?.notes || 'Follow balanced diet and continue routine monitoring.'}
-                                            <Card sx={{ mb: 3, borderRadius: 3, boxShadow: 3 }}>
-                                              <CardHeader
-                                                title="Child Growth and Nutrition Summary"
-                                                subheader="Growth progress · Nutrition status · Recommended foods · Daycare diet · Health alerts"
-                                                action={
-                                                  parentHealthSummary && (
-                                                    <Button
-                                                      variant="outlined"
-                                                      size="small"
-                                                      startIcon={<Download />}
-                                                      onClick={handleDownloadParentReport}
-                                                      sx={{ mt: 1, mr: 1 }}
-                                                    >
-                                                      Download Report
-                                                    </Button>
-                                                  )
-                                                }
-                                              />
-                                              <CardContent>
-                                                {parentHealthLoading ? (
-                                                  <CircularProgress size={24} />
-                                                ) : !parentHealthSummary ? (
-                                                  <Alert severity="info">No health summary available yet for this child. Ask the doctor to run an analysis.</Alert>
-                                                ) : (
-                                                  <Grid container spacing={2}>
-
-                                                    {/* Quick Summary Bar */}
-                                                    <Grid item xs={12}>
-                                                      <Paper sx={{ p: 2, bgcolor: '#f8f9fa', borderRadius: 2, border: '1px solid #e3e8ef' }}>
-                                                        <Grid container spacing={2} alignItems="center" wrap="wrap">
-                                                          <Grid item>
-                                                            <Typography variant="caption" color="text.secondary" display="block">Nutrition Status</Typography>
-                                                            <Chip
-                                                              label={parentHealthSummary?.nutritionStatus?.prediction || 'No Analysis Yet'}
-                                                              color={
-                                                                (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('severe') ? 'error' :
-                                                                (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('moderate') ? 'warning' : 'success'
-                                                              }
-                                                              size="small"
-                                                              sx={{ fontWeight: 700 }}
-                                                            />
-                                                          </Grid>
-                                                          <Grid item>
-                                                            <Divider orientation="vertical" flexItem sx={{ height: 36 }} />
-                                                          </Grid>
-                                                          <Grid item>
-                                                            <Typography variant="caption" color="text.secondary" display="block">Recommended Foods</Typography>
-                                                            <Typography variant="body2" fontWeight={600}>
-                                                              {(parentHealthSummary?.recommendedFoods || []).slice(0, 3).join(', ') || 'N/A'}
-                                                            </Typography>
-                                                          </Grid>
-                                                          <Grid item>
-                                                            <Divider orientation="vertical" flexItem sx={{ height: 36 }} />
-                                                          </Grid>
-                                                          <Grid item>
-                                                            <Typography variant="caption" color="text.secondary" display="block">Next Checkup</Typography>
-                                                            <Typography variant="body2" fontWeight={600}>
-                                                              {parentHealthSummary?.doctorSuggestion?.nextCheckupInDays || 14} days
-                                                            </Typography>
-                                                          </Grid>
-                                                          <Grid item>
-                                                            <Divider orientation="vertical" flexItem sx={{ height: 36 }} />
-                                                          </Grid>
-                                                          <Grid item>
-                                                            <Typography variant="caption" color="text.secondary" display="block">Last Analyzed</Typography>
-                                                            <Typography variant="body2" fontWeight={600}>
-                                                              {parentHealthSummary?.measuredAt ? new Date(parentHealthSummary.measuredAt).toLocaleDateString() : 'Not yet'}
-                                                            </Typography>
-                                                          </Grid>
-                                                        </Grid>
-                                                      </Paper>
-                                                    </Grid>
-
-                                                    {/* View Child Growth Progress */}
-                                                    <Grid item xs={12}>
-                                                      <Typography variant="subtitle1" fontWeight={700} sx={{ mb: 1 }}>📈 View Child Growth Progress</Typography>
-                                                      <Grid container spacing={2}>
-                                                        {[
-                                                          { label: 'Weight', actual: parentHealthSummary?.growthProgress?.actual_weight_kg, expected: parentHealthSummary?.growthProgress?.expected_weight_kg, unit: 'kg', emoji: '⚖️' },
-                                                          { label: 'Height', actual: parentHealthSummary?.growthProgress?.actual_height_cm, expected: parentHealthSummary?.growthProgress?.expected_height_cm, unit: 'cm', emoji: '📏' },
-                                                          { label: 'BMI', actual: parentHealthSummary?.growthProgress?.bmi, expected: null, unit: '', emoji: '🏥' },
-                                                        ].map((stat) => (
-                                                          <Grid item xs={12} sm={4} key={stat.label}>
-                                                            <Paper variant="outlined" sx={{ p: 2, textAlign: 'center', borderRadius: 2 }}>
-                                                              <Typography variant="h5" sx={{ mb: 0.5 }}>{stat.emoji}</Typography>
-                                                              <Typography variant="subtitle2" color="text.secondary">{stat.label}</Typography>
-                                                              <Typography variant="h6" fontWeight={700} color="primary.main">
-                                                                {stat.actual != null ? `${stat.actual} ${stat.unit}` : 'N/A'}
-                                                              </Typography>
-                                                              {stat.expected != null && (
-                                                                <Typography variant="caption" color="text.secondary">
-                                                                  Expected: {stat.expected} {stat.unit}
-                                                                </Typography>
-                                                              )}
-                                                            </Paper>
-                                                          </Grid>
-                                                        ))}
-                                                      </Grid>
-                                                      {parentHealthSummary?.growthProgress?.growth_status && (
-                                                        <Box sx={{ mt: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                          <Chip label={`Growth Status: ${parentHealthSummary.growthProgress.growth_status}`} color="info" size="small" variant="outlined" />
-                                                        </Box>
-                                                      )}
-                                                    </Grid>
-
-                                                    {/* View Nutrition Status */}
-                                                    <Grid item xs={12} md={6}>
-                                                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
-                                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>🩺 View Nutrition Status</Typography>
-                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                                                          <Chip
-                                                            label={parentHealthSummary?.nutritionStatus?.prediction || 'No Analysis Yet'}
-                                                            color={
-                                                              (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('severe') ? 'error' :
-                                                              (parentHealthSummary?.nutritionStatus?.prediction || '').toLowerCase().includes('moderate') ? 'warning' : 'success'
-                                                            }
-                                                            sx={{ fontWeight: 700, fontSize: '0.85rem' }}
-                                                          />
-                                                        </Box>
-                                                        {parentHealthSummary?.nutritionStatus?.confidence != null && (
-                                                          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                                                            Confidence: {Math.round((parentHealthSummary.nutritionStatus.confidence || 0) * 100)}%
-                                                          </Typography>
-                                                        )}
-                                                        <Divider sx={{ my: 1 }} />
-                                                        <Typography variant="body2"><strong>Next Checkup:</strong> {parentHealthSummary?.doctorSuggestion?.nextCheckupInDays || 14} days</Typography>
-                                                        <Typography variant="body2" sx={{ mt: 0.5 }}>
-                                                          <strong>Doctor Note:</strong> {parentHealthSummary?.doctorSuggestion?.notes || 'Follow balanced diet and routine monitoring.'}
-                                                        </Typography>
-                                                      </Paper>
-                                                    </Grid>
-
-                                                    {/* Recommended Foods */}
-                                                    <Grid item xs={12} md={6}>
-                                                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
-                                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>🥗 View Recommended Meal Plan</Typography>
-                                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                                                          {(parentHealthSummary?.recommendedFoods || []).length > 0 ? (
-                                                            parentHealthSummary.recommendedFoods.slice(0, 8).map((food, idx) => (
-                                                              <Chip key={`${food}-${idx}`} size="small" label={food} color="success" variant="outlined" />
-                                                            ))
-                                                          ) : (
-                                                            [
-                                                              parentHealthSummary?.dailyDietPlan?.breakfast,
-                                                              parentHealthSummary?.dailyDietPlan?.lunch,
-                                                              parentHealthSummary?.dailyDietPlan?.snack,
-                                                              parentHealthSummary?.dailyDietPlan?.dinner,
-                                                            ].filter(Boolean).length > 0 ? (
-                                                              [
-                                                                parentHealthSummary?.dailyDietPlan?.breakfast,
-                                                                parentHealthSummary?.dailyDietPlan?.lunch,
-                                                                parentHealthSummary?.dailyDietPlan?.snack,
-                                                                parentHealthSummary?.dailyDietPlan?.dinner,
-                                                              ].filter(Boolean).map((food, idx) => (
-                                                                <Chip key={`fallback-${idx}`} size="small" label={food} color="info" variant="outlined" />
-                                                              ))
-                                                            ) : (
-                                                              <Typography variant="body2" color="text.secondary">No food recommendations yet.</Typography>
-                                                            )
-                                                          )}
-                                                        </Box>
-                                                      </Paper>
-                                                    </Grid>
-
-                                                    {/* Daycare Diet Plan */}
-                                                    <Grid item xs={12}>
-                                                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>🍽️ View Daycare Diet Plan</Typography>
-                                                        <Grid container spacing={1}>
-                                                          {[
-                                                            { meal: 'Breakfast', value: parentHealthSummary?.dailyDietPlan?.breakfast, emoji: '🌅' },
-                                                            { meal: 'Lunch', value: parentHealthSummary?.dailyDietPlan?.lunch, emoji: '☀️' },
-                                                            { meal: 'Snack', value: parentHealthSummary?.dailyDietPlan?.snack, emoji: '🍎' },
-                                                            { meal: 'Dinner', value: parentHealthSummary?.dailyDietPlan?.dinner, emoji: '🌙' },
-                                                          ].map(({ meal, value, emoji }) => (
-                                                            <Grid item xs={12} sm={6} key={meal}>
-                                                              <Box sx={{ p: 1.5, bgcolor: '#f9fafb', borderRadius: 1.5, border: '1px solid #e0e0e0' }}>
-                                                                <Typography variant="body2">
-                                                                  <strong>{emoji} {meal}:</strong> {value || 'Balanced nutritious meal'}
-                                                                </Typography>
-                                                              </Box>
-                                                            </Grid>
-                                                          ))}
-                                                        </Grid>
-                                                      </Paper>
-                                                    </Grid>
-
-                                                    {/* Health Alerts */}
-                                                    <Grid item xs={12}>
-                                                      <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: (parentHealthSummary?.healthAlerts || []).length > 0 ? '#fff8e1' : 'inherit' }}>
-                                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>⚠️ Health Alerts</Typography>
-                                                        {(parentHealthSummary?.healthAlerts || []).length === 0 ? (
-                                                          <Alert severity="success" sx={{ py: 0.5 }}>No active health alerts — your child is on track!</Alert>
-                                                        ) : (
-                                                          <Stack spacing={1}>
-                                                            {parentHealthSummary.healthAlerts.map((alert, idx) => (
-                                                              <Alert key={idx} severity="warning" sx={{ py: 0.5 }}>
-                                                                {typeof alert === 'string' ? alert : JSON.stringify(alert)}
-                                                              </Alert>
-                                                            ))}
-                                                          </Stack>
-                                                        )}
-                                                      </Paper>
-                                                    </Grid>
-
-                                                  </Grid>
-                                                )}
-                                              </CardContent>
-                                            </Card>
+                            <Divider sx={{ my: 1 }} />
+                            <Typography variant="body2"><strong>Next Checkup:</strong> {parentHealthSummary?.doctorSuggestion?.nextCheckupInDays || 14} days</Typography>
+                            <Typography variant="body2" sx={{ mt: 0.5 }}>
+                              <strong>Doctor Note:</strong> {parentHealthSummary?.doctorSuggestion?.notes || 'Follow balanced diet and routine monitoring.'}
                             </Typography>
+                          </Paper>
+                        </Grid>
+
+                        <Grid item xs={12} md={6}>
+                          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, height: '100%' }}>
+                            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>🥗 View Recommended Meal Plan</Typography>
+                            <Stack spacing={1}>
+                              {(() => {
+                                const primaryPlan = (parentHealthSummary?.mealPlanOptions || [])[0];
+                                const planMeals = primaryPlan
+                                  ? [
+                                      { label: 'Breakfast', value: primaryPlan.breakfast },
+                                      { label: 'Lunch', value: primaryPlan.lunch },
+                                      { label: 'Snack', value: primaryPlan.snack },
+                                      { label: 'Dinner', value: primaryPlan.dinner },
+                                    ]
+                                  : [];
+
+                                return planMeals.length > 0 ? planMeals.map((meal) => (
+                                  <Box key={meal.label} sx={{ p: 1.25, bgcolor: '#f7fbf7', borderRadius: 1.5, border: '1px solid #dcefdc' }}>
+                                    <Typography variant="body2"><strong>{meal.label}:</strong> {meal.value}</Typography>
+                                  </Box>
+                                )) : <Typography variant="body2" color="text.secondary">No food recommendations yet.</Typography>;
+                              })()}
+                            </Stack>
+                          </Paper>
+                        </Grid>
+
+                        <Grid item xs={12}>
+                          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>🍽️ View Daycare Diet Plan</Typography>
+                            <Grid container spacing={1}>
+                              {[
+                                { meal: 'Breakfast', value: parentHealthSummary?.dailyDietPlan?.breakfast, emoji: '🌅' },
+                                { meal: 'Lunch', value: parentHealthSummary?.dailyDietPlan?.lunch, emoji: '☀️' },
+                                { meal: 'Snack', value: parentHealthSummary?.dailyDietPlan?.snack, emoji: '🍎' },
+                                { meal: 'Dinner', value: parentHealthSummary?.dailyDietPlan?.dinner, emoji: '🌙' },
+                              ].map(({ meal, value, emoji }) => (
+                                <Grid item xs={12} sm={6} key={meal}>
+                                  <Box sx={{ p: 1.5, bgcolor: '#f9fafb', borderRadius: 1.5, border: '1px solid #e0e0e0' }}>
+                                    <Typography variant="body2"><strong>{emoji} {meal}:</strong> {value || 'Balanced nutritious meal'}</Typography>
+                                  </Box>
+                                </Grid>
+                              ))}
+                            </Grid>
+                          </Paper>
+                        </Grid>
+
+                        <Grid item xs={12}>
+                          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>🧾 View Different Meal Plans</Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+                              These options are auto-generated after doctor analysis. The teacher can follow one of them, but the options themselves do not need to be created manually by the teacher.
+                            </Typography>
+                            <Grid container spacing={2}>
+                              {(parentHealthSummary?.mealPlanOptions || []).length > 0 ? (
+                                (parentHealthSummary?.mealPlanOptions || []).map((plan, idx) => (
+                                  <Grid item xs={12} md={4} key={`${plan?.title || 'plan'}-${idx}`}>
+                                    <Box sx={{ p: 1.5, bgcolor: '#f8f9ff', borderRadius: 1.5, border: '1px solid #d9e1ff' }}>
+                                      <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1 }}>{plan?.title || `Plan ${idx + 1}`}</Typography>
+                                      <Typography variant="body2"><strong>Breakfast:</strong> {plan?.breakfast || '-'}</Typography>
+                                      <Typography variant="body2"><strong>Lunch:</strong> {plan?.lunch || '-'}</Typography>
+                                      <Typography variant="body2"><strong>Snack:</strong> {plan?.snack || '-'}</Typography>
+                                      <Typography variant="body2"><strong>Dinner:</strong> {plan?.dinner || '-'}</Typography>
+                                    </Box>
+                                  </Grid>
+                                ))
+                              ) : (
+                                <Grid item xs={12}>
+                                  <Typography variant="body2" color="text.secondary">Meal plan options will appear after doctor analysis.</Typography>
+                                </Grid>
+                              )}
+                            </Grid>
+                          </Paper>
+                        </Grid>
+
+                        <Grid item xs={12}>
+                          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>💳 Doctor Meal Subscription</Typography>
+                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                              The standard daycare menu is already admin-approved. If the doctor has suggested a special meal plan, you can subscribe to it here, choose a time period, or decide to bring food from home.
+                            </Typography>
+
+                            {mealSubscriptionMessage.text && (
+                              <Alert severity={mealSubscriptionMessage.type || 'info'} sx={{ mb: 2 }} onClose={() => setMealSubscriptionMessage({ type: '', text: '' })}>
+                                {mealSubscriptionMessage.text}
+                              </Alert>
+                            )}
+
+                            {mealSubscriptionLoading ? (
+                              <CircularProgress size={24} />
+                            ) : (
+                              <Grid container spacing={2}>
+                                <Grid item xs={12} md={6}>
+                                  <Paper sx={{ p: 1.5, bgcolor: '#fafcff', border: '1px solid #d9e1ff' }}>
+                                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Approved Daycare Plan</Typography>
+                                    <Typography variant="body2"><strong>Plan:</strong> {mealSubscriptionData?.approvedDaycarePlan?.title || meals?.title || 'Published daycare meal plan'}</Typography>
+                                    <Typography variant="body2"><strong>Status:</strong> Admin approved and published</Typography>
+                                    <Typography variant="body2"><strong>Program:</strong> {profile?.program || 'N/A'}</Typography>
+                                  </Paper>
+                                </Grid>
+                                <Grid item xs={12} md={6}>
+                                  <Paper sx={{ p: 1.5, bgcolor: '#fffaf3', border: '1px solid #f1d9a8' }}>
+                                    <Typography variant="subtitle2" sx={{ mb: 1 }}>Current Preference</Typography>
+                                    <Typography variant="body2"><strong>Choice:</strong> {mealSubscriptionData?.currentSubscription?.selectedPlanTitle || 'Admin Approved Daycare Meal Plan'}</Typography>
+                                    <Typography variant="body2"><strong>Status:</strong> {mealSubscriptionData?.currentSubscription?.status || 'inactive'}</Typography>
+                                    <Typography variant="body2"><strong>Extra Fee:</strong> ${Number(mealSubscriptionData?.currentSubscription?.extraFee || 0).toFixed(2)}</Typography>
+                                  </Paper>
+                                </Grid>
+
+                                <Grid item xs={12} md={6}>
+                                  <FormControl fullWidth>
+                                    <InputLabel>Meal Arrangement</InputLabel>
+                                    <Select
+                                      value={mealSubscriptionForm.preference}
+                                      label="Meal Arrangement"
+                                      onChange={(e) => setMealSubscriptionForm((prev) => ({ ...prev, preference: e.target.value }))}
+                                    >
+                                      <MenuItem value="approved_daycare">Use approved daycare plan</MenuItem>
+                                      <MenuItem value="doctor_recommended">Subscribe to doctor suggested plan</MenuItem>
+                                      <MenuItem value="bring_from_home">Bring food from home</MenuItem>
+                                    </Select>
+                                  </FormControl>
+                                </Grid>
+
+                                {mealSubscriptionForm.preference === 'doctor_recommended' && (
+                                  <Grid item xs={12} md={6}>
+                                    <FormControl fullWidth>
+                                      <InputLabel>Doctor Suggested Plan</InputLabel>
+                                      <Select
+                                        value={mealSubscriptionForm.selectedPlanTitle}
+                                        label="Doctor Suggested Plan"
+                                        onChange={(e) => setMealSubscriptionForm((prev) => ({ ...prev, selectedPlanTitle: e.target.value }))}
+                                      >
+                                        {(mealSubscriptionData?.doctorSuggestedPlans || []).map((plan, idx) => (
+                                          <MenuItem key={`${plan.title || 'plan'}-${idx}`} value={plan.title}>{plan.title}</MenuItem>
+                                        ))}
+                                      </Select>
+                                    </FormControl>
+                                  </Grid>
+                                )}
+
+                                <Grid item xs={12} md={4}>
+                                  <FormControl fullWidth>
+                                    <InputLabel>Subscription Period</InputLabel>
+                                    <Select
+                                      value={mealSubscriptionForm.durationType}
+                                      label="Subscription Period"
+                                      onChange={(e) => setMealSubscriptionForm((prev) => ({ ...prev, durationType: e.target.value }))}
+                                    >
+                                      <MenuItem value="specific_period">Specific period</MenuItem>
+                                      <MenuItem value="entire_daycare">Whole daycare duration</MenuItem>
+                                    </Select>
+                                  </FormControl>
+                                </Grid>
+                                <Grid item xs={12} md={4}>
+                                  <TextField
+                                    fullWidth
+                                    label="Start Date"
+                                    type="date"
+                                    value={mealSubscriptionForm.startDate}
+                                    InputLabelProps={{ shrink: true }}
+                                    onChange={(e) => setMealSubscriptionForm((prev) => ({ ...prev, startDate: e.target.value }))}
+                                  />
+                                </Grid>
+                                <Grid item xs={12} md={4}>
+                                  <TextField
+                                    fullWidth
+                                    label="End Date"
+                                    type="date"
+                                    value={mealSubscriptionForm.endDate}
+                                    InputLabelProps={{ shrink: true }}
+                                    disabled={mealSubscriptionForm.durationType !== 'specific_period'}
+                                    onChange={(e) => setMealSubscriptionForm((prev) => ({ ...prev, endDate: e.target.value }))}
+                                  />
+                                </Grid>
+
+                                <Grid item xs={12}>
+                                  <Alert severity={mealSubscriptionForm.preference === 'doctor_recommended' ? 'info' : mealSubscriptionForm.preference === 'bring_from_home' ? 'warning' : 'success'}>
+                                    {mealSubscriptionForm.preference === 'doctor_recommended'
+                                      ? `Doctor suggestion: ${mealSubscriptionData?.doctorSuggestionNotes || 'Custom plan based on doctor review.'} Extra fee will be added to billing.`
+                                      : mealSubscriptionForm.preference === 'bring_from_home'
+                                        ? 'Parents may bring food from home. No extra meal subscription fee will be billed.'
+                                        : 'Your child will continue on the admin-approved daycare meal plan already included in normal daycare operations.'}
+                                  </Alert>
+                                </Grid>
+
+                                {mealSubscriptionForm.preference === 'doctor_recommended' && (mealSubscriptionData?.doctorSuggestedPlans || []).length > 0 && (
+                                  <Grid item xs={12}>
+                                    <Grid container spacing={2}>
+                                      {(mealSubscriptionData.doctorSuggestedPlans || [])
+                                        .filter((plan) => plan.title === mealSubscriptionForm.selectedPlanTitle)
+                                        .map((plan) => (
+                                          <Grid item xs={12} key={plan.title}>
+                                            <Paper sx={{ p: 1.5, bgcolor: '#f7fbf7', border: '1px solid #dcefdc' }}>
+                                              <Typography variant="subtitle2" sx={{ mb: 1 }}>{plan.title}</Typography>
+                                              <Typography variant="body2"><strong>Breakfast:</strong> {plan.breakfast}</Typography>
+                                              <Typography variant="body2"><strong>Lunch:</strong> {plan.lunch}</Typography>
+                                              <Typography variant="body2"><strong>Snack:</strong> {plan.snack}</Typography>
+                                              <Typography variant="body2"><strong>Dinner:</strong> {plan.dinner}</Typography>
+                                            </Paper>
+                                          </Grid>
+                                        ))}
+                                    </Grid>
+                                  </Grid>
+                                )}
+
+                                <Grid item xs={12}>
+                                  <Stack direction="row" spacing={1} flexWrap="wrap">
+                                    <Button variant="contained" onClick={saveMealSubscription} disabled={mealSubscriptionSaving}>
+                                      {mealSubscriptionSaving ? 'Saving...' : 'Save Meal Preference'}
+                                    </Button>
+                                    <Button variant="outlined" color="error" onClick={removeMealSubscription} disabled={mealSubscriptionSaving}>
+                                      Remove Custom Subscription
+                                    </Button>
+                                  </Stack>
+                                </Grid>
+                              </Grid>
+                            )}
+                          </Paper>
+                        </Grid>
+
+                        <Grid item xs={12}>
+                          <Paper variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: (parentHealthSummary?.healthAlerts || []).length > 0 ? '#fff8e1' : 'inherit' }}>
+                            <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>⚠️ Health Alerts</Typography>
+                            {(parentHealthSummary?.healthAlerts || []).length === 0 ? (
+                              <Alert severity="success" sx={{ py: 0.5 }}>No active health alerts — your child is on track!</Alert>
+                            ) : (
+                              <Stack spacing={1}>
+                                {parentHealthSummary.healthAlerts.map((alert, idx) => (
+                                  <Alert key={idx} severity="warning" sx={{ py: 0.5 }}>
+                                    {typeof alert === 'string' ? alert : JSON.stringify(alert)}
+                                  </Alert>
+                                ))}
+                              </Stack>
+                            )}
                           </Paper>
                         </Grid>
                       </Grid>

@@ -84,6 +84,109 @@ const childSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
+  feeStructureSelection: {
+    feeStructureId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'FeeStructure',
+      default: null
+    },
+    feeName: {
+      type: String,
+      default: ''
+    },
+    billingCycle: {
+      type: String,
+      enum: ['monthly', 'quarterly', 'yearly', 'one_time'],
+      default: 'monthly'
+    },
+    baseAmount: {
+      type: Number,
+      default: 0
+    },
+    includedServices: [{
+      type: String,
+      trim: true
+    }],
+    optionalAddons: [{
+      name: {
+        type: String,
+        trim: true
+      },
+      amount: {
+        type: Number,
+        default: 0
+      },
+      description: {
+        type: String,
+        trim: true,
+        default: ''
+      }
+    }],
+    selectedAt: {
+      type: Date,
+      default: null
+    },
+    selectedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null
+    }
+  },
+  mealSubscription: {
+    preference: {
+      type: String,
+      enum: ['approved_daycare', 'doctor_recommended', 'bring_from_home'],
+      default: 'approved_daycare'
+    },
+    status: {
+      type: String,
+      enum: ['inactive', 'active', 'cancelled'],
+      default: 'inactive'
+    },
+    selectedPlanTitle: {
+      type: String,
+      default: ''
+    },
+    selectedPlanMeals: {
+      breakfast: { type: String, default: '' },
+      lunch: { type: String, default: '' },
+      snack: { type: String, default: '' },
+      dinner: { type: String, default: '' },
+    },
+    doctorSuggestionNotes: {
+      type: String,
+      default: ''
+    },
+    durationType: {
+      type: String,
+      enum: ['specific_period', 'entire_daycare'],
+      default: 'specific_period'
+    },
+    startDate: {
+      type: Date,
+      default: null
+    },
+    endDate: {
+      type: Date,
+      default: null
+    },
+    extraFee: {
+      type: Number,
+      default: 0
+    },
+    includedInFee: {
+      type: Boolean,
+      default: true
+    },
+    subscribedAt: {
+      type: Date,
+      default: null
+    },
+    cancelledAt: {
+      type: Date,
+      default: null
+    }
+  },
   isActive: {
     type: Boolean,
     default: true

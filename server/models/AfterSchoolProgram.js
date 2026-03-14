@@ -68,6 +68,14 @@ const afterSchoolProgramSchema = new mongoose.Schema({
     enum: ['active', 'inactive', 'pending', 'cancelled'],
     default: 'pending'
   },
+  source: {
+    type: String,
+    enum: ['admin', 'staff-suggestion'],
+    default: 'admin'
+  },
+  suggestionNotes: {
+    type: String // Teacher's reason/notes for suggesting this program
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

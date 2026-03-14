@@ -17,7 +17,7 @@ const memory = {
 
 // Enforce staff role for writes
 function staffOnly(req, res, next) {
-  if (req.user?.role !== 'staff' && req.user?.role !== 'admin') {
+  if (!['staff', 'admin', 'teacher'].includes(req.user?.role)) {
     return res.status(403).json({ message: 'Staff only' });
   }
   next();
@@ -139,7 +139,8 @@ router.get('/pickups', auth, (req, res) => {
 
 // Communication
 router.post('/messages', auth, staffOnly, (req, res) => {
-  const m = { _id: String(Date.now()), to: req.body.to || 'parent', subject: req.body.subject || '', body: req.body.body || '', at: new Date(), by: req.user.userId };
+  const byName = [req.user.firstName, req.user.lastName].filter(Boolean).join(' ') || 'Staff';
+  const m = { _id: String(Date.now()), to: req.body.to || 'parent', subject: req.body.subject || '', body: req.body.body || '', at: new Date(), by: req.user.userId, byName };
   memory.messages.unshift(m);
   res.status(201).json({ message: 'Message sent', item: m });
 });

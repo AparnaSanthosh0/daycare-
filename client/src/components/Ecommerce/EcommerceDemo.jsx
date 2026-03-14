@@ -706,7 +706,7 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                       <Box sx={{ position: 'absolute', top: 12, left: 12 }}>
                         <Chip 
                           icon={<ViewInAr sx={{ fontSize: '1rem' }} />}
-                          label="3D View" 
+                          label="Interactive Spin" 
                           color="primary" 
                           size="small" 
                           sx={{ fontWeight: 600, backgroundColor: '#1976d2', color: 'white' }} 
@@ -922,7 +922,7 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
                     {product.model3DUrl && (
                       <Chip 
                         icon={<ViewInAr sx={{ fontSize: '1rem' }} />}
-                        label="3D View" 
+                        label="Interactive Spin" 
                         color="primary" 
                         size="small" 
                         sx={{ fontWeight: 600, backgroundColor: '#1976d2', color: 'white' }} 

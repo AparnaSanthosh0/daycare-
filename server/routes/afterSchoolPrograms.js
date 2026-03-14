@@ -125,7 +125,8 @@ router.post('/programs', auth, async (req, res) => {
       requirements,
       maxAbsences: maxAbsences || 3,
       createdBy: req.user.userId,
-      status: 'pending' // Admin can approve later
+      source: 'admin',
+      status: 'active'
     });
     
     await program.save();
@@ -518,6 +519,126 @@ router.get('/stats', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Error fetching stats:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// ============================================
+// TEACHER/STAFF SUGGESTION ROUTES
+// ============================================
+
+// @route   POST /api/afterschool/suggestions
+// @desc    Staff submits a program suggestion for admin review
+// @access  Staff
+router.post('/suggestions', auth, async (req, res) => {
+  try {
+    if (!['teacher', 'staff', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Only staff can submit suggestions' });
+    }
+    const {
+      programName, programType, description, ageGroup,
+      schedule, fees, capacity, startDate, endDate, location,
+      requirements, suggestionNotes
+    } = req.body;
+    if (!programName || !programType || !description || !ageGroup || !schedule || !fees || !capacity || !startDate || !location) {
+      return res.status(400).json({ message: 'Please provide all required fields' });
+    }
+    const [startHour, startMin] = schedule.startTime.split(':').map(Number);
+    const [endHour, endMin] = schedule.endTime.split(':').map(Number);
+    const duration = (endHour * 60 + endMin) - (startHour * 60 + startMin);
+    const program = new AfterSchoolProgram({
+      programName, programType, description, ageGroup,
+      schedule: { ...schedule, duration },
+      fees, capacity, startDate, endDate, location, requirements,
+      status: 'pending',
+      source: 'staff-suggestion',
+      suggestionNotes: suggestionNotes || '',
+      createdBy: req.user.userId,
+      maxAbsences: 3
+    });
+    await program.save();
+    res.status(201).json({ message: 'Suggestion submitted for admin review', program });
+  } catch (error) {
+    console.error('Error submitting suggestion:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   GET /api/afterschool/suggestions
+// @desc    Admin gets all staff-suggested programs (pending review)
+// @access  Admin
+router.get('/suggestions', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+    const suggestions = await AfterSchoolProgram.find({ source: 'staff-suggestion' })
+      .populate('createdBy', 'firstName lastName email')
+      .sort({ createdAt: -1 });
+    res.json(suggestions);
+  } catch (error) {
+    console.error('Error fetching suggestions:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   PATCH /api/afterschool/suggestions/:id/approve
+// @desc    Admin approves a staff suggestion (sets status to active)
+// @access  Admin
+router.patch('/suggestions/:id/approve', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+    const program = await AfterSchoolProgram.findByIdAndUpdate(
+      req.params.id,
+      { status: 'active' },
+      { new: true }
+    ).populate('createdBy', 'firstName lastName email');
+    if (!program) return res.status(404).json({ message: 'Suggestion not found' });
+    res.json({ message: 'Program suggestion approved and activated', program });
+  } catch (error) {
+    console.error('Error approving suggestion:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   PATCH /api/afterschool/suggestions/:id/reject
+// @desc    Admin rejects a staff suggestion
+// @access  Admin
+router.patch('/suggestions/:id/reject', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Admin access required' });
+    }
+    const program = await AfterSchoolProgram.findByIdAndUpdate(
+      req.params.id,
+      { status: 'cancelled' },
+      { new: true }
+    ).populate('createdBy', 'firstName lastName email');
+    if (!program) return res.status(404).json({ message: 'Suggestion not found' });
+    res.json({ message: 'Program suggestion rejected', program });
+  } catch (error) {
+    console.error('Error rejecting suggestion:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// @route   GET /api/afterschool/my-suggestions
+// @desc    Staff gets their own submitted suggestions
+// @access  Staff
+router.get('/my-suggestions', auth, async (req, res) => {
+  try {
+    if (!['teacher', 'staff', 'admin'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Staff only' });
+    }
+    const suggestions = await AfterSchoolProgram.find({
+      source: 'staff-suggestion',
+      createdBy: req.user.userId
+    }).sort({ createdAt: -1 });
+    res.json(suggestions);
+  } catch (error) {
+    console.error('Error fetching my suggestions:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
   }
 });

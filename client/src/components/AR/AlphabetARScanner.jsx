@@ -7,35 +7,36 @@ import {
   CameraAlt, Print, VolumeUp, ArrowBack,
   FlipCameraIos, Refresh, CheckCircle
 } from '@mui/icons-material';
+import { Html5Qrcode, Html5QrcodeSupportedFormats } from 'html5-qrcode';
 
 // ── Alphabet Data ─────────────────────────────────────────────────────────────
 const ALPHABET = {
-  A: { emoji: '🍎', word: 'Apple',    phrase: 'A is for Apple',    color: '#e74c3c' },
-  B: { emoji: '🎈', word: 'Balloon',  phrase: 'B is for Balloon',  color: '#e91e63' },
-  C: { emoji: '🐱', word: 'Cat',      phrase: 'C is for Cat',      color: '#ff9800' },
-  D: { emoji: '🐶', word: 'Dog',      phrase: 'D is for Dog',      color: '#8bc34a' },
-  E: { emoji: '🐘', word: 'Elephant', phrase: 'E is for Elephant', color: '#607d8b' },
-  F: { emoji: '🐟', word: 'Fish',     phrase: 'F is for Fish',     color: '#03a9f4' },
-  G: { emoji: '🍇', word: 'Grapes',   phrase: 'G is for Grapes',   color: '#9c27b0' },
-  H: { emoji: '🏠', word: 'House',    phrase: 'H is for House',    color: '#795548' },
-  I: { emoji: '🍦', word: 'Ice Cream',phrase: 'I is for Ice Cream',color: '#e91e63' },
-  J: { emoji: '🧃', word: 'Juice',    phrase: 'J is for Juice',    color: '#ff9800' },
-  K: { emoji: '🥝', word: 'Kiwi',     phrase: 'K is for Kiwi',     color: '#4caf50' },
-  L: { emoji: '🦁', word: 'Lion',     phrase: 'L is for Lion',     color: '#ff5722' },
-  M: { emoji: '🐵', word: 'Monkey',   phrase: 'M is for Monkey',   color: '#795548' },
-  N: { emoji: '🌙', word: 'Night',    phrase: 'N is for Night',    color: '#3f51b5' },
-  O: { emoji: '🐙', word: 'Octopus',  phrase: 'O is for Octopus',  color: '#f44336' },
-  P: { emoji: '🐧', word: 'Penguin',  phrase: 'P is for Penguin',  color: '#2196f3' },
-  Q: { emoji: '👑', word: 'Queen',    phrase: 'Q is for Queen',    color: '#ffd700' },
-  R: { emoji: '🌈', word: 'Rainbow',  phrase: 'R is for Rainbow',  color: '#ff5722' },
-  S: { emoji: '🌟', word: 'Star',     phrase: 'S is for Star',     color: '#ff9800' },
-  T: { emoji: '🐯', word: 'Tiger',    phrase: 'T is for Tiger',    color: '#ff9800' },
-  U: { emoji: '☂️', word: 'Umbrella', phrase: 'U is for Umbrella', color: '#2196f3' },
-  V: { emoji: '🌸', word: 'Violet',   phrase: 'V is for Violet',   color: '#e91e63' },
-  W: { emoji: '🐳', word: 'Whale',    phrase: 'W is for Whale',    color: '#039be5' },
-  X: { emoji: '🎵', word: 'Xylophone',phrase: 'X is for Xylophone',color: '#9c27b0' },
-  Y: { emoji: '🐑', word: 'Yak',      phrase: 'Y is for Yak',      color: '#8bc34a' },
-  Z: { emoji: '🦓', word: 'Zebra',    phrase: 'Z is for Zebra',    color: '#607d8b' },
+  A: { emoji: '🍎', word: 'Apple',    phrase: 'A for Apple',    color: '#e74c3c' },
+  B: { emoji: '🎈', word: 'Balloon',  phrase: 'B for Balloon',  color: '#e91e63' },
+  C: { emoji: '🐱', word: 'Cat',      phrase: 'C for Cat',      color: '#ff9800' },
+  D: { emoji: '🐶', word: 'Dog',      phrase: 'D for Dog',      color: '#8bc34a' },
+  E: { emoji: '🐘', word: 'Elephant', phrase: 'E for Elephant', color: '#607d8b' },
+  F: { emoji: '🐟', word: 'Fish',     phrase: 'F for Fish',     color: '#03a9f4' },
+  G: { emoji: '🍇', word: 'Grapes',   phrase: 'G for Grapes',   color: '#9c27b0' },
+  H: { emoji: '🏠', word: 'House',    phrase: 'H for House',    color: '#795548' },
+  I: { emoji: '🍦', word: 'Ice Cream',phrase: 'I for Ice Cream',color: '#e91e63' },
+  J: { emoji: '🧃', word: 'Juice',    phrase: 'J for Juice',    color: '#ff9800' },
+  K: { emoji: '🥝', word: 'Kiwi',     phrase: 'K for Kiwi',     color: '#4caf50' },
+  L: { emoji: '🦁', word: 'Lion',     phrase: 'L for Lion',     color: '#ff5722' },
+  M: { emoji: '🐵', word: 'Monkey',   phrase: 'M for Monkey',   color: '#795548' },
+  N: { emoji: '🌙', word: 'Night',    phrase: 'N for Night',    color: '#3f51b5' },
+  O: { emoji: '🐙', word: 'Octopus',  phrase: 'O for Octopus',  color: '#f44336' },
+  P: { emoji: '🐧', word: 'Penguin',  phrase: 'P for Penguin',  color: '#2196f3' },
+  Q: { emoji: '👑', word: 'Queen',    phrase: 'Q for Queen',    color: '#ffd700' },
+  R: { emoji: '🌈', word: 'Rainbow',  phrase: 'R for Rainbow',  color: '#ff5722' },
+  S: { emoji: '🌟', word: 'Star',     phrase: 'S for Star',     color: '#ff9800' },
+  T: { emoji: '🐯', word: 'Tiger',    phrase: 'T for Tiger',    color: '#ff9800' },
+  U: { emoji: '☂️', word: 'Umbrella', phrase: 'U for Umbrella', color: '#2196f3' },
+  V: { emoji: '🌸', word: 'Violet',   phrase: 'V for Violet',   color: '#e91e63' },
+  W: { emoji: '🐳', word: 'Whale',    phrase: 'W for Whale',    color: '#039be5' },
+  X: { emoji: '🎵', word: 'Xylophone',phrase: 'X for Xylophone',color: '#9c27b0' },
+  Y: { emoji: '🐑', word: 'Yak',      phrase: 'Y for Yak',      color: '#8bc34a' },
+  Z: { emoji: '🦓', word: 'Zebra',    phrase: 'Z for Zebra',    color: '#607d8b' },
 };
 
 // ── Helper: draw rounded rect ─────────────────────────────────────────────────
@@ -68,6 +69,14 @@ function speak(text) {
   setTimeout(() => { lastSpoken = ''; }, 4000);
 }
 
+function unlockSpeech() {
+  if (!window.speechSynthesis) return;
+  const prime = new SpeechSynthesisUtterance('');
+  prime.volume = 0;
+  window.speechSynthesis.speak(prime);
+  window.speechSynthesis.cancel();
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 const AlphabetARScanner = ({ onBack }) => {
   const videoRef = useRef(null);
@@ -75,6 +84,8 @@ const AlphabetARScanner = ({ onBack }) => {
   const streamRef = useRef(null);
   const animFrameRef = useRef(null);
   const detectorRef = useRef(null);
+  const html5QrRef = useRef(null);
+  const html5ContainerIdRef = useRef(`html5-qr-reader-${Math.random().toString(36).slice(2, 8)}`);
   const lastDetectedRef = useRef(null);
   const cooldownRef = useRef(false);
 
@@ -85,7 +96,18 @@ const AlphabetARScanner = ({ onBack }) => {
   const [facingMode, setFacingMode] = useState('environment');
   const [detected, setDetected] = useState(null); // current letter data
   const [scannedLetters, setScannedLetters] = useState(new Set());
-  const [supported, setSupported] = useState(null); // null=unknown, true/false
+  const [supported, setSupported] = useState(null); // null=unknown, true/false for BarcodeDetector
+
+  const onLetterDetected = useCallback((rawInput) => {
+    const rawValue = String(rawInput || '').trim().toUpperCase();
+    const raw = (rawValue.match(/[A-Z]/) || [])[0] || '';
+    if (raw && ALPHABET[raw] && raw !== lastDetectedRef.current) {
+      lastDetectedRef.current = raw;
+      setDetected(ALPHABET[raw]);
+      setScannedLetters(prev => new Set([...prev, raw]));
+      speak(ALPHABET[raw].phrase);
+    }
+  }, []);
 
   // ── Check BarcodeDetector support ─────────────────────────────────────────
   useEffect(() => {
@@ -97,6 +119,30 @@ const AlphabetARScanner = ({ onBack }) => {
     try {
       setLoading(true);
       setError('');
+
+      unlockSpeech();
+
+      if (!('BarcodeDetector' in window)) {
+        const reader = new Html5Qrcode(html5ContainerIdRef.current, { verbose: false });
+        html5QrRef.current = reader;
+        await reader.start(
+          { facingMode },
+          {
+            fps: 12,
+            qrbox: { width: 320, height: 320 },
+            aspectRatio: 1.333,
+            formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE],
+          },
+          (decodedText) => {
+            onLetterDetected(decodedText);
+          },
+          () => {}
+        );
+        setCameraStarted(true);
+        setLoading(false);
+        return;
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false,
@@ -117,15 +163,52 @@ const AlphabetARScanner = ({ onBack }) => {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [facingMode]);
+  }, [facingMode, onLetterDetected]);
 
   // ── Stop camera ──────────────────────────────────────────────────────────
   const stopCamera = useCallback(() => {
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    if (html5QrRef.current) {
+      const reader = html5QrRef.current;
+      try {
+        const stopResult = reader.stop();
+        Promise.resolve(stopResult).catch(() => {}).finally(() => {
+          try {
+            const clearResult = reader.clear();
+            Promise.resolve(clearResult).catch(() => {});
+          } catch (_) {
+            // ignore clear errors when scanner is already disposed
+          }
+          if (html5QrRef.current === reader) {
+            html5QrRef.current = null;
+          }
+        });
+      } catch (_) {
+        try {
+          const clearResult = reader.clear();
+          Promise.resolve(clearResult).catch(() => {});
+        } catch (__){
+          // ignore stop/clear errors when scanner is not running
+        }
+        if (html5QrRef.current === reader) {
+          html5QrRef.current = null;
+        }
+      }
+    }
     setCameraStarted(false);
     setDetected(null);
+    lastDetectedRef.current = null;
   }, []);
+
+  // ── Auto-restart camera when facing mode changes (after flip) ──────────────
+  const flipRequestedRef = useRef(false);
+  useEffect(() => {
+    if (!cameraStarted && !loading && flipRequestedRef.current) {
+      flipRequestedRef.current = false;
+      startCamera();
+    }
+  }, [cameraStarted, loading, startCamera]);
 
   useEffect(() => () => stopCamera(), [stopCamera]);
 
@@ -167,7 +250,7 @@ const AlphabetARScanner = ({ onBack }) => {
         ctx.fillStyle = 'white';
         ctx.font = 'bold 18px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText('📷 Point at a flashcard QR code', canvas.width/2, canvas.height - 30);
+        ctx.fillText('📷 Point at letter card (A-Z)', canvas.width/2, canvas.height - 30);
       }
 
       // Overlay if letter detected
@@ -184,7 +267,8 @@ const AlphabetARScanner = ({ onBack }) => {
         try {
           const barcodes = await detectorRef.current.detect(video);
           if (barcodes.length > 0) {
-            const raw = barcodes[0].rawValue.trim().toUpperCase().replace(/[^A-Z]/, '');
+            const rawValue = String(barcodes[0].rawValue || '').trim().toUpperCase();
+            const raw = (rawValue.match(/[A-Z]/) || [])[0] || '';
             if (raw && ALPHABET[raw]) {
               if (raw !== lastDetectedRef.current) {
                 lastDetectedRef.current = raw;
@@ -215,11 +299,21 @@ const AlphabetARScanner = ({ onBack }) => {
     ctx.fillStyle = info.color + 'dd';
     ctx.fill();
 
-    // Big emoji
-    ctx.font = `${Math.min(cw, ch) * 0.22}px serif`;
+    // 3D-style object pop effect
+    const emojiSize = Math.min(cw, ch) * 0.22;
+    ctx.font = `${emojiSize}px serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    for (let depth = 6; depth >= 1; depth -= 1) {
+      ctx.fillStyle = `rgba(0,0,0,${0.04 * depth})`;
+      ctx.fillText(info.emoji, (cw * 0.3) + depth, (ch * 0.26) + depth);
+    }
+    ctx.fillStyle = 'white';
     ctx.fillText(info.emoji, cw * 0.3, ch * 0.26);
+
+    ctx.font = `bold ${Math.min(cw, ch) * 0.045}px sans-serif`;
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.fillText(`3D ${info.word}`, cw * 0.3, ch * 0.38);
 
     // Big letter
     ctx.fillStyle = 'white';
@@ -271,20 +365,19 @@ const AlphabetARScanner = ({ onBack }) => {
       {/* ── SCANNER TAB ─────────────────────────────────────────────── */}
       {tab === 0 && (
         <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', p: 2 }}>
-          {/* Unsupported browser warning */}
+          {/* Browser mode notice */}
           {supported === false && (
-            <Alert severity="warning" sx={{ mb: 2, maxWidth: 500 }}>
-              <strong>Chrome or Edge required!</strong> BarcodeDetector API is not supported in this browser.
-              Please open this page in <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> to use the scanner.
+            <Alert severity="info" sx={{ mb: 2, maxWidth: 500 }}>
+              BarcodeDetector is unavailable in this browser. Fallback scanner mode is enabled for mobile support.
             </Alert>
           )}
 
-          {supported !== false && !cameraStarted && !loading && (
+          {!cameraStarted && !loading && (
             <Box textAlign="center" maxWidth={420}>
               <Typography variant="h2" mb={2}>📷</Typography>
               <Typography variant="h6" fontWeight="bold" mb={1}>Start the AR Scanner</Typography>
               <Typography color="text.secondary" mb={3}>
-                Print flashcards from the "Print Flashcards" tab, then hold them in front of the camera. The letter will appear with an animation and sound!
+                Print letter cards from the "Print Flashcards" tab, then hold a card like A in front of the camera. A 3D-style object and voice prompt will appear automatically.
               </Typography>
               <Button
                 variant="contained"
@@ -307,53 +400,130 @@ const AlphabetARScanner = ({ onBack }) => {
           )}
 
           {/* Camera View */}
-          <Box sx={{
-            position: 'relative', width: '100%', maxWidth: 600, maxHeight: 480,
-            bgcolor: 'black', borderRadius: 2, overflow: 'hidden',
-            display: cameraStarted ? 'block' : 'none'
-          }}>
-            <video ref={videoRef} style={{ display: 'none' }} playsInline muted />
-            <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
+          {'BarcodeDetector' in window ? (
+            <Box sx={{
+              position: 'relative', width: '100%', maxWidth: 600, maxHeight: 480,
+              bgcolor: 'black', borderRadius: 2, overflow: 'hidden',
+              display: cameraStarted ? 'block' : 'none'
+            }}>
+              <video ref={videoRef} style={{ display: 'none' }} playsInline muted />
+              <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }} />
 
-            {/* Controls */}
-            <Stack direction="row" spacing={1.5} sx={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)' }}>
-              <Tooltip title="Flip Camera">
-                <IconButton onClick={() => { stopCamera(); setFacingMode(p => p === 'user' ? 'environment' : 'user'); }} sx={{ bgcolor: 'rgba(255,255,255,0.85)' }}>
-                  <FlipCameraIos />
-                </IconButton>
-              </Tooltip>
-              {detected && (
-                <Tooltip title="Speak Again">
-                  <IconButton onClick={handleSpeak} sx={{ bgcolor: '#4caf50', color: 'white', '&:hover': { bgcolor: '#388e3c' } }}>
-                    <VolumeUp />
+              {/* Controls */}
+              <Stack direction="row" spacing={1.5} sx={{ position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)' }}>
+                <Tooltip title="Flip Camera">
+                  <IconButton onClick={() => { flipRequestedRef.current = true; stopCamera(); setFacingMode(p => p === 'user' ? 'environment' : 'user'); }} sx={{ bgcolor: 'rgba(255,255,255,0.85)' }}>
+                    <FlipCameraIos />
                   </IconButton>
                 </Tooltip>
+                {detected && (
+                  <Tooltip title="Speak Again">
+                    <IconButton onClick={handleSpeak} sx={{ bgcolor: '#4caf50', color: 'white', '&:hover': { bgcolor: '#388e3c' } }}>
+                      <VolumeUp />
+                    </IconButton>
+                  </Tooltip>
+                )}
+                <Tooltip title="Stop Camera">
+                  <IconButton onClick={stopCamera} sx={{ bgcolor: 'rgba(255,255,255,0.85)' }}>
+                    <ArrowBack />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+            </Box>
+          ) : (
+            <Box sx={{ width: '100%', maxWidth: 600 }}>
+              {/* Container always in DOM so Html5Qrcode can render into it immediately */}
+              <Box
+                id={html5ContainerIdRef.current}
+                sx={{
+                  width: '100%',
+                  borderRadius: 2,
+                  overflow: 'hidden',
+                  '& video': { width: '100%' },
+                }}
+              />
+              {cameraStarted && (
+                <Stack direction="row" spacing={1.5} sx={{ justifyContent: 'center', mt: 1.5 }}>
+                  <Tooltip title="Flip Camera">
+                    <IconButton onClick={() => { flipRequestedRef.current = true; stopCamera(); setFacingMode(p => p === 'user' ? 'environment' : 'user'); }} sx={{ bgcolor: 'rgba(255,255,255,0.85)' }}>
+                      <FlipCameraIos />
+                    </IconButton>
+                  </Tooltip>
+                  {detected && (
+                    <Tooltip title="Speak Again">
+                      <IconButton onClick={handleSpeak} sx={{ bgcolor: '#4caf50', color: 'white', '&:hover': { bgcolor: '#388e3c' } }}>
+                        <VolumeUp />
+                      </IconButton>
+                    </Tooltip>
+                  )}
+                  <Tooltip title="Stop Camera">
+                    <IconButton onClick={stopCamera} sx={{ bgcolor: 'rgba(255,255,255,0.85)' }}>
+                      <ArrowBack />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
               )}
-              <Tooltip title="Stop Camera">
-                <IconButton onClick={stopCamera} sx={{ bgcolor: 'rgba(255,255,255,0.85)' }}>
-                  <ArrowBack />
-                </IconButton>
-              </Tooltip>
-            </Stack>
-          </Box>
+
+              {cameraStarted && detected && (
+                <Paper sx={{ mt: 1.5, p: 1.5, borderRadius: 2, border: '1px solid #e5e7eb', bgcolor: '#ffffff' }}>
+                  <Typography variant="body2" fontWeight={700} sx={{ color: detected.color }}>
+                    {detected.phrase}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Scanned: {detected.word}
+                  </Typography>
+                </Paper>
+              )}
+            </Box>
+          )}
+
+          {cameraStarted && (
+            <Paper sx={{ mt: 2, p: 1.5, maxWidth: 700, width: '100%', border: '1px dashed #cbd5e1' }}>
+              <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                Scan not detecting? Tap the letter card manually
+              </Typography>
+              <Grid container spacing={1}>
+                {Object.entries(ALPHABET).map(([letter, info]) => (
+                  <Grid item xs={2} sm={1} key={`manual-${letter}`}>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={() => onLetterDetected(letter)}
+                      sx={{
+                        minWidth: 0,
+                        width: '100%',
+                        borderColor: info.color,
+                        color: info.color,
+                        fontWeight: 700,
+                        '&:hover': { borderColor: info.color, backgroundColor: `${info.color}11` }
+                      }}
+                    >
+                      {letter}
+                    </Button>
+                  </Grid>
+                ))}
+              </Grid>
+            </Paper>
+          )}
 
           {/* Restart camera when facingMode changes */}
-          {!cameraStarted && !loading && supported !== false && error === '' && facingMode !== 'environment' && (
+          {!cameraStarted && !loading && error === '' && facingMode !== 'environment' && (
             <Button size="small" onClick={startCamera} sx={{ mt: 1 }}>Restart Camera</Button>
           )}
 
           {/* Instructions */}
-          {supported !== false && (
+          {
             <Paper sx={{ mt: 2, p: 2, maxWidth: 500, width: '100%' }}>
               <Typography variant="subtitle2" fontWeight="bold" gutterBottom>📌 How to use:</Typography>
               <Typography variant="body2" color="text.secondary">
                 1. Print the flashcards (next tab)<br />
                 2. Click "Start Camera" above<br />
-                3. Show the printed card's QR code to the camera<br />
-                4. The letter + image + sound will appear automatically! 🎉
+                3. Show one letter card (for example A) to the camera<br />
+                4. Keep the QR square centered and close to camera for 1-2 seconds<br />
+                5. If scan fails on screen-glare, use manual letter tap buttons
               </Typography>
             </Paper>
-          )}
+          }
         </Box>
       )}
 
@@ -404,13 +574,13 @@ const AlphabetARScanner = ({ onBack }) => {
                   {/* QR code from external service */}
                   <Box
                     component="img"
-                    src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(letter)}&size=100x100&margin=5&color=${info.color.replace('#', '')}`}
+                    src={`https://api.qrserver.com/v1/create-qr-code/?data=${encodeURIComponent(letter)}&size=180x180&margin=10&color=000000&bgcolor=FFFFFF&ecc=H`}
                     alt={`QR ${letter}`}
-                    sx={{ width: 80, height: 80, mt: 0.5, border: `2px solid ${info.color}`, borderRadius: 1 }}
-                    onError={e => { e.target.src = `https://api.qrserver.com/v1/create-qr-code/?data=${letter}&size=100x100`; }}
+                    sx={{ width: 110, height: 110, mt: 0.5, border: `2px solid ${info.color}`, borderRadius: 1 }}
+                    onError={e => { e.target.src = `https://api.qrserver.com/v1/create-qr-code/?data=${letter}&size=180x180&color=000000`; }}
                   />
                   <Typography variant="caption" display="block" sx={{ mt: 0.5, color: 'text.secondary', fontSize: '0.65rem' }}>
-                    Scan me!
+                    High-contrast QR
                   </Typography>
                 </Paper>
               </Grid>

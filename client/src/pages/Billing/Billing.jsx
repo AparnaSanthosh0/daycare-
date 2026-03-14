@@ -31,7 +31,8 @@ import {
   Assessment,
   Add,
   Edit,
-  Visibility
+  Visibility,
+  Delete
 } from '@mui/icons-material';
 import api from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
@@ -64,6 +65,21 @@ const Billing = () => {
     effectiveDate: new Date().toISOString().split('T')[0],
     notes: ''
   });
+
+  // Fee structure management states
+  const [feeStructures, setFeeStructures] = useState([]);
+  const [feeDialog, setFeeDialog] = useState({ open: false, mode: 'create', fee: null });
+  const [feeForm, setFeeForm] = useState({
+    name: '',
+    description: '',
+    program: 'all',
+    billingCycle: 'monthly',
+    baseAmount: '',
+    includedServicesText: '',
+    optionalAddonsText: '',
+    isPublished: true,
+    isActive: true,
+  });
   
   // Dialog states
   const [invoiceDialog, setInvoiceDialog] = useState({ open: false });
@@ -92,19 +108,21 @@ const Billing = () => {
   const fetchBillingData = async () => {
     try {
       setLoading(true);
-      const [statsRes, invoicesRes, paymentsRes, parentsRes, childrenRes, tuitionRes] = await Promise.all([
+      const [statsRes, invoicesRes, paymentsRes, parentsRes, childrenRes, tuitionRes, feeRes] = await Promise.all([
         api.get('/billing/stats').catch(() => ({ data: { totalRevenue: 0, paidInvoices: 0, pendingPayments: 0, overdueAmount: 0 } })),
         api.get('/billing/invoices').catch(() => ({ data: [] })),
         api.get('/billing/payments').catch(() => ({ data: [] })),
         api.get('/admin/parents').catch(() => ({ data: [] })),
         api.get('/children').catch(() => ({ data: [] })),
-        api.get('/billing/tuition-rates').catch(() => ({ data: [] }))
+        api.get('/billing/tuition-rates').catch(() => ({ data: [] })),
+        api.get('/billing/fee-structures').catch(() => ({ data: [] }))
       ]);
       
       setBillingStats(statsRes.data || { totalRevenue: 0, paidInvoices: 0, pendingPayments: 0, overdueAmount: 0 });
       setInvoices(Array.isArray(invoicesRes.data) ? invoicesRes.data : []);
       setPayments(Array.isArray(paymentsRes.data) ? paymentsRes.data : []);
       setTuitionRates(Array.isArray(tuitionRes.data) ? tuitionRes.data : []);
+      setFeeStructures(Array.isArray(feeRes.data) ? feeRes.data : []);
       setParentsList(Array.isArray(parentsRes.data) ? parentsRes.data : []);
       setChildrenList(Array.isArray(childrenRes.data) ? childrenRes.data : []);
     } catch (error) {
@@ -114,6 +132,7 @@ const Billing = () => {
       setInvoices([]);
       setPayments([]);
       setTuitionRates([]);
+      setFeeStructures([]);
       setParentsList([]);
       setChildrenList([]);
     } finally {
@@ -227,6 +246,97 @@ const Billing = () => {
       });
     }
     setTuitionDialog({ open: true, mode, child });
+  };
+
+  const parseAddons = (text = '') => {
+    if (!text.trim()) return [];
+    return text
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => {
+        const [namePart, amountPart, ...descriptionParts] = line.split('|');
+        return {
+          name: (namePart || '').trim(),
+          amount: Number((amountPart || '0').trim() || 0),
+          description: descriptionParts.join('|').trim(),
+        };
+      })
+      .filter((addon) => addon.name);
+  };
+
+  const openFeeDialog = (mode = 'create', fee = null) => {
+    if (mode === 'edit' && fee) {
+      setFeeForm({
+        name: fee.name || '',
+        description: fee.description || '',
+        program: fee.program || 'all',
+        billingCycle: fee.billingCycle || 'monthly',
+        baseAmount: fee.baseAmount ?? '',
+        includedServicesText: Array.isArray(fee.includedServices) ? fee.includedServices.join(', ') : '',
+        optionalAddonsText: Array.isArray(fee.optionalAddons)
+          ? fee.optionalAddons.map((addon) => `${addon.name || ''}|${addon.amount || 0}|${addon.description || ''}`).join('\n')
+          : '',
+        isPublished: fee.isPublished !== false,
+        isActive: fee.isActive !== false,
+      });
+    } else {
+      setFeeForm({
+        name: '',
+        description: '',
+        program: 'all',
+        billingCycle: 'monthly',
+        baseAmount: '',
+        includedServicesText: '',
+        optionalAddonsText: '',
+        isPublished: true,
+        isActive: true,
+      });
+    }
+    setFeeDialog({ open: true, mode, fee });
+  };
+
+  const handleFeeSubmit = async () => {
+    try {
+      const payload = {
+        name: feeForm.name,
+        description: feeForm.description,
+        program: feeForm.program,
+        billingCycle: feeForm.billingCycle,
+        baseAmount: Number(feeForm.baseAmount || 0),
+        includedServices: feeForm.includedServicesText
+          .split(',')
+          .map((item) => item.trim())
+          .filter(Boolean),
+        optionalAddons: parseAddons(feeForm.optionalAddonsText),
+        isPublished: feeForm.isPublished,
+        isActive: feeForm.isActive,
+      };
+
+      if (feeDialog.mode === 'create') {
+        await api.post('/billing/fee-structures', payload);
+      } else if (feeDialog.fee?._id) {
+        await api.put(`/billing/fee-structures/${feeDialog.fee._id}`, payload);
+      }
+
+      setSuccess(`Fee structure ${feeDialog.mode === 'create' ? 'created' : 'updated'} successfully`);
+      setFeeDialog({ open: false, mode: 'create', fee: null });
+      fetchBillingData();
+    } catch (submitError) {
+      console.error('Error saving fee structure:', submitError);
+      setError(submitError?.response?.data?.message || 'Failed to save fee structure');
+    }
+  };
+
+  const deactivateFeeStructure = async (feeId) => {
+    try {
+      await api.delete(`/billing/fee-structures/${feeId}`);
+      setSuccess('Fee structure deactivated successfully');
+      fetchBillingData();
+    } catch (deleteError) {
+      console.error('Error deactivating fee structure:', deleteError);
+      setError(deleteError?.response?.data?.message || 'Failed to deactivate fee structure');
+    }
   };
 
   if (loading) {
@@ -568,6 +678,76 @@ const Billing = () => {
         </CardContent>
       </Card>
 
+      {/* Fee Structure Catalog */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+            <Box>
+              <Typography variant="h6">Daycare Fee Structures</Typography>
+              <Typography variant="body2" color="text.secondary">
+                Create plan-based fees with inclusions that parents can choose from.
+              </Typography>
+            </Box>
+            <Button variant="contained" startIcon={<Add />} onClick={() => openFeeDialog('create')}>
+              Add Fee Structure
+            </Button>
+          </Box>
+
+          {Array.isArray(feeStructures) && feeStructures.length > 0 ? (
+            <Grid container spacing={2}>
+              {feeStructures.map((fee) => (
+                <Grid item xs={12} md={6} key={fee._id}>
+                  <Card variant="outlined" sx={{ height: '100%' }}>
+                    <CardContent>
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
+                        <Box>
+                          <Typography variant="h6" sx={{ mb: 0.5 }}>{fee.name}</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {fee.description || 'No description'}
+                          </Typography>
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                          <Chip label={fee.program || 'all'} size="small" color="primary" />
+                          <Chip label={fee.isActive ? 'Active' : 'Inactive'} size="small" color={fee.isActive ? 'success' : 'default'} />
+                        </Box>
+                      </Box>
+
+                      <Typography variant="h5" color="success.main" sx={{ mb: 1 }}>
+                        ${Number(fee.baseAmount || 0).toFixed(2)} / {fee.billingCycle || 'monthly'}
+                      </Typography>
+
+                      <Typography variant="subtitle2" sx={{ mb: 0.5 }}>Included Services</Typography>
+                      {Array.isArray(fee.includedServices) && fee.includedServices.length > 0 ? (
+                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mb: 2 }}>
+                          {fee.includedServices.map((service, index) => (
+                            <Chip key={`${service}-${index}`} label={service} size="small" variant="outlined" />
+                          ))}
+                        </Box>
+                      ) : (
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                          No inclusions configured
+                        </Typography>
+                      )}
+
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Button size="small" variant="outlined" startIcon={<Edit />} onClick={() => openFeeDialog('edit', fee)}>
+                          Edit
+                        </Button>
+                        <Button size="small" variant="outlined" color="error" startIcon={<Delete />} onClick={() => deactivateFeeStructure(fee._id)}>
+                          Deactivate
+                        </Button>
+                      </Box>
+                    </CardContent>
+                  </Card>
+                </Grid>
+              ))}
+            </Grid>
+          ) : (
+            <Typography variant="body2" color="text.secondary">No fee structures found. Create one to allow parent selection.</Typography>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Financial Reports */}
       <Card>
         <CardContent>
@@ -849,6 +1029,126 @@ const Billing = () => {
           </Button>
           <Button onClick={handleTuitionSubmit} variant="contained">
             {tuitionDialog.mode === 'create' ? 'Set Rate' : 'Update Rate'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Fee Structure Management Dialog */}
+      <Dialog open={feeDialog.open} onClose={() => setFeeDialog({ open: false, mode: 'create', fee: null })} maxWidth="md" fullWidth>
+        <DialogTitle>
+          {feeDialog.mode === 'create' ? 'Create Fee Structure' : 'Update Fee Structure'}
+        </DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Plan Name"
+                value={feeForm.name}
+                onChange={(e) => setFeeForm({ ...feeForm, name: e.target.value })}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Base Amount ($)"
+                type="number"
+                value={feeForm.baseAmount}
+                onChange={(e) => setFeeForm({ ...feeForm, baseAmount: e.target.value })}
+                required
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Program</InputLabel>
+                <Select
+                  value={feeForm.program}
+                  label="Program"
+                  onChange={(e) => setFeeForm({ ...feeForm, program: e.target.value })}
+                >
+                  <MenuItem value="all">All Programs</MenuItem>
+                  <MenuItem value="toddler">Toddler</MenuItem>
+                  <MenuItem value="preschool">Preschool</MenuItem>
+                  <MenuItem value="prekindergarten">Prekindergarten</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Billing Cycle</InputLabel>
+                <Select
+                  value={feeForm.billingCycle}
+                  label="Billing Cycle"
+                  onChange={(e) => setFeeForm({ ...feeForm, billingCycle: e.target.value })}
+                >
+                  <MenuItem value="monthly">Monthly</MenuItem>
+                  <MenuItem value="quarterly">Quarterly</MenuItem>
+                  <MenuItem value="yearly">Yearly</MenuItem>
+                  <MenuItem value="one_time">One Time</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Description"
+                value={feeForm.description}
+                onChange={(e) => setFeeForm({ ...feeForm, description: e.target.value })}
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                label="Included Services (comma-separated)"
+                value={feeForm.includedServicesText}
+                onChange={(e) => setFeeForm({ ...feeForm, includedServicesText: e.target.value })}
+                placeholder="Meals, Transport, Learning Kit"
+              />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Optional Add-ons (one per line: name|amount|description)"
+                value={feeForm.optionalAddonsText}
+                onChange={(e) => setFeeForm({ ...feeForm, optionalAddonsText: e.target.value })}
+                placeholder={"Extended Care|40|Late pickup support\nWeekend Activities|25|Saturday enrichment"}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Published</InputLabel>
+                <Select
+                  value={String(feeForm.isPublished)}
+                  label="Published"
+                  onChange={(e) => setFeeForm({ ...feeForm, isPublished: e.target.value === 'true' })}
+                >
+                  <MenuItem value="true">Yes</MenuItem>
+                  <MenuItem value="false">No</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Active</InputLabel>
+                <Select
+                  value={String(feeForm.isActive)}
+                  label="Active"
+                  onChange={(e) => setFeeForm({ ...feeForm, isActive: e.target.value === 'true' })}
+                >
+                  <MenuItem value="true">Yes</MenuItem>
+                  <MenuItem value="false">No</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setFeeDialog({ open: false, mode: 'create', fee: null })}>Cancel</Button>
+          <Button onClick={handleFeeSubmit} variant="contained">
+            {feeDialog.mode === 'create' ? 'Create' : 'Update'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -24,10 +24,32 @@ import {
   Select,
   MenuItem
 } from '@mui/material';
-import { Person, Payment } from '@mui/icons-material';
-import api from '../config/api';
+import { Person, Payment, VerifiedUser } from '@mui/icons-material';
+import api, { API_BASE_URL } from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
 import { RAZORPAY_CONFIG } from '../config/razorpay';
+
+function toAbsoluteAssetUrl(maybePath) {
+  if (!maybePath) return null;
+  if (/^https?:\/\//i.test(String(maybePath))) return String(maybePath).trim();
+  let origin = API_BASE_URL.replace(/\/?api\/?$/i, '').replace(/\/$/, '');
+  if (!/^https?:\/\//i.test(origin) && typeof window !== 'undefined' && window.location?.origin) {
+    origin = window.location.origin;
+  }
+  const normalizedPath = String(maybePath).trim().replace(/\\/g, '/');
+  const resourcePath = normalizedPath.startsWith('/') ? normalizedPath : `/${normalizedPath}`;
+  return `${origin}${resourcePath}`;
+}
+
+function getVerificationDocs(staff = {}) {
+  return [
+    { label: 'Certificate', url: toAbsoluteAssetUrl(staff.certificateUrl) },
+    { label: 'Aadhar Card', url: toAbsoluteAssetUrl(staff.documents?.aadharCard) },
+    { label: 'PAN Card', url: toAbsoluteAssetUrl(staff.documents?.panCard) },
+    { label: 'Police Clearance', url: toAbsoluteAssetUrl(staff.documents?.policeClearance) },
+    { label: 'Driving License', url: toAbsoluteAssetUrl(staff.documents?.drivingLicense) },
+  ].filter((item) => item.url);
+}
 
 const NannyServicesTab = () => {
   const { user } = useAuth();
@@ -265,8 +287,12 @@ const NannyServicesTab = () => {
         <Grid container spacing={3}>
           {nannies.map((nanny) => (
             <Grid item xs={12} sm={6} md={4} key={nanny._id}>
-              <Card>
+              <Card sx={{ height: '100%' }}>
                 <CardContent>
+                  {(() => {
+                    const verificationDocs = getVerificationDocs(nanny.staff);
+                    return (
+                      <>
                   <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                     <Avatar sx={{ width: 60, height: 60, bgcolor: '#e91e63', mr: 2 }}>
                       <Person />
@@ -287,18 +313,66 @@ const NannyServicesTab = () => {
                       Qualification: {nanny.staff.qualification}
                     </Typography>
                   )}
+                  {nanny.staff?.certification && (
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Certification: {nanny.staff.certification}
+                    </Typography>
+                  )}
+                  {nanny.staff?.serviceArea && (
+                    <Typography variant="body2" color="text.secondary" gutterBottom>
+                      Service Area: {nanny.staff.serviceArea}
+                    </Typography>
+                  )}
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1.5 }}>
+                    <Chip
+                      icon={<VerifiedUser />}
+                      label={`${verificationDocs.length} verification ${verificationDocs.length === 1 ? 'document' : 'documents'}`}
+                      size="small"
+                      color={verificationDocs.length ? 'success' : 'default'}
+                      variant="outlined"
+                    />
+                    <Chip label="Subscription plans available" size="small" color="secondary" variant="outlined" />
+                  </Box>
+                  {verificationDocs.length > 0 ? (
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1.5 }}>
+                      {verificationDocs.slice(0, 3).map((doc) => (
+                        <Button
+                          key={doc.label}
+                          component="a"
+                          href={doc.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          size="small"
+                          variant="text"
+                          sx={{ px: 0, minWidth: 0 }}
+                        >
+                          View {doc.label}
+                        </Button>
+                      ))}
+                    </Box>
+                  ) : (
+                    <Typography variant="caption" color="warning.main" sx={{ display: 'block', mt: 1.5 }}>
+                      Verification documents have not been uploaded yet.
+                    </Typography>
+                  )}
+                  <Alert severity="info" sx={{ mt: 2 }}>
+                    Book once or choose a weekly/monthly subscription inside the booking form.
+                  </Alert>
                   <Button
                     fullWidth
                     variant="contained"
                     sx={{ mt: 2, bgcolor: '#e91e63', '&:hover': { bgcolor: '#d81b60' } }}
                     onClick={() => {
                       setSelectedNanny(nanny);
-                      setBookingForm({ ...bookingForm, nannyId: nanny._id });
+                      setBookingForm((prev) => ({ ...prev, nannyId: nanny._id }));
                       setBookingDialog(true);
                     }}
                   >
                     Book Now
                   </Button>
+                      </>
+                    );
+                  })()}
                 </CardContent>
               </Card>
             </Grid>
@@ -625,6 +699,14 @@ const NannyServicesTab = () => {
       >
         <DialogTitle>Book {selectedNanny?.firstName} {selectedNanny?.lastName}</DialogTitle>
         <DialogContent>
+          {selectedNanny && (
+            <Alert severity="info" sx={{ mt: 1 }}>
+              {selectedNanny.staff?.yearsOfExperience || 0} years experience
+              {selectedNanny.staff?.qualification ? `, ${selectedNanny.staff.qualification}` : ''}
+              {selectedNanny.staff?.certification ? `, ${selectedNanny.staff.certification}` : ''}.
+              {' '}Verification docs available: {getVerificationDocs(selectedNanny.staff).length}.
+            </Alert>
+          )}
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12} sm={6}>
               <TextField
@@ -760,6 +842,11 @@ const NannyServicesTab = () => {
             )}
             {bookingForm.serviceType === 'subscription' && (
               <>
+                <Grid item xs={12}>
+                  <Alert severity="success">
+                    Subscription plans help parents lock in fixed nanny hours with optional weekly or monthly discounts.
+                  </Alert>
+                </Grid>
                 <Grid item xs={12} sm={6}>
                   <TextField
                     fullWidth

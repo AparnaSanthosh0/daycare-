@@ -286,7 +286,117 @@ function recommendFoodsFallback(status, ageYears) {
     if (uniqueFoods.length >= 10) break;
   }
 
-  return uniqueFoods;
+  return sanitizeRecommendedFoods(uniqueFoods);
+}
+
+const INGREDIENT_ONLY_KEYWORDS = [
+  'bay leaf', 'bay leaves', 'leaf', 'leaves', 'spice', 'masala', 'pepper', 'salt', 'turmeric',
+  'cumin', 'mustard seed', 'cardamom', 'clove', 'cinnamon', 'asafoetida', 'hing', 'fenugreek',
+  'ajwain', 'oregano', 'thyme', 'rosemary', 'vanilla', 'saffron', 'chilli powder', 'chili powder',
+  'coriander powder', 'garam masala', 'seasoning', 'anise', 'anise seed', 'basil', 'caraway',
+  'caraway seed', 'celery seed', 'coriander seed', 'chervil', 'chervil dried', 'dill', 'parsley'
+];
+
+const INGREDIENT_ONLY_PATTERNS = ['seed', 'dried', 'powder', 'spices,', 'spice,', 'leaf', 'leaves', 'herb'];
+
+function prettifyMealText(value) {
+  return String(value || '')
+    .replace(/_/g, ' ')
+    .replace(/\s*,\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function isIngredientOnlyFood(foodName) {
+  const normalized = String(foodName || '')
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ');
+  if (!normalized) return true;
+  return INGREDIENT_ONLY_KEYWORDS.some((keyword) => normalized === keyword || normalized.includes(keyword))
+    || INGREDIENT_ONLY_PATTERNS.some((pattern) => normalized.includes(pattern));
+}
+
+function sanitizeRecommendedFoods(rawFoods) {
+  const seen = new Set();
+  const filtered = [];
+  for (const item of rawFoods || []) {
+    const name = String(item || '').trim();
+    const key = name.toLowerCase();
+    if (!name || seen.has(key)) continue;
+    seen.add(key);
+    if (isIngredientOnlyFood(name)) continue;
+    filtered.push(name);
+    if (filtered.length >= 10) break;
+  }
+  return filtered;
+}
+
+function buildMealFromFood(foodName, slot) {
+  const ingredient = prettifyMealText(foodName);
+  if (!ingredient) return '';
+  if (slot === 'breakfast') return `${ingredient} porridge with milk`;
+  if (slot === 'lunch') return `Rice and lentil bowl with ${ingredient}`;
+  if (slot === 'snack') return `${ingredient} yogurt snack`;
+  return `Soft khichdi with ${ingredient}`;
+}
+
+function normalizeMealEntry(value, slot, fallbackIngredient) {
+  const text = prettifyMealText(value);
+  if (!text) {
+    return buildMealFromFood(fallbackIngredient, slot);
+  }
+  if (isIngredientOnlyFood(text)) {
+    return buildMealFromFood(text, slot);
+  }
+  return text;
+}
+
+function normalizeTeacherPlan(plan = {}, recommendedFoods = []) {
+  const foods = sanitizeRecommendedFoods(recommendedFoods);
+  return {
+    breakfast: normalizeMealEntry(plan.breakfast, 'breakfast', foods[0] || 'Banana'),
+    lunch: normalizeMealEntry(plan.lunch, 'lunch', foods[1] || foods[0] || 'Lentils'),
+    snack: normalizeMealEntry(plan.snack, 'snack', foods[2] || foods[0] || 'Apple'),
+    dinner: normalizeMealEntry(plan.dinner, 'dinner', foods[3] || foods[1] || 'Spinach'),
+    foodsToAvoid: Array.isArray(plan.foodsToAvoid) ? plan.foodsToAvoid : ['High-sodium packaged snacks', 'Sugary drinks'],
+    allergySafe: plan.allergySafe !== undefined ? Boolean(plan.allergySafe) : true,
+  };
+}
+
+function buildMealPlanOptionsFromFoods(recommendedFoods = [], basePlan = {}) {
+  const cleanFoods = sanitizeRecommendedFoods(recommendedFoods);
+  const normalizedBasePlan = normalizeTeacherPlan(basePlan, cleanFoods);
+  const f0 = cleanFoods[0] || 'Banana';
+  const f1 = cleanFoods[1] || f0;
+  const f2 = cleanFoods[2] || f1;
+  const f3 = cleanFoods[3] || f2;
+
+  return [
+    {
+      title: 'Plan A',
+      breakfast: normalizedBasePlan.breakfast || buildMealFromFood(f0, 'breakfast'),
+      lunch: normalizedBasePlan.lunch || buildMealFromFood(f1, 'lunch'),
+      snack: normalizedBasePlan.snack || buildMealFromFood(f2, 'snack'),
+      dinner: normalizedBasePlan.dinner || buildMealFromFood(f3, 'dinner'),
+    },
+    {
+      title: 'Plan B',
+      breakfast: buildMealFromFood(f1, 'breakfast'),
+      lunch: buildMealFromFood(f2, 'lunch'),
+      snack: buildMealFromFood(f3, 'snack'),
+      dinner: buildMealFromFood(f0, 'dinner'),
+    },
+    {
+      title: 'Plan C',
+      breakfast: buildMealFromFood(f2, 'breakfast'),
+      lunch: buildMealFromFood(f3, 'lunch'),
+      snack: buildMealFromFood(f0, 'snack'),
+      dinner: buildMealFromFood(f1, 'dinner'),
+    },
+  ];
 }
 
 function buildNodeFallbackPrediction(payload, reason) {
@@ -298,6 +408,7 @@ function buildNodeFallbackPrediction(payload, reason) {
   const normalizedStatus = normalizeNutritionStatus(malnutritionPrediction.prediction);
   const mealRecommendation = recommendMealFallback(payload);
   const recommendedFoods = recommendFoodsFallback(normalizedStatus, Math.max(1, Math.round(ageMonths / 12)));
+  const recommendedMeals = buildMealPlanOptionsFromFoods(recommendedFoods);
 
   return {
     success: true,
@@ -312,6 +423,7 @@ function buildNodeFallbackPrediction(payload, reason) {
     nutrient_food_recommendations: {
       nutrition_status_for_filter: normalizedStatus,
       recommended_foods: recommendedFoods,
+      recommended_meal_options: recommendedMeals,
     },
     note: `Fallback analysis used because Python analysis was unavailable: ${reason}`,
   };
@@ -334,15 +446,17 @@ function normalizeDashboardPayload(child, body) {
 }
 
 function buildTeacherPlan(result) {
-  const foods = result?.nutrient_food_recommendations?.recommended_foods || [];
-  return {
-    breakfast: foods[0] || 'Milk + Banana',
-    lunch: foods[1] || 'Rice + Lentils + Spinach',
-    snack: foods[2] || 'Fruit Snack',
-    dinner: foods[3] || 'Vegetable Khichdi',
+  const foods = sanitizeRecommendedFoods(result?.nutrient_food_recommendations?.recommended_foods || []);
+  const mealOptions = buildMealPlanOptionsFromFoods(foods);
+  const primary = mealOptions[0] || {};
+  return normalizeTeacherPlan({
+    breakfast: primary.breakfast || buildMealFromFood(foods[0] || 'Banana', 'breakfast'),
+    lunch: primary.lunch || buildMealFromFood(foods[1] || 'Lentils', 'lunch'),
+    snack: primary.snack || buildMealFromFood(foods[2] || 'Apple', 'snack'),
+    dinner: primary.dinner || buildMealFromFood(foods[3] || 'Spinach', 'dinner'),
     foodsToAvoid: ['High-sodium packaged snacks', 'Sugary drinks'],
     allergySafe: true,
-  };
+  }, foods);
 }
 
 function normalizeNutritionStatus(value) {
@@ -365,6 +479,9 @@ function normalizeNutritionStatus(value) {
 
 function buildApiResponse(record, child) {
   const normalizedPrediction = normalizeNutritionStatus(record?.malnutritionPrediction?.prediction);
+  const recommendedFoods = sanitizeRecommendedFoods(record?.nutrientFoodRecommendations?.recommended_foods || []);
+  const teacherDailyPlan = normalizeTeacherPlan(record?.teacherDailyPlan || {}, recommendedFoods);
+  const mealPlanOptions = record?.nutrientFoodRecommendations?.recommended_meal_options || buildMealPlanOptionsFromFoods(recommendedFoods, teacherDailyPlan);
 
   return {
     recordId: record._id,
@@ -382,9 +499,13 @@ function buildApiResponse(record, child) {
       prediction: normalizedPrediction,
     },
     mealRecommendation: record.mealRecommendation,
-    nutrientFoodRecommendations: record.nutrientFoodRecommendations,
+    nutrientFoodRecommendations: {
+      ...(record.nutrientFoodRecommendations || {}),
+      recommended_foods: recommendedFoods,
+      recommended_meal_options: mealPlanOptions,
+    },
     doctorReview: record.doctorReview,
-    teacherDailyPlan: record.teacherDailyPlan,
+    teacherDailyPlan,
     mealCompletion: record.mealCompletion,
     measuredAt: record.measuredAt,
   };
@@ -425,6 +546,12 @@ router.post('/analyze', async (req, res) => {
     };
 
     const result = await runChildHealthPrediction(payload);
+    const sanitizedFoods = sanitizeRecommendedFoods(result?.nutrient_food_recommendations?.recommended_foods || []);
+    result.nutrient_food_recommendations = {
+      ...(result.nutrient_food_recommendations || {}),
+      recommended_foods: sanitizedFoods,
+      recommended_meal_options: result?.nutrient_food_recommendations?.recommended_meal_options || buildMealPlanOptionsFromFoods(sanitizedFoods),
+    };
     res.json(result);
   } catch (error) {
     console.error('Child health route error:', error);
@@ -464,10 +591,22 @@ router.get('/doctor/children', auth, authorize('doctor', 'admin'), async (req, r
         gender: child.gender,
         ageMonths: getAgeMonths(child.dateOfBirth),
         program: child.program,
+        allergies: child.allergies || [],
         hasAllergy: (child.allergies || []).length > 0,
           latestStatus: normalizeNutritionStatus(latest?.malnutritionPrediction?.prediction) || null,
         latestConfidence: latest?.malnutritionPrediction?.confidence || null,
         measuredAt: latest?.measuredAt || null,
+        latestInputs: {
+          weightKg: latest?.inputs?.weightKg ?? null,
+          heightCm: latest?.inputs?.heightCm ?? null,
+          muacCm: latest?.inputs?.muacCm ?? null,
+          hemoglobin: latest?.inputs?.hemoglobin ?? null,
+        },
+        latestBmi: latest?.growthAnalysis?.bmi ?? null,
+        latestDoctorReview: {
+          notes: latest?.doctorReview?.notes || '',
+          followUpDays: latest?.doctorReview?.followUpDays ?? null,
+        },
       };
     });
 
@@ -500,6 +639,13 @@ router.post('/doctor/children/:childId/analyze', auth, authorize('doctor', 'admi
     const payload = normalizeDashboardPayload(child, req.body);
     const result = await runChildHealthPrediction(payload);
     const normalizedPrediction = normalizeNutritionStatus(result?.malnutrition_prediction?.prediction);
+    const sanitizedFoods = sanitizeRecommendedFoods(result?.nutrient_food_recommendations?.recommended_foods || []);
+    const mealPlanOptions = buildMealPlanOptionsFromFoods(sanitizedFoods);
+    result.nutrient_food_recommendations = {
+      ...(result.nutrient_food_recommendations || {}),
+      recommended_foods: sanitizedFoods,
+      recommended_meal_options: mealPlanOptions,
+    };
 
     const record = await ChildHealthRecord.create({
       child: child._id,
@@ -557,9 +703,14 @@ router.get('/doctor/children/:childId/report', auth, authorize('doctor', 'admin'
       .limit(10)
       .lean();
 
-    const latest = records[0] || null;
     const normalizedHistory = records.map((record) => ({
       ...record,
+      nutrientFoodRecommendations: {
+        ...(record.nutrientFoodRecommendations || {}),
+        recommended_foods: sanitizeRecommendedFoods(record?.nutrientFoodRecommendations?.recommended_foods || []),
+        recommended_meal_options: record?.nutrientFoodRecommendations?.recommended_meal_options || buildMealPlanOptionsFromFoods(record?.nutrientFoodRecommendations?.recommended_foods || [], record?.teacherDailyPlan || {}),
+      },
+      teacherDailyPlan: normalizeTeacherPlan(record?.teacherDailyPlan || {}, record?.nutrientFoodRecommendations?.recommended_foods || []),
       malnutritionPrediction: {
         ...(record.malnutritionPrediction || {}),
         prediction: normalizeNutritionStatus(record?.malnutritionPrediction?.prediction),
@@ -649,8 +800,9 @@ router.get('/parent/children/:childId/summary', auth, authorize('parent'), async
           ...(latest.malnutritionPrediction || {}),
           prediction: normalizeNutritionStatus(latest?.malnutritionPrediction?.prediction),
         },
-      recommendedFoods: latest.nutrientFoodRecommendations?.recommended_foods || [],
-      dailyDietPlan: latest.teacherDailyPlan,
+      recommendedFoods: sanitizeRecommendedFoods(latest.nutrientFoodRecommendations?.recommended_foods || []),
+      dailyDietPlan: normalizeTeacherPlan(latest.teacherDailyPlan || {}, latest.nutrientFoodRecommendations?.recommended_foods || []),
+      mealPlanOptions: latest.nutrientFoodRecommendations?.recommended_meal_options || buildMealPlanOptionsFromFoods(latest.nutrientFoodRecommendations?.recommended_foods || [], normalizeTeacherPlan(latest.teacherDailyPlan || {}, latest.nutrientFoodRecommendations?.recommended_foods || [])),
       healthAlerts: latest.growthAnalysis?.alerts || [],
       doctorSuggestion: {
         notes: latest.doctorReview?.notes || 'Follow prescribed meal plan and monitor growth weekly',
@@ -690,16 +842,28 @@ router.get('/teacher/daily-plan', auth, authorize('staff', 'admin'), async (req,
 
     const rows = children.map((child) => {
       const latest = latestMap.get(String(child._id));
+      const recommendedFoods = sanitizeRecommendedFoods(latest?.nutrientFoodRecommendations?.recommended_foods || []);
+      const normalizedPlan = normalizeTeacherPlan(latest?.teacherDailyPlan || {}, recommendedFoods);
       return {
         childId: child._id,
         name: `${child.firstName} ${child.lastName || ''}`.trim(),
         allergies: child.allergies || [],
         status: normalizeNutritionStatus(latest?.malnutritionPrediction?.prediction),
-        breakfast: latest?.teacherDailyPlan?.breakfast || 'Milk + Banana',
-        lunch: latest?.teacherDailyPlan?.lunch || 'Rice + Lentils + Spinach',
-        snack: latest?.teacherDailyPlan?.snack || 'Fruit',
-        dinner: latest?.teacherDailyPlan?.dinner || 'Vegetable Meal',
-        foodsToAvoid: latest?.teacherDailyPlan?.foodsToAvoid || [],
+        growth: {
+          weightKg: latest?.growthAnalysis?.actual_weight_kg ?? null,
+          expectedWeightKg: latest?.growthAnalysis?.expected_weight_kg ?? null,
+          heightCm: latest?.growthAnalysis?.actual_height_cm ?? null,
+          expectedHeightCm: latest?.growthAnalysis?.expected_height_cm ?? null,
+          bmi: latest?.growthAnalysis?.bmi ?? null,
+          growthStatus: latest?.growthAnalysis?.growth_status || 'N/A',
+          alerts: Array.isArray(latest?.growthAnalysis?.alerts) ? latest.growthAnalysis.alerts : [],
+        },
+        measuredAt: latest?.measuredAt || null,
+        breakfast: normalizedPlan.breakfast || 'Milk + Banana',
+        lunch: normalizedPlan.lunch || 'Rice + Lentils + Spinach',
+        snack: normalizedPlan.snack || 'Fruit',
+        dinner: normalizedPlan.dinner || 'Vegetable Meal',
+        foodsToAvoid: normalizedPlan.foodsToAvoid || [],
         completion: latest?.mealCompletion || {},
       };
     });
@@ -708,6 +872,85 @@ router.get('/teacher/daily-plan', auth, authorize('staff', 'admin'), async (req,
   } catch (error) {
     console.error('Teacher daily plan error:', error);
     res.status(500).json({ success: false, message: 'Failed to load teacher daily plan' });
+  }
+});
+
+/**
+ * @route   POST /api/child-health/teacher/children/:childId/growth-record
+ * @desc    Teacher records fresh child growth data that feeds the daily plan workflow
+ * @access  Staff/Admin
+ */
+router.post('/teacher/children/:childId/growth-record', auth, authorize('staff', 'admin'), async (req, res) => {
+  try {
+    const childQuery = {
+      _id: req.params.childId,
+      isActive: true,
+    };
+
+    if (req.user.role === 'staff') {
+      childQuery.assignedStaff = req.user.userId;
+    }
+
+    const child = await Child.findOne(childQuery);
+    if (!child) {
+      return res.status(404).json({ success: false, message: 'Child not found or access denied' });
+    }
+
+    if (req.body.weightKg === undefined || req.body.heightCm === undefined) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required fields: weightKg, heightCm',
+      });
+    }
+
+    const payload = normalizeDashboardPayload(child, req.body);
+    const result = await runChildHealthPrediction(payload);
+    const normalizedPrediction = normalizeNutritionStatus(result?.malnutrition_prediction?.prediction);
+    const sanitizedFoods = sanitizeRecommendedFoods(result?.nutrient_food_recommendations?.recommended_foods || []);
+    const mealPlanOptions = buildMealPlanOptionsFromFoods(sanitizedFoods);
+
+    result.nutrient_food_recommendations = {
+      ...(result.nutrient_food_recommendations || {}),
+      recommended_foods: sanitizedFoods,
+      recommended_meal_options: result?.nutrient_food_recommendations?.recommended_meal_options || mealPlanOptions,
+    };
+
+    const record = await ChildHealthRecord.create({
+      child: child._id,
+      measuredBy: req.user.userId,
+      inputs: {
+        ageMonths: payload.ageMonths,
+        weightKg: payload.weightKg,
+        heightCm: payload.heightCm,
+        gender: String(payload.gender).toLowerCase().includes('f') ? 'female' : 'male',
+        muacCm: req.body.muacCm !== undefined && req.body.muacCm !== '' ? Number(req.body.muacCm) : null,
+        hemoglobin: req.body.hemoglobin !== undefined && req.body.hemoglobin !== '' ? Number(req.body.hemoglobin) : null,
+        dietaryPreference: payload.dietaryPreference,
+        hasAllergy: Boolean(payload.hasAllergy),
+      },
+      growthAnalysis: result.growth_analysis || {},
+      malnutritionPrediction: {
+        ...(result.malnutrition_prediction || {}),
+        prediction: normalizedPrediction,
+      },
+      mealRecommendation: result.meal_recommendation || {},
+      nutrientFoodRecommendations: result.nutrient_food_recommendations || {},
+      doctorReview: {
+        notes: req.body.teacherNotes || 'Recorded by teacher for daily growth monitoring',
+        followUpDays: req.body.followUpDays !== undefined ? Number(req.body.followUpDays) : 14,
+        approvedByDoctor: false,
+      },
+      teacherDailyPlan: buildTeacherPlan(result),
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Growth record saved successfully',
+      data: buildApiResponse(record, child),
+    });
+  } catch (error) {
+    console.error('Teacher growth record error:', error);
+    res.status(500).json({ success: false, message: 'Failed to save child growth record' });
   }
 });
 
@@ -754,6 +997,7 @@ router.get('/status', (req, res) => {
       'GET /api/child-health/parent/children',
       'GET /api/child-health/parent/children/:childId/summary',
       'GET /api/child-health/teacher/daily-plan',
+      'POST /api/child-health/teacher/children/:childId/growth-record',
       'PATCH /api/child-health/teacher/children/:childId/meal-completion'
     ],
     requiredFields: ['ageMonths', 'weightKg', 'heightCm'],

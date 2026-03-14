@@ -4,6 +4,126 @@ const auth = require('../middleware/auth');
 const { authorize } = require('../middleware/auth');
 const MealPlan = require('../models/MealPlan');
 const Child = require('../models/Child');
+const ChildHealthRecord = require('../models/ChildHealthRecord');
+
+const DOCTOR_MEAL_SUBSCRIPTION_PRICING = {
+  specific_period: 75,
+  entire_daycare: 150,
+};
+
+function getCurrentWeekRange() {
+  const today = new Date();
+  const startOfWeek = new Date(today);
+  startOfWeek.setHours(0, 0, 0, 0);
+  startOfWeek.setDate(today.getDate() - today.getDay() + 1);
+  const endOfWeek = new Date(startOfWeek);
+  endOfWeek.setDate(startOfWeek.getDate() + 6);
+  endOfWeek.setHours(23, 59, 59, 999);
+  return { startOfWeek, endOfWeek };
+}
+
+async function getAccessibleChildForParent(parentId, childId) {
+  return Child.findOne({ _id: childId, parents: parentId, isActive: true });
+}
+
+async function getPublishedMealPlanForChild(child) {
+  const { startOfWeek, endOfWeek } = getCurrentWeekRange();
+  return MealPlan.findOne({
+    isActive: true,
+    status: 'published',
+    program: { $in: [child.program, 'all'] },
+    $or: [
+      { weekOf: { $gte: startOfWeek, $lte: endOfWeek } },
+      {
+        $expr: {
+          $and: [
+            { $gte: ['$weekOf', startOfWeek] },
+            { $lte: ['$weekEnd', endOfWeek] },
+            { $eq: ['$weekOf', '$weekEnd'] }
+          ]
+        }
+      }
+    ]
+  })
+    .populate('createdBy', 'firstName lastName')
+    .populate('approvedBy', 'firstName lastName');
+}
+
+function formatPublishedMealPlan(mealPlan) {
+  if (!mealPlan) return null;
+  return {
+    id: mealPlan._id,
+    title: mealPlan.title,
+    description: mealPlan.description,
+    weekOf: mealPlan.weekOf,
+    weekEnd: mealPlan.weekEnd,
+    status: mealPlan.status,
+    approvedAt: mealPlan.approvedAt,
+    approvedBy: mealPlan.approvedBy
+      ? `${mealPlan.approvedBy.firstName || ''} ${mealPlan.approvedBy.lastName || ''}`.trim()
+      : null,
+    dailyMeals: (mealPlan.dailyMeals || []).map((day) => ({
+      day: day.day,
+      breakfast: (day.breakfast || []).map((item) => item?.name || '').filter(Boolean),
+      morningSnack: (day.morningSnack || []).map((item) => item?.name || '').filter(Boolean),
+      lunch: (day.lunch || []).map((item) => item?.name || '').filter(Boolean),
+      afternoonSnack: (day.afternoonSnack || []).map((item) => item?.name || '').filter(Boolean),
+      notes: day.notes || ''
+    }))
+  };
+}
+
+function buildDoctorSuggestedPlans(record) {
+  const options = record?.nutrientFoodRecommendations?.recommended_meal_options;
+  if (Array.isArray(options) && options.length > 0) {
+    return options.map((option, index) => ({
+      title: option.title || `Plan ${index + 1}`,
+      breakfast: option.breakfast || '',
+      lunch: option.lunch || '',
+      snack: option.snack || '',
+      dinner: option.dinner || '',
+    }));
+  }
+
+  const fallback = record?.teacherDailyPlan;
+  if (fallback) {
+    return [{
+      title: 'Doctor Suggested Plan',
+      breakfast: fallback.breakfast || '',
+      lunch: fallback.lunch || '',
+      snack: fallback.snack || '',
+      dinner: fallback.dinner || '',
+    }];
+  }
+
+  return [];
+}
+
+function pickPlanByTitle(options, title) {
+  if (!Array.isArray(options) || options.length === 0) return null;
+  const normalizedTitle = String(title || '').trim().toLowerCase();
+  return options.find((option) => String(option.title || '').trim().toLowerCase() === normalizedTitle) || options[0];
+}
+
+function isDoctorMealSubscriptionActive(subscription = {}) {
+  if (subscription.preference !== 'doctor_recommended' || subscription.status !== 'active') return false;
+  const now = new Date();
+  const startDate = subscription.startDate ? new Date(subscription.startDate) : null;
+  const endDate = subscription.endDate ? new Date(subscription.endDate) : null;
+  if (startDate && startDate > now) return false;
+  if (subscription.durationType === 'specific_period' && endDate && endDate < now) return false;
+  return true;
+}
+
+function getRequestUserId(req) {
+  return req?.user?.userId || req?.user?.id || req?.user?._id || null;
+}
+
+function parseDateOrNull(value) {
+  if (value === undefined || value === null || String(value).trim() === '') return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
 
 // Get all meal plans (admin and staff can view)
 router.get('/', auth, authorize('admin', 'staff'), async (req, res) => {
@@ -323,6 +443,196 @@ router.get('/child/:childId', auth, async (req, res) => {
   } catch (error) {
     console.error('Get child meal plans error:', error);
     res.status(500).json({ message: 'Server error fetching meal plans' });
+  }
+});
+
+router.get('/parent/children/:childId/subscription-options', auth, authorize('parent'), async (req, res) => {
+  try {
+    const parentId = getRequestUserId(req);
+    if (!parentId) {
+      return res.status(401).json({ message: 'Unauthorized parent session' });
+    }
+
+    const child = await getAccessibleChildForParent(parentId, req.params.childId);
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found or access denied' });
+    }
+
+    const [publishedMealPlan, latestHealthRecord] = await Promise.all([
+      getPublishedMealPlanForChild(child),
+      ChildHealthRecord.findOne({ child: child._id }).sort({ measuredAt: -1 }).lean(),
+    ]);
+
+    const doctorSuggestedPlans = buildDoctorSuggestedPlans(latestHealthRecord);
+
+    res.json({
+      success: true,
+      child: {
+        id: child._id,
+        name: `${child.firstName || ''} ${child.lastName || ''}`.trim(),
+        program: child.program,
+      },
+      approvedDaycarePlan: formatPublishedMealPlan(publishedMealPlan),
+      doctorSuggestedPlans,
+      doctorSuggestionNotes: latestHealthRecord?.doctorReview?.notes || '',
+      pricing: {
+        approved_daycare: { label: 'Included in daycare fee', extraFee: 0 },
+        doctor_recommended: {
+          specific_period: DOCTOR_MEAL_SUBSCRIPTION_PRICING.specific_period,
+          entire_daycare: DOCTOR_MEAL_SUBSCRIPTION_PRICING.entire_daycare,
+          billedWithFee: true,
+        },
+        bring_from_home: { label: 'No extra meal charge', extraFee: 0 },
+      },
+      currentSubscription: child.mealSubscription || {
+        preference: 'approved_daycare',
+        status: 'inactive',
+      },
+    });
+  } catch (error) {
+    console.error('Get parent meal subscription options error:', error);
+    res.status(500).json({ message: 'Server error fetching meal subscription options' });
+  }
+});
+
+router.put('/parent/children/:childId/subscription', auth, authorize('parent'), async (req, res) => {
+  try {
+    const parentId = getRequestUserId(req);
+    if (!parentId) {
+      return res.status(401).json({ message: 'Unauthorized parent session' });
+    }
+
+    const child = await getAccessibleChildForParent(parentId, req.params.childId);
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found or access denied' });
+    }
+
+    const {
+      preference = 'approved_daycare',
+      selectedPlanTitle = '',
+      durationType = 'specific_period',
+      startDate,
+      endDate,
+    } = req.body || {};
+
+    const supportedPreferences = ['approved_daycare', 'doctor_recommended', 'bring_from_home'];
+    if (!supportedPreferences.includes(preference)) {
+      return res.status(400).json({ message: 'Invalid meal preference selected' });
+    }
+
+    const latestHealthRecord = await ChildHealthRecord.findOne({ child: child._id }).sort({ measuredAt: -1 }).lean();
+    const doctorSuggestedPlans = buildDoctorSuggestedPlans(latestHealthRecord);
+
+    if (preference === 'doctor_recommended' && doctorSuggestedPlans.length === 0) {
+      return res.status(400).json({ message: 'Doctor-recommended meal plans are not available yet for this child' });
+    }
+
+    const chosenPlan = preference === 'doctor_recommended'
+      ? pickPlanByTitle(doctorSuggestedPlans, selectedPlanTitle)
+      : null;
+
+    const normalizedDurationType = durationType === 'entire_daycare' ? 'entire_daycare' : 'specific_period';
+    const normalizedStartDate = parseDateOrNull(startDate) || new Date();
+    const normalizedEndDate = normalizedDurationType === 'specific_period' ? parseDateOrNull(endDate) : null;
+
+    if (!normalizedStartDate || Number.isNaN(normalizedStartDate.getTime())) {
+      return res.status(400).json({ message: 'Invalid start date provided' });
+    }
+    if (normalizedDurationType === 'specific_period' && endDate && !normalizedEndDate) {
+      return res.status(400).json({ message: 'Invalid end date provided' });
+    }
+
+    if (normalizedDurationType === 'specific_period' && normalizedEndDate && normalizedEndDate < normalizedStartDate) {
+      return res.status(400).json({ message: 'End date must be after start date' });
+    }
+
+    const extraFee = preference === 'doctor_recommended'
+      ? DOCTOR_MEAL_SUBSCRIPTION_PRICING[normalizedDurationType]
+      : 0;
+
+    child.mealSubscription = {
+      preference,
+      status: preference === 'doctor_recommended' ? 'active' : 'inactive',
+      selectedPlanTitle: chosenPlan?.title || (preference === 'approved_daycare' ? 'Admin Approved Daycare Meal Plan' : 'Bring From Home'),
+      selectedPlanMeals: {
+        breakfast: chosenPlan?.breakfast || '',
+        lunch: chosenPlan?.lunch || '',
+        snack: chosenPlan?.snack || '',
+        dinner: chosenPlan?.dinner || '',
+      },
+      doctorSuggestionNotes: latestHealthRecord?.doctorReview?.notes || '',
+      durationType: normalizedDurationType,
+      startDate: normalizedStartDate,
+      endDate: normalizedDurationType === 'specific_period' ? normalizedEndDate : null,
+      extraFee,
+      includedInFee: true,
+      subscribedAt: new Date(),
+      cancelledAt: null,
+    };
+
+    await child.save();
+
+    res.json({
+      success: true,
+      message: preference === 'doctor_recommended'
+        ? 'Doctor-recommended meal subscription saved. Extra charge will be included in billing.'
+        : preference === 'bring_from_home'
+          ? 'Meal preference updated to bring food from home.'
+          : 'Meal preference updated to the admin-approved daycare plan.',
+      subscription: child.mealSubscription,
+      doctorSuggestedPlans,
+    });
+  } catch (error) {
+    console.error('Update parent meal subscription error:', error);
+    res.status(500).json({
+      message: 'Server error updating meal subscription',
+      details: process.env.NODE_ENV === 'production' ? undefined : error.message,
+    });
+  }
+});
+
+router.delete('/parent/children/:childId/subscription', auth, authorize('parent'), async (req, res) => {
+  try {
+    const parentId = getRequestUserId(req);
+    if (!parentId) {
+      return res.status(401).json({ message: 'Unauthorized parent session' });
+    }
+
+    const child = await getAccessibleChildForParent(parentId, req.params.childId);
+    if (!child) {
+      return res.status(404).json({ message: 'Child not found or access denied' });
+    }
+
+    child.mealSubscription = {
+      preference: 'approved_daycare',
+      status: 'cancelled',
+      selectedPlanTitle: 'Admin Approved Daycare Meal Plan',
+      selectedPlanMeals: {
+        breakfast: '',
+        lunch: '',
+        snack: '',
+        dinner: '',
+      },
+      doctorSuggestionNotes: '',
+      durationType: 'specific_period',
+      startDate: null,
+      endDate: null,
+      extraFee: 0,
+      includedInFee: true,
+      subscribedAt: null,
+      cancelledAt: new Date(),
+    };
+
+    await child.save();
+
+    res.json({
+      success: true,
+      message: 'Custom meal subscription removed. Child will follow the standard daycare arrangement.',
+      subscription: child.mealSubscription,
+    });
+  } catch (error) {
+    console.error('Delete parent meal subscription error:', error);
+    res.status(500).json({ message: 'Server error removing meal subscription' });
   }
 });
 

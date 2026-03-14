@@ -25,7 +25,6 @@ export default function ShopHeader() {
   const { cartCount } = useShop();
   const [search, setSearch] = React.useState('');
   const [anchorEl, setAnchorEl] = React.useState(null);
-  const [menuOpen, setMenuOpen] = React.useState(false);
   const [photoSearchOpen, setPhotoSearchOpen] = React.useState(false);
   const [uploadedImage, setUploadedImage] = React.useState(null);
   const [imagePreview, setImagePreview] = React.useState(null);
@@ -36,17 +35,11 @@ export default function ShopHeader() {
   const canvasRef = React.useRef(null);
 
   const handleMenu = (event) => {
-    if (event?.currentTarget) {
-      setAnchorEl(event.currentTarget);
-    } else {
-      setAnchorEl(null);
-    }
-    setMenuOpen(Boolean(event?.currentTarget));
+    setAnchorEl(event?.currentTarget || null);
   };
 
   const handleClose = () => {
     setAnchorEl(null);
-    setMenuOpen(false);
   };
 
   const handleLogout = () => {
@@ -313,7 +306,7 @@ export default function ShopHeader() {
           vertical: 'top',
           horizontal: 'right',
         }}
-        open={menuOpen}
+        open={Boolean(anchorEl)}
         onClose={handleClose}
       >
         <MenuItem onClick={() => { handleClose(); navigate('/profile'); }}>
