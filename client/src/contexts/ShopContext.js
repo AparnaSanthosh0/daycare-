@@ -78,6 +78,10 @@ export const ShopProvider = ({ children }) => {
     // A customised item generates a unique key so it's tracked separately
     const custKey = customization
       ? `::custom::${JSON.stringify({
+          tp: customization.type,
+          ck: customization.customizationKind,
+          ic: customization.isCustomized,
+          gd: customization.gender,
           si: customization.silhouette,
           ne: customization.neckline,
           sl: customization.sleeve,
@@ -85,7 +89,9 @@ export const ShopProvider = ({ children }) => {
           wa: customization.waist,
           fe: customization.features?.sort().join(','),
           bc: customization.baseColour,
+          cn: customization.colorName,
           pt: customization.pattern,
+          dr: customization.selectedDressUrl,
           tx: customization.text,
           tc: customization.textColour,
           ff: customization.fontFamily,

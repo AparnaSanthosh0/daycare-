@@ -21,7 +21,9 @@ import {
   Alert,
   Card,
   CardContent,
-  Divider
+  Divider,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   CheckCircle,
@@ -41,6 +43,7 @@ const VendorOrders = () => {
   const [vendorNotes, setVendorNotes] = useState('');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [message, setMessage] = useState('');
+  const [orderView, setOrderView] = useState('all');
 
   useEffect(() => {
     loadOrders();
@@ -113,6 +116,24 @@ const VendorOrders = () => {
     }
   };
 
+  const isCustomizedItem = (item) => {
+    const c = item?.customization;
+    return !!c && (c.isCustomized || c.customizationKind === 'customized_dress' || c.type === 'dress_customizer');
+  };
+
+  const hasCustomizedForVendor = (order) => {
+    if (!vendorId) return false;
+    return (order.items || []).some((item) => {
+      const itemVendorId = item.vendor?._id ? item.vendor._id.toString() : item.vendor?.toString();
+      return itemVendorId === vendorId && isCustomizedItem(item);
+    });
+  };
+
+  const visibleOrders = orders.filter((order) => {
+    if (orderView === 'custom') return hasCustomizedForVendor(order);
+    return true;
+  });
+
   if (user?.role !== 'vendor') {
     return (
       <Box sx={{ p: 3 }}>
@@ -181,6 +202,20 @@ const VendorOrders = () => {
       </Grid>
 
       {/* Orders Table */}
+      <Paper sx={{ mb: 2, p: 1 }}>
+        <Tabs
+          value={orderView}
+          onChange={(_, v) => setOrderView(v)}
+          textColor="primary"
+          indicatorColor="primary"
+          variant="scrollable"
+          scrollButtons="auto"
+        >
+          <Tab value="all" label={`All Orders (${orders.length})`} />
+          <Tab value="custom" label={`Customized Dress Orders (${orders.filter(hasCustomizedForVendor).length})`} />
+        </Tabs>
+      </Paper>
+
       <Paper>
         <TableContainer>
           <Table>
@@ -196,12 +231,17 @@ const VendorOrders = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {orders.map((order) => {
+              {visibleOrders.map((order) => {
                 // Find vendor confirmation for this vendor
                 const vendorConfirmation = vendorId ? order.vendorConfirmations?.find(v => {
                   const vid = v.vendor?._id ? v.vendor._id.toString() : v.vendor?.toString();
                   return vid === vendorId;
                 }) : null;
+
+                const customCount = vendorId ? (order.items?.filter(item => {
+                  const itemVendorId = item.vendor?._id ? item.vendor._id.toString() : item.vendor?.toString();
+                  return itemVendorId === vendorId && isCustomizedItem(item);
+                }).length || 0) : 0;
 
                 return (
                   <TableRow key={order._id}>
@@ -223,6 +263,9 @@ const VendorOrders = () => {
                           return itemVendorId === vendorId;
                         }).length || 0 : 0} items
                       </Typography>
+                      {customCount > 0 && (
+                        <Chip size="small" color="secondary" label={`Customized: ${customCount}`} sx={{ mt: 0.5 }} />
+                      )}
                     </TableCell>
                     <TableCell>
                       ₹{order.total?.toFixed(2) || '0.00'}

@@ -12,6 +12,7 @@ import {
 } from '@mui/icons-material';
 
 const COLORS = [
+  { name: 'Black',       hex: '#111111' },
   { name: 'Rose Pink',   hex: '#e91e8c' },
   { name: 'Sky Blue',    hex: '#1e88e5' },
   { name: 'Mint Green',  hex: '#43a047' },
@@ -304,6 +305,7 @@ const DressCustomizer = ({
   model3DUrls,
   onAddToCart,
 }) => {
+  const previewContainerRef = useRef(null);
   const [gender,          setGender]          = useState('girl'); // 'girl' | 'boy'
   const [selectedColor,   setSelectedColor]   = useState(COLORS[0]);
   const [colorOpacity,    setColorOpacity]    = useState(50);
@@ -441,6 +443,8 @@ const DressCustomizer = ({
 
   const customizationPayload = React.useMemo(() => ({
     type: 'dress_customizer',
+    customizationKind: 'customized_dress',
+    isCustomized: true,
     gender,
     colorName: selectedColor.name,
     baseColour: selectedColor.hex,
@@ -449,6 +453,23 @@ const DressCustomizer = ({
     selectedDressUrl,
     selectedDressLabel: dressModel?.label || 'Custom Outfit',
   }), [colorOpacity, dressModel?.label, gender, selectedColor.hex, selectedColor.name, selectedDressUrl, selectedPattern]);
+
+  const handleAddCustomized = React.useCallback(() => {
+    let previewDataUrl = null;
+    try {
+      const canvasEl = previewContainerRef.current?.querySelector('canvas');
+      if (canvasEl && typeof canvasEl.toDataURL === 'function') {
+        previewDataUrl = canvasEl.toDataURL('image/png', 0.92);
+      }
+    } catch {
+      // fall back without preview image
+    }
+
+    onAddToCart?.({
+      ...customizationPayload,
+      previewDataUrl,
+    });
+  }, [customizationPayload, onAddToCart]);
 
   return (
     <Accordion defaultExpanded sx={{
@@ -492,7 +513,7 @@ const DressCustomizer = ({
                 3D PREVIEW
               </Typography>
             </Box>
-            <Box sx={{
+            <Box ref={previewContainerRef} sx={{
               position: 'relative', borderRadius: 2.5, overflow: 'hidden',
               bgcolor: '#f9f5f0', border: '1.5px solid #ffe0b2',
               aspectRatio: '3/4', boxShadow: '0 10px 28px rgba(255,111,0,0.2)',
@@ -636,7 +657,7 @@ const DressCustomizer = ({
 
             {onAddToCart && (
               <Button fullWidth variant="contained" color="success" size="large" startIcon={<ShoppingCart />}
-                onClick={() => onAddToCart(customizationPayload)}
+                onClick={handleAddCustomized}
                 sx={{
                   borderRadius: 3, fontWeight: 700,
                   py: 1.5, boxShadow: '0 4px 14px rgba(46,125,50,0.30)',
