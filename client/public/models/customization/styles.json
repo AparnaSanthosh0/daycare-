@@ -2,9 +2,40 @@
   "mannequin": [
     "/models/customization/model.glb"
   ],
-  "dresses": [
+  "girlMannequin": [
+    "/models/customization/model.glb"
+  ],
+  "boyMannequin": [
+    "/models/customization/model.glb"
+  ],
+  "mannequinForOutfits": [
     "/models/customization/outfit.glb",
-    "/models/customization/dress-style-2.glb",
-    "/models/customization/dress-style-3.glb"
+    "/models/customization/outfit2.glb"
+  ],
+  "girlDresses": [
+    "/models/customization/outfit.glb",
+    "/models/customization/outfit2.glb",
+    "/models/customization/outfit3.glb",
+    "/models/customization/outfit4.glb",
+    "/models/customization/outfit5.glb",
+     "/models/customization/outfit9.glb",
+     "/models/customization/outfit11.glb",
+    "/models/customization/outfit15.glb",
+    "/models/customization/outfit16.glb"
+   
+  ],
+  "boyDresses": [
+    "/models/customization/outfit12.glb",
+    "/models/customization/outfit6.glb",
+    "/models/customization/outfit7.glb",
+    "/models/customization/outfit8.glb",
+    "/models/customization/outfit13.glb",
+    "/models/customization/outfit14.glb",
+    "/models/customization/outfit17.glb",
+    "/models/customization/outfit18.glb",
+    "/models/customization/outfit19.glb",
+    "/models/customization/outfit20.glb"
+ 
+    
   ]
 }

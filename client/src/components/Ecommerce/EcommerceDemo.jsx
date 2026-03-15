@@ -13,7 +13,7 @@ import {
   Rating,
   Badge,
   IconButton,
-  Fab
+  Fab,
 } from '@mui/material';
 import {
   ShoppingCart as ShoppingCartIcon,
@@ -107,6 +107,7 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
   const [imageColors, setImageColors] = useState(null);
   const [aiSearchResults, setAiSearchResults] = useState(null);
   const [searchFeatures, setSearchFeatures] = useState(null);
+  const [selectedCustomizerProductId, setSelectedCustomizerProductId] = useState('');
   const { addToCart, wishlist, toggleWishlist, cartCount, interactions, recentlyViewed, cartItems } = useShop();
   const productsRef = React.useRef(null);
 
@@ -602,6 +603,25 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
     return recs;
   }, [products, wishlist, cartItems, interactions, recentlyViewed]);
 
+  const customizerProductOptions = useMemo(() => {
+    return (products || []).filter((p) => {
+      const c = String(p.category || '').toLowerCase();
+      return (c.includes('fashion') || c.includes('dress') || c.includes('cloth') || c.includes('boy') || c.includes('girl') || c.includes('wear'))
+        && (p.stockQty ?? 0) > 0;
+    });
+  }, [products]);
+
+  React.useEffect(() => {
+    if (!customizerProductOptions.length) {
+      setSelectedCustomizerProductId('');
+      return;
+    }
+    setSelectedCustomizerProductId((prev) => {
+      const exists = customizerProductOptions.some((p) => p.id === prev);
+      return exists ? prev : customizerProductOptions[0].id;
+    });
+  }, [customizerProductOptions]);
+
   return (
     <Box sx={{ backgroundColor: 'white', minHeight: '100vh' }}>
       {/* Ecommerce header */}
@@ -663,11 +683,13 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
       {!isFashionKey && !searchImage && selectedCategory === 'all' && (
         <Container maxWidth="lg" sx={{ pt: 4, pb: 6 }}>
           <DressCustomizer
-            onAddToCart={(customizationNote) => {
-              addToCart(
-                { id: 'custom-design', name: 'Custom Outfit', price: 999, category: 'Fashion' },
-                null, 1, customizationNote
-              );
+            onAddToCart={(customizationPayload) => {
+              const baseProduct = customizerProductOptions.find((p) => p.id === selectedCustomizerProductId) || customizerProductOptions[0];
+              if (!baseProduct) return;
+              addToCart({
+                ...baseProduct,
+                customization: customizationPayload,
+              });
               setCartOpen(true);
             }}
           />

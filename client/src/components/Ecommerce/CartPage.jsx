@@ -368,16 +368,22 @@ export default function CartPage() {
                           {item.customization.silhouette && (
                             <Chip size="small" label={item.customization.silhouette} sx={{ fontSize: 11, textTransform: 'capitalize' }} />
                           )}
+                          {item.customization.gender && (
+                            <Chip size="small" label={`${item.customization.gender} fit`} sx={{ fontSize: 11, textTransform: 'capitalize' }} />
+                          )}
                           {item.customization.length && (
                             <Chip size="small" label={`${item.customization.length} length`} variant="outlined" sx={{ fontSize: 10 }} />
                           )}
                           {item.customization.sleeve && (
                             <Chip size="small" label={`${item.customization.sleeve} sleeve`} variant="outlined" sx={{ fontSize: 10 }} />
                           )}
+                          {item.customization.neckline && (
+                            <Chip size="small" label={`${item.customization.neckline} neck`} variant="outlined" sx={{ fontSize: 10 }} />
+                          )}
                           <Chip
                             size="small"
                             sx={{
-                              bgcolor: item.customization.baseColour,
+                              bgcolor: item.customization.baseColour || '#e0e0e0',
                               border: '1px solid #ccc',
                               fontSize: 11,
                               minWidth: 28,
@@ -386,6 +392,9 @@ export default function CartPage() {
                           />
                           {item.customization.pattern && item.customization.pattern !== 'none' && (
                             <Chip size="small" label={item.customization.pattern} variant="outlined" sx={{ fontSize: 10 }} />
+                          )}
+                          {item.customization.selectedDressLabel && (
+                            <Chip size="small" label={item.customization.selectedDressLabel} variant="outlined" sx={{ fontSize: 10 }} />
                           )}
                           {item.customization.text && (
                             <Chip

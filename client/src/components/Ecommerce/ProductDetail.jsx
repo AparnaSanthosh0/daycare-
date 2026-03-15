@@ -26,7 +26,6 @@ import { useShop } from '../../contexts/ShopContext';
 import { recommendForProduct, recommendForUser, collectSignalsFromContext } from '../../utils/recommendations';
 import { deriveSizeOptions } from '../../utils/sizes';
 import Image3DViewer from '../Image3DViewer';
-import DressCustomizer from './DressCustomizer';
 
 function toAbsoluteImageUrl(maybePath) {
   if (!maybePath) return null;
@@ -60,10 +59,6 @@ export default function ProductDetail() {
   const [allProducts, setAllProducts] = React.useState([]);
   const [snack, setSnack] = React.useState('');
   const sizeOptions = deriveSizeOptions(product?.category, product?.sizeBasis || null);
-
-  // Determine if this product supports AR/customization
-  const productCat = (product?.category || '').toLowerCase();
-  const isClothing = productCat.includes('cloth') || productCat.includes('dress') || productCat.includes('apparel') || productCat.includes('outfit') || productCat.includes('shirt') || productCat.includes('wear') || productCat.includes('skirt') || productCat.includes('romper') || productCat.includes('fashion') || productCat === 'boy' || productCat === 'girl' || productCat.includes('kurta') || productCat.includes('lehenga') || productCat.includes('top') || productCat.includes('pant') || productCat.includes('suit');
 
   React.useEffect(() => {
     let mounted = true;
@@ -301,23 +296,6 @@ export default function ProductDetail() {
                 </IconButton>
                 <Typography variant="body2" color="text.secondary">Shortlist</Typography>
               </Box>
-
-              {/* Dress Customizer for clothing items */}
-              {isClothing && (
-                <Box sx={{ mb: 2 }}>
-                  <DressCustomizer
-                    productImage={images?.[0] || product.image}
-                    productName={product.name}
-                    model3DUrl={product.model3DUrl || null}
-                    model3DUrls={Array.isArray(product.model3DUrls) ? product.model3DUrls : null}
-                    productPrice={product.price}
-                    onAddToCart={(note) => {
-                      addToCart(product, selectedSize || null, 1, note);
-                      setSnack('Added to cart with customization!');
-                    }}
-                  />
-                </Box>
-              )}
 
               <Button
                 fullWidth
