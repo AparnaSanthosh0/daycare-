@@ -1,0 +1,10 @@
+{
+  "mannequin": [
+    "/models/customization/model.glb"
+  ],
+  "dresses": [
+    "/models/customization/outfit.glb",
+    "/models/customization/dress-style-2.glb",
+    "/models/customization/dress-style-3.glb"
+  ]
+}

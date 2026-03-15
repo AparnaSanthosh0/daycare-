@@ -54,9 +54,52 @@ const EMB_COLORS = [
 
 const DEFAULT_CUSTOMIZATION_MODELS = [
   { label: 'Outfit', url: '/models/customization/outfit.glb' },
-  { label: 'Customization', url: '/models/customization/customization-model.glb' },
-  { label: 'Model', url: '/models/customization/model.glb' },
+  { label: 'Mannequin', url: '/models/customization/model.glb' },
 ];
+
+const DEFAULT_STYLE_CONFIG = {
+  mannequin: ['/models/customization/model.glb'],
+  dresses: [
+    '/models/customization/outfit.glb',
+    '/models/customization/dress-style-2.glb',
+    '/models/customization/dress-style-3.glb',
+  ],
+};
+
+const pathLooksLikeModel = (url) => /\.(glb|gltf)$/i.test(url || '');
+
+const probeModelUrl = async (url) => {
+  if (!url || !pathLooksLikeModel(url)) return false;
+  try {
+    const res = await fetch(url, { method: 'GET', cache: 'no-store' });
+    if (!res.ok) return false;
+    const contentType = (res.headers.get('content-type') || '').toLowerCase();
+    if (contentType.includes('text/html')) return false;
+    const txt = await res.clone().text();
+    if (txt.trimStart().startsWith('<!DOCTYPE') || txt.trimStart().startsWith('<html')) return false;
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const normaliseModelItem = (url, fallbackLabel = '3D Model') => {
+  const filename = (url || '').split('/').pop() || fallbackLabel;
+  const pretty = filename.replace(/\.(glb|gltf)$/i, '').replace(/[-_]/g, ' ');
+  const label = pretty ? pretty.replace(/\b\w/g, (m) => m.toUpperCase()) : fallbackLabel;
+  return { url, label };
+};
+
+const uniqueModelItems = (items) => {
+  const out = [];
+  const seen = new Set();
+  items.forEach((m) => {
+    if (!m?.url || seen.has(m.url) || !pathLooksLikeModel(m.url)) return;
+    seen.add(m.url);
+    out.push(m);
+  });
+  return out;
+};
 
 const buildPatternTexture = (pattern, opacity = 0.5) => {
   if (!pattern || pattern === 'solid') return null;
@@ -213,18 +256,52 @@ const GLBLoadingMesh = () => {
   );
 };
 
-const GLBOutfitModel = ({ colorHex, modelUrl, selectedPattern, colorOpacity }) => {
+const GLBSceneModel = ({
+  modelUrl,
+  role,
+  colorHex,
+  selectedPattern,
+  colorOpacity,
+  sleeveStyle,
+  necklineStyle,
+  targetHeight,
+  positionOffset,
+}) => {
   const { scene } = useGLTF(modelUrl);
   const cloned = React.useMemo(() => {
     const c = scene.clone(true);
     const box = new THREE.Box3().setFromObject(c);
     const size = box.getSize(new THREE.Vector3());
-    const maxDim = Math.max(size.x, size.y, size.z);
-    if (maxDim > 0) c.scale.setScalar(2.2 / maxDim);
-    const center = new THREE.Box3().setFromObject(c).getCenter(new THREE.Vector3());
-    c.position.sub(center);
+
+    if (targetHeight && size.y > 0) {
+      const s = targetHeight / size.y;
+      c.scale.setScalar(s);
+    }
+
+    const alignedBox = new THREE.Box3().setFromObject(c);
+    const alignedSize = alignedBox.getSize(new THREE.Vector3());
+    const center = alignedBox.getCenter(new THREE.Vector3());
+    c.position.set(-center.x, -alignedBox.min.y, -center.z);
+
+    if (!targetHeight) {
+      const maxDim = Math.max(alignedSize.x, alignedSize.y, alignedSize.z);
+      if (maxDim > 0) {
+        const s = 2.2 / maxDim;
+        c.scale.setScalar(s);
+      }
+      const box2 = new THREE.Box3().setFromObject(c);
+      const center2 = box2.getCenter(new THREE.Vector3());
+      c.position.set(-center2.x, -box2.min.y, -center2.z);
+    }
+
+    if (Array.isArray(positionOffset) && positionOffset.length === 3) {
+      c.position.x += positionOffset[0];
+      c.position.y += positionOffset[1];
+      c.position.z += positionOffset[2];
+    }
+
     return c;
-  }, [scene]);
+  }, [positionOffset, scene, targetHeight]);
 
   const patternTexture = React.useMemo(
     () => buildPatternTexture(selectedPattern, colorOpacity / 100),
@@ -232,10 +309,44 @@ const GLBOutfitModel = ({ colorHex, modelUrl, selectedPattern, colorOpacity }) =
   );
 
   React.useEffect(() => {
+    if (role !== 'dress') {
+      cloned.traverse((child) => {
+        if (child.isMesh) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          const nextMats = mats.map((m) => {
+            if (!m) return m;
+            const nm = m.clone();
+            if (nm.color) nm.color = nm.color.clone();
+            if (nm.color) nm.color.multiplyScalar(0.95);
+            nm.needsUpdate = true;
+            return nm;
+          });
+          child.material = Array.isArray(child.material) ? nextMats : nextMats[0];
+        }
+      });
+      return;
+    }
+
     const color = new THREE.Color(colorHex);
 
     cloned.traverse((child) => {
       if (child.isMesh) {
+        const meshName = (child.name || '').toLowerCase();
+        const isSleeve = /sleeve|arm/i.test(meshName);
+        const isNeck = /neck|collar|neckline/i.test(meshName);
+
+        child.visible = !(isSleeve && sleeveStyle === 'sleeveless');
+
+        child.scale.set(1, 1, 1);
+        child.position.set(child.position.x, child.position.y, child.position.z);
+
+        if (isSleeve && sleeveStyle === 'short') child.scale.y = 0.65;
+        if (isSleeve && sleeveStyle === 'long') child.scale.y = 1.2;
+
+        if (isNeck && necklineStyle === 'v') child.scale.y = 0.82;
+        if (isNeck && necklineStyle === 'square') child.scale.y = 0.9;
+        if (isNeck && necklineStyle === 'round') child.scale.y = 1;
+
         const mats = Array.isArray(child.material) ? child.material : [child.material];
         const nextMats = mats.map((m) => {
           if (!m) return m;
@@ -263,7 +374,7 @@ const GLBOutfitModel = ({ colorHex, modelUrl, selectedPattern, colorOpacity }) =
     return () => {
       if (patternTexture) patternTexture.dispose();
     };
-  }, [colorHex, cloned, patternTexture]);
+  }, [colorHex, cloned, necklineStyle, patternTexture, role, sleeveStyle]);
 
   return <primitive object={cloned} />;
 };
@@ -276,66 +387,112 @@ const DressCustomizer = ({ productImage, productName, model3DUrl, model3DUrls, o
   const [showEmbroidery,  setShowEmbroidery]  = useState(false);
   const [embColor,        setEmbColor]        = useState(EMB_COLORS[0].hex);
   const [view3D,          setView3D]          = useState(false);
-  const [selectedModelUrl, setSelectedModelUrl] = useState('/models/customization/outfit.glb');
+  const [styleConfig, setStyleConfig] = useState(DEFAULT_STYLE_CONFIG);
+  const [selectedDressUrl, setSelectedDressUrl] = useState(DEFAULT_STYLE_CONFIG.dresses[0]);
+  const [resolvedMannequinModels, setResolvedMannequinModels] = useState([]);
+  const [resolvedDressModels, setResolvedDressModels] = useState([]);
+  const [sleeveStyle, setSleeveStyle] = useState('short');
+  const [necklineStyle, setNecklineStyle] = useState('round');
   const autoView3DRef = useRef(false);
   const previewRef = useRef(null);
 
-  const available3DModels = React.useMemo(() => {
+  React.useEffect(() => {
+    let active = true;
+    const loadConfig = async () => {
+      try {
+        const r = await fetch('/models/customization/styles.json', { cache: 'no-store' });
+        if (!r.ok) return;
+        const cfg = await r.json();
+        if (!active) return;
+        const mannequin = Array.isArray(cfg?.mannequin) ? cfg.mannequin : DEFAULT_STYLE_CONFIG.mannequin;
+        const dresses = Array.isArray(cfg?.dresses) ? cfg.dresses : DEFAULT_STYLE_CONFIG.dresses;
+        setStyleConfig({ mannequin, dresses });
+      } catch {
+        // keep defaults
+      }
+    };
+    loadConfig();
+    return () => { active = false; };
+  }, []);
+
+  const candidateModels = React.useMemo(() => {
     const externalUrls = [
       ...(Array.isArray(model3DUrls) ? model3DUrls : []),
       ...(model3DUrl ? [model3DUrl] : []),
     ].filter(Boolean);
 
-    const toItem = (url, fallbackLabel = '3D Model') => {
-      const filename = url.split('/').pop() || fallbackLabel;
-      const pretty = filename.replace(/\.(glb|gltf)$/i, '').replace(/[-_]/g, ' ');
-      const label = pretty
-        ? pretty.replace(/\b\w/g, (m) => m.toUpperCase())
-        : fallbackLabel;
-      return { url, label };
-    };
+    const external = externalUrls.map((url) => normaliseModelItem(url));
+    const externalMannequin = external.filter((m) => /mannequin|human|body|avatar|model/i.test(m.label));
+    const externalDresses = external.filter((m) => !/mannequin|human|body|avatar|model/i.test(m.label));
 
-    const merged = [
-      ...externalUrls.map((url) => toItem(url)),
-      ...DEFAULT_CUSTOMIZATION_MODELS,
-    ];
+    const mannequin = uniqueModelItems([
+      ...styleConfig.mannequin.map((url) => normaliseModelItem(url, 'Mannequin')),
+      ...externalMannequin,
+      normaliseModelItem('/models/customization/model.glb', 'Mannequin'),
+      ...DEFAULT_CUSTOMIZATION_MODELS.filter((m) => /mannequin/i.test(m.label)),
+    ]);
 
-    const unique = [];
-    const seen = new Set();
-    merged.forEach((m) => {
-      if (!seen.has(m.url)) {
-        seen.add(m.url);
-        unique.push(m);
-      }
-    });
-    return unique;
-  }, [model3DUrl, model3DUrls]);
+    const dresses = uniqueModelItems([
+      ...styleConfig.dresses.map((url) => normaliseModelItem(url, 'Dress Style')),
+      ...externalDresses,
+      normaliseModelItem('/models/customization/outfit.glb', 'Outfit'),
+      ...DEFAULT_CUSTOMIZATION_MODELS.filter((m) => !/mannequin/i.test(m.label)),
+    ]);
+
+    return { mannequin, dresses };
+  }, [model3DUrl, model3DUrls, styleConfig]);
 
   React.useEffect(() => {
-    if (available3DModels.length > 0) {
-      setSelectedModelUrl((prev) => {
-        const stillExists = available3DModels.some((m) => m.url === prev);
-        return stillExists ? prev : available3DModels[0].url;
+    let active = true;
+    const resolve = async () => {
+      const [mChecks, dChecks] = await Promise.all([
+        Promise.all(candidateModels.mannequin.map(async (m) => ({ ...m, ok: await probeModelUrl(m.url) }))),
+        Promise.all(candidateModels.dresses.map(async (m) => ({ ...m, ok: await probeModelUrl(m.url) }))),
+      ]);
+      if (!active) return;
+      setResolvedMannequinModels(mChecks.filter((m) => m.ok).map(({ ok, ...rest }) => rest));
+      setResolvedDressModels(dChecks.filter((m) => m.ok).map(({ ok, ...rest }) => rest));
+    };
+    resolve();
+    return () => { active = false; };
+  }, [candidateModels]);
+
+  React.useEffect(() => {
+    if (resolvedDressModels.length > 0) {
+      setSelectedDressUrl((prev) => {
+        const stillExists = resolvedDressModels.some((m) => m.url === prev);
+        return stillExists ? prev : resolvedDressModels[0].url;
       });
     }
-  }, [available3DModels]);
+  }, [resolvedDressModels]);
 
   React.useEffect(() => {
-    if (selectedModelUrl) useGLTF.preload(selectedModelUrl);
-  }, [selectedModelUrl]);
+    if (selectedDressUrl) useGLTF.preload(selectedDressUrl);
+    if (resolvedMannequinModels[0]?.url) useGLTF.preload(resolvedMannequinModels[0].url);
+  }, [resolvedMannequinModels, selectedDressUrl]);
 
   React.useEffect(() => {
-    if (!autoView3DRef.current && available3DModels.length > 0) {
+    if (!autoView3DRef.current && resolvedDressModels.length > 0) {
       setView3D(true);
       autoView3DRef.current = true;
     }
-  }, [available3DModels]);
+  }, [resolvedDressModels]);
+
+  const mannequinModel = React.useMemo(
+    () => resolvedMannequinModels[0] || null,
+    [resolvedMannequinModels]
+  );
+
+  const dressModel = React.useMemo(
+    () => resolvedDressModels.find((m) => m.url === selectedDressUrl) || resolvedDressModels[0] || null,
+    [resolvedDressModels, selectedDressUrl]
+  );
 
   const activePhoto = productImage || outfitType.photo;
   const activeName  = productName  || outfitType.label;
   const stepNum = (n) => !productImage ? `${n}.` : `${n - 1}.`;
-  const selectedModelLabel = available3DModels.find((m) => m.url === selectedModelUrl)?.label || 'Outfit';
-  const customizationNote = `Color: ${selectedColor.name} | Pattern: ${selectedPattern}${showEmbroidery ? ` | Embroidery: ${EMB_COLORS.find(e => e.hex === embColor)?.name}` : ''}${view3D ? ` | 3D Model: ${selectedModelLabel}` : ''}`;
+  const selectedModelLabel = resolvedDressModels.find((m) => m.url === selectedDressUrl)?.label || 'Outfit';
+  const customizationNote = `Color: ${selectedColor.name} | Pattern: ${selectedPattern}${showEmbroidery ? ` | Embroidery: ${EMB_COLORS.find(e => e.hex === embColor)?.name}` : ''}${view3D ? ` | 3D Model: ${selectedModelLabel}` : ''} | Sleeves: ${sleeveStyle} | Neckline: ${necklineStyle}`;
 
   const handleDownload = useCallback(() => {
     if (!previewRef.current) return;
@@ -402,18 +559,33 @@ const DressCustomizer = ({ productImage, productName, model3DUrl, model3DUrls, o
               aspectRatio: '3/4', boxShadow: '0 10px 28px rgba(255,111,0,0.2)',
             }}>
               {view3D ? (
-                <GLBErrorBoundary key={selectedModelUrl} modelUrl={selectedModelUrl}>
+                <GLBErrorBoundary key={selectedDressUrl} modelUrl={selectedDressUrl}>
                   <Canvas camera={{ position: [0, 0, 3.5], fov: 45 }}
                     style={{ width: '100%', height: '100%' }}>
                     <ambientLight intensity={0.9} />
-                    <directionalLight position={[5, 5, 5]} intensity={0.7} />
+                    <directionalLight position={[5, 5, 5]} intensity={0.9} />
+                    <pointLight position={[-4, 3, -4]} intensity={0.35} />
                     <Suspense fallback={<GLBLoadingMesh />}>
-                      <GLBOutfitModel
-                        colorHex={selectedColor.hex}
-                        modelUrl={selectedModelUrl}
-                        selectedPattern={selectedPattern}
-                        colorOpacity={colorOpacity}
-                      />
+                      {mannequinModel && (
+                        <GLBSceneModel
+                          modelUrl={mannequinModel.url}
+                          role="mannequin"
+                          targetHeight={2.2}
+                        />
+                      )}
+                      {dressModel && (
+                        <GLBSceneModel
+                          colorHex={selectedColor.hex}
+                          modelUrl={dressModel.url}
+                          role="dress"
+                          selectedPattern={selectedPattern}
+                          colorOpacity={colorOpacity}
+                          sleeveStyle={sleeveStyle}
+                          necklineStyle={necklineStyle}
+                          targetHeight={2.0}
+                          positionOffset={[0, 0.03, 0.02]}
+                        />
+                      )}
                     </Suspense>
                     <DreiOrbitControls enablePan={false} minDistance={1.5} maxDistance={6} />
                   </Canvas>
@@ -464,17 +636,17 @@ const DressCustomizer = ({ productImage, productName, model3DUrl, model3DUrls, o
                 </>
               )}
             </Box>
-            {view3D && available3DModels.length > 1 && (
+            {view3D && resolvedDressModels.length > 1 && (
               <Box sx={{ mt: 1.2, display: 'flex', gap: 0.7, flexWrap: 'wrap', justifyContent: 'center' }}>
-                {available3DModels.map((m) => (
+                {resolvedDressModels.map((m) => (
                   <Chip
                     key={m.url}
                     label={m.label}
                     size="small"
-                    onClick={() => setSelectedModelUrl(m.url)}
-                    color={selectedModelUrl === m.url ? 'warning' : 'default'}
-                    variant={selectedModelUrl === m.url ? 'filled' : 'outlined'}
-                    sx={{ cursor: 'pointer', fontWeight: selectedModelUrl === m.url ? 700 : 500 }}
+                    onClick={() => setSelectedDressUrl(m.url)}
+                    color={selectedDressUrl === m.url ? 'warning' : 'default'}
+                    variant={selectedDressUrl === m.url ? 'filled' : 'outlined'}
+                    sx={{ cursor: 'pointer', fontWeight: selectedDressUrl === m.url ? 700 : 500 }}
                   />
                 ))}
               </Box>
@@ -573,11 +745,54 @@ const DressCustomizer = ({ productImage, productName, model3DUrl, model3DUrls, o
 
             <Divider sx={{ my: 1.5 }} />
 
+            {/* Sleeve / Neckline */}
+            <Box mb={2}>
+              <Typography variant="subtitle2" fontWeight={700} gutterBottom
+                sx={{ color: '#e65100', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Checkroom fontSize="small" /> {stepNum(4)} Sleeves
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
+                {['sleeveless', 'short', 'long'].map((s) => (
+                  <Chip
+                    key={s}
+                    label={s[0].toUpperCase() + s.slice(1)}
+                    onClick={() => setSleeveStyle(s)}
+                    variant={sleeveStyle === s ? 'filled' : 'outlined'}
+                    color={sleeveStyle === s ? 'warning' : 'default'}
+                    size="small"
+                    sx={{ cursor: 'pointer', fontWeight: sleeveStyle === s ? 700 : 500 }}
+                  />
+                ))}
+              </Box>
+            </Box>
+
+            <Box mb={2}>
+              <Typography variant="subtitle2" fontWeight={700} gutterBottom
+                sx={{ color: '#e65100', display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <ColorLens fontSize="small" /> {stepNum(5)} Neckline
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 0.8, flexWrap: 'wrap' }}>
+                {['round', 'v', 'square'].map((n) => (
+                  <Chip
+                    key={n}
+                    label={n === 'v' ? 'V' : n[0].toUpperCase() + n.slice(1)}
+                    onClick={() => setNecklineStyle(n)}
+                    variant={necklineStyle === n ? 'filled' : 'outlined'}
+                    color={necklineStyle === n ? 'warning' : 'default'}
+                    size="small"
+                    sx={{ cursor: 'pointer', fontWeight: necklineStyle === n ? 700 : 500 }}
+                  />
+                ))}
+              </Box>
+            </Box>
+
+            <Divider sx={{ my: 1.5 }} />
+
             {/* Embroidery */}
             <Box mb={2}>
               <Typography variant="subtitle2" fontWeight={700} gutterBottom
                 sx={{ color: '#e65100', display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <ColorLens fontSize="small" /> {stepNum(4)} Embroidery
+                <ColorLens fontSize="small" /> {stepNum(6)} Embroidery
               </Typography>
               <Chip label={showEmbroidery ? '✿ Remove Embroidery' : '✿ Add Embroidery Trim'}
                 onClick={() => setShowEmbroidery(v => !v)}
