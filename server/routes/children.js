@@ -167,8 +167,30 @@ router.put('/:id', auth, async (req, res) => {
         }
       }
     } else {
-      // Parent-limited fields
-      const { medicalConditions, allergies, emergencyContacts, authorizedPickup, notes } = req.body || {};
+      // Parent-editable fields
+      const {
+        firstName,
+        lastName,
+        dateOfBirth,
+        gender,
+        program,
+        medicalConditions,
+        allergies,
+        emergencyContacts,
+        authorizedPickup,
+        notes
+      } = req.body || {};
+
+      if (typeof firstName === 'string' && firstName.trim()) update.firstName = firstName.trim();
+      if (typeof lastName === 'string') update.lastName = lastName.trim();
+      if (dateOfBirth) {
+        const dob = new Date(dateOfBirth);
+        if (!Number.isNaN(dob.getTime())) {
+          update.dateOfBirth = dob;
+        }
+      }
+      if (['male', 'female', 'other'].includes(gender)) update.gender = gender;
+      if (typeof program === 'string' && program.trim()) update.program = program.trim();
       if (Array.isArray(medicalConditions)) update.medicalConditions = medicalConditions;
       if (Array.isArray(allergies)) update.allergies = allergies;
       if (Array.isArray(emergencyContacts)) update.emergencyContacts = emergencyContacts;

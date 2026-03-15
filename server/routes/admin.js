@@ -148,6 +148,71 @@ router.get('/dashboard/stats', adminOnly, async (req, res) => {
   }
 });
 
+// Consolidated admin view: parents with children + staff details (including nanny docs)
+router.get('/family-staff-overview', adminOnly, async (req, res) => {
+  try {
+    const [parents, children, staff] = await Promise.all([
+      User.find({ role: 'parent' })
+        .select('firstName lastName email phone address emergencyContact isActive updatedAt createdAt')
+        .sort({ updatedAt: -1 }),
+      Child.find({})
+        .select('firstName lastName dateOfBirth gender program parents updatedAt createdAt')
+        .sort({ updatedAt: -1 }),
+      User.find({ role: 'staff' })
+        .select('firstName lastName email phone isActive staff updatedAt createdAt')
+        .sort({ updatedAt: -1 })
+    ]);
+
+    const childrenByParent = new Map();
+    (children || []).forEach((child) => {
+      const parentIds = Array.isArray(child.parents) ? child.parents.map((p) => String(p)) : [];
+      parentIds.forEach((pid) => {
+        if (!childrenByParent.has(pid)) childrenByParent.set(pid, []);
+        childrenByParent.get(pid).push(child);
+      });
+    });
+
+    const parentChildDetails = (parents || []).map((p) => ({
+      parent: p,
+      children: childrenByParent.get(String(p._id)) || []
+    }));
+
+    const staffDetails = (staff || []).map((s) => {
+      const st = s.staff || {};
+      const docs = st.documents || {};
+      const nannyMandatoryDocs = {
+        certificateUrl: !!st.certificateUrl,
+        aadharCard: !!docs.aadharCard,
+        panCard: !!docs.panCard,
+        policeClearance: !!docs.policeClearance
+      };
+      const nannyDocsComplete =
+        nannyMandatoryDocs.certificateUrl &&
+        nannyMandatoryDocs.aadharCard &&
+        nannyMandatoryDocs.panCard &&
+        nannyMandatoryDocs.policeClearance;
+
+      return {
+        ...s.toObject(),
+        nannyMandatoryDocs,
+        nannyDocsComplete
+      };
+    });
+
+    res.json({
+      parentChildDetails,
+      staffDetails,
+      totalParents: parentChildDetails.length,
+      totalChildren: children.length,
+      totalStaff: staffDetails.length,
+      generatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Get family-staff overview error:', error);
+    res.status(500).json({ message: 'Server error fetching family-staff overview' });
+  }
+});
+
 // Get all pending staff accounts
 router.get('/staff/pending', adminOnly, async (req, res) => {
   try {

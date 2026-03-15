@@ -1,7 +1,7 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, Html } from '@react-three/drei';
+import { OrbitControls, Html, useFBX } from '@react-three/drei';
 import * as THREE from 'three';
 import {
   Box,
@@ -44,6 +44,91 @@ const BODY_TYPE_OFFSETS = {
   child: { x: 0, y: 0, z: 0 },
   adult: { x: 0, y: -0.1, z: 0 },
   baby: { x: 0, y: -0.2, z: 0 },
+  fbx: { x: 0, y: 0, z: 0 },
+};
+
+/**
+ * Normalized [0..1] anchors for FBX marker placement.
+ * These are mapped to the loaded model's bounding box for reliable alignment.
+ */
+const FBX_PART_ANCHORS = {
+  head: [0.5, 0.92, 0.58],
+  eyes: [0.5, 0.89, 0.62],
+  'ears-left': [0.2, 0.87, 0.52],
+  'ears-right': [0.8, 0.87, 0.52],
+  neck: [0.5, 0.79, 0.55],
+  'shoulder-left': [0.33, 0.72, 0.5],
+  'shoulder-right': [0.67, 0.72, 0.5],
+  stomach: [0.5, 0.56, 0.55],
+  'hands-left': [0.16, 0.45, 0.52],
+  'hands-right': [0.84, 0.45, 0.52],
+  'finger-left': [0.08, 0.39, 0.56],
+  'finger-right': [0.92, 0.39, 0.56],
+  'knee-left': [0.44, 0.25, 0.56],
+  'knee-right': [0.56, 0.25, 0.56],
+  'feet-left': [0.45, 0.06, 0.54],
+  'feet-right': [0.55, 0.06, 0.54],
+  'toe-left': [0.45, 0.02, 0.62],
+  'toe-right': [0.55, 0.02, 0.62],
+};
+
+const FBX_MARKER_HINTS = {
+  head: [/head/i, /neck_0?1/i],
+  eyes: [/eye/i, /eyeball/i],
+  'ears-left': [/(left|_l\b|\.l\b| l\b).*ear/i, /ear.*(left|_l\b|\.l\b| l\b)/i],
+  'ears-right': [/(right|_r\b|\.r\b| r\b).*ear/i, /ear.*(right|_r\b|\.r\b| r\b)/i],
+  neck: [/neck/i, /spine0?4/i, /spine0?3/i],
+  'shoulder-left': [/(left|_l\b|\.l\b| l\b).*(shoulder|clavicle)/i, /(shoulder|clavicle).*(left|_l\b|\.l\b| l\b)/i],
+  'shoulder-right': [/(right|_r\b|\.r\b| r\b).*(shoulder|clavicle)/i, /(shoulder|clavicle).*(right|_r\b|\.r\b| r\b)/i],
+  stomach: [/spine0?2/i, /spine0?1/i, /pelvis/i, /hips?/i],
+  'hands-left': [/(left|_l\b|\.l\b| l\b).*hand/i, /hand.*(left|_l\b|\.l\b| l\b)/i],
+  'hands-right': [/(right|_r\b|\.r\b| r\b).*hand/i, /hand.*(right|_r\b|\.r\b| r\b)/i],
+  'finger-left': [/(left|_l\b|\.l\b| l\b).*(finger|thumb|index)/i, /(finger|thumb|index).*(left|_l\b|\.l\b| l\b)/i],
+  'finger-right': [/(right|_r\b|\.r\b| r\b).*(finger|thumb|index)/i, /(finger|thumb|index).*(right|_r\b|\.r\b| r\b)/i],
+  'knee-left': [/(left|_l\b|\.l\b| l\b).*knee/i, /knee.*(left|_l\b|\.l\b| l\b)/i],
+  'knee-right': [/(right|_r\b|\.r\b| r\b).*knee/i, /knee.*(right|_r\b|\.r\b| r\b)/i],
+  'feet-left': [/(left|_l\b|\.l\b| l\b).*(foot|ankle)/i, /(foot|ankle).*(left|_l\b|\.l\b| l\b)/i],
+  'feet-right': [/(right|_r\b|\.r\b| r\b).*(foot|ankle)/i, /(foot|ankle).*(right|_r\b|\.r\b| r\b)/i],
+  'toe-left': [/(left|_l\b|\.l\b| l\b).*toe/i, /toe.*(left|_l\b|\.l\b| l\b)/i],
+  'toe-right': [/(right|_r\b|\.r\b| r\b).*toe/i, /toe.*(right|_r\b|\.r\b| r\b)/i],
+};
+
+const extractFbxMarkerPositions = (fbxRoot) => {
+  const namedNodes = [];
+
+  fbxRoot.updateMatrixWorld(true);
+  fbxRoot.traverse((node) => {
+    if (!node.name) return;
+    const wp = new THREE.Vector3();
+    node.getWorldPosition(wp);
+    namedNodes.push({
+      name: node.name.toLowerCase(),
+      position: [wp.x, wp.y, wp.z],
+    });
+  });
+
+  const markerMap = {};
+  Object.entries(FBX_MARKER_HINTS).forEach(([partId, patterns]) => {
+    const match = namedNodes.find((n) => patterns.some((re) => re.test(n.name)));
+    if (match) markerMap[partId] = match.position;
+  });
+
+  return markerMap;
+};
+
+const getFbxBodyPartPosition = (partId, fbxBounds) => {
+  if (!fbxBounds) return null;
+  if (fbxBounds.markers?.[partId]) return fbxBounds.markers[partId];
+  const anchor = FBX_PART_ANCHORS[partId];
+  if (!anchor) return null;
+
+  const [ax, ay, az] = anchor;
+  const { min, size } = fbxBounds;
+  return [
+    min.x + size.x * ax,
+    min.y + size.y * ay,
+    min.z + size.z * az,
+  ];
 };
 
 /**
@@ -251,17 +336,89 @@ const BODY_PARTS = [
 ];
 
 /**
+ * Error boundary — catches FBX loading failures and shows a friendly message
+ */
+class ModelErrorBoundary extends React.Component {
+  constructor(props) { super(props); this.state = { hasError: false }; }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Html center distanceFactor={10}>
+          <div style={{
+            background: 'rgba(20,20,20,0.92)', color: '#ff9800',
+            padding: '14px 20px', borderRadius: 10, textAlign: 'center', maxWidth: 260,
+          }}>
+            <div style={{ fontSize: 28, marginBottom: 6 }}>📁</div>
+            <div style={{ fontWeight: 'bold', fontSize: 14, marginBottom: 4 }}>FBX File Not Found</div>
+            <div style={{ fontSize: 11, color: '#ccc', lineHeight: 1.6 }}>
+              Drop your file at:<br />
+              <code style={{ color: '#4fc3f7' }}>public/models/body/human-body.fbx</code>
+            </div>
+          </div>
+        </Html>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/** Spinning torus shown while FBX is loading */
+const FBXLoadingMesh = () => {
+  const meshRef = useRef();
+  useFrame((s) => { if (meshRef.current) meshRef.current.rotation.y = s.clock.elapsedTime * 2; });
+  return (
+    <mesh ref={meshRef}>
+      <torusGeometry args={[0.35, 0.06, 8, 24]} />
+      <meshStandardMaterial color="#667eea" wireframe />
+    </mesh>
+  );
+};
+
+/**
+ * Loads /public/models/body/human-body.fbx, auto-normalises scale/centre,
+ * and renders it so the existing body-part dot markers line up correctly.
+ */
+const FBXBodyMesh = ({ onBoundsReady }) => {
+  const fbx = useFBX('/models/body/human-body.fbx');
+  React.useEffect(() => {
+    const box = new THREE.Box3().setFromObject(fbx);
+    const size = box.getSize(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z);
+
+    if (maxDim > 0) {
+      fbx.scale.setScalar(2.5 / maxDim);
+      const scaledBox = new THREE.Box3().setFromObject(fbx);
+      const center = scaledBox.getCenter(new THREE.Vector3());
+      fbx.position.set(-center.x, -center.y, -center.z);
+
+      const alignedBox = new THREE.Box3().setFromObject(fbx);
+      const alignedSize = alignedBox.getSize(new THREE.Vector3());
+      const markers = extractFbxMarkerPositions(fbx);
+      onBoundsReady?.({
+        min: alignedBox.min.clone(),
+        size: alignedSize.clone(),
+        markers,
+      });
+    }
+  }, [fbx, onBoundsReady]);
+
+  return <primitive object={fbx} />;
+};
+
+/**
  * Interactive Body Part (3D clickable sphere)
  */
-const BodyPart = ({ part, onClick, isActive, isHovered, onHover, bodyType = 'child' }) => {
+const BodyPart = ({ part, onClick, isActive, isHovered, onHover, bodyType = 'child', positionOverride = null }) => {
   const meshRef = useRef();
   
   // Adjust position based on body type
   const offset = BODY_TYPE_OFFSETS[bodyType] || BODY_TYPE_OFFSETS.child;
+  const basePosition = positionOverride || part.position;
   const adjustedPosition = [
-    part.position[0] + offset.x,
-    part.position[1] + offset.y,
-    part.position[2] + offset.z,
+    basePosition[0] + offset.x,
+    basePosition[1] + offset.y,
+    basePosition[2] + offset.z,
   ];
   
   useFrame((state) => {
@@ -763,8 +920,8 @@ const BabyBody = () => {
 /**
  * 3D Scene Component
  */
-const Scene3D = ({ onPartClick, activePart, hoveredPart, onHover, bodyType }) => {
-  const BodyComponent = bodyType === 'adult' ? AdultBody : bodyType === 'baby' ? BabyBody : ChildBody;
+const Scene3D = ({ onPartClick, activePart, hoveredPart, onHover, bodyType, fbxBounds, onFbxBoundsReady }) => {
+  const BodyComponent = bodyType === 'adult' ? AdultBody : bodyType === 'baby' ? BabyBody : bodyType === 'fbx' ? null : ChildBody;
   
   return (
     <>
@@ -774,10 +931,19 @@ const Scene3D = ({ onPartClick, activePart, hoveredPart, onHover, bodyType }) =>
       <pointLight position={[-5, 5, -5]} intensity={0.4} />
       
       {/* Selected Body Type */}
-      <BodyComponent />
+      {bodyType === 'fbx' ? (
+        <ModelErrorBoundary>
+          <Suspense fallback={<FBXLoadingMesh />}>
+            <FBXBodyMesh onBoundsReady={onFbxBoundsReady} />
+          </Suspense>
+        </ModelErrorBoundary>
+      ) : (
+        <BodyComponent />
+      )}
       
       {/* Interactive Body Parts */}
       {BODY_PARTS.map((part) => (
+        
         <BodyPart
           key={part.id}
           part={part}
@@ -786,6 +952,7 @@ const Scene3D = ({ onPartClick, activePart, hoveredPart, onHover, bodyType }) =>
           isHovered={hoveredPart === part.id}
           onHover={onHover}
           bodyType={bodyType}
+          positionOverride={bodyType === 'fbx' ? getFbxBodyPartPosition(part.id, fbxBounds) : null}
         />
       ))}
       
@@ -813,6 +980,7 @@ const VirtualBodyLearning = ({ child, onComplete }) => {
   const [learnedParts, setLearnedParts] = useState(new Set());
   const [showCelebration, setShowCelebration] = useState(false);
   const [bodyType, setBodyType] = useState('child'); // 'child', 'adult', or 'baby'
+  const [fbxBounds, setFbxBounds] = useState(null);
 
   const handlePartClick = (part) => {
     setSelectedPart(part);
@@ -963,6 +1131,13 @@ const VirtualBodyLearning = ({ child, onComplete }) => {
             variant={bodyType === 'baby' ? 'filled' : 'outlined'}
             sx={{ cursor: 'pointer', fontWeight: bodyType === 'baby' ? 'bold' : 'normal' }}
           />
+          <Chip
+            label="🗂️ 3D (Your FBX)"
+            onClick={() => setBodyType('fbx')}
+            color={bodyType === 'fbx' ? 'warning' : 'default'}
+            variant={bodyType === 'fbx' ? 'filled' : 'outlined'}
+            sx={{ cursor: 'pointer', fontWeight: bodyType === 'fbx' ? 'bold' : 'normal' }}
+          />
         </Stack>
       </Paper>
 
@@ -977,6 +1152,8 @@ const VirtualBodyLearning = ({ child, onComplete }) => {
           hoveredPart={hoveredPart}
           onHover={setHoveredPart}
           bodyType={bodyType}
+          fbxBounds={fbxBounds}
+          onFbxBoundsReady={setFbxBounds}
         />
       </Canvas>
 
@@ -1132,6 +1309,12 @@ const VirtualBodyLearning = ({ child, onComplete }) => {
         <Typography variant="subtitle2" fontWeight="bold" gutterBottom color="primary">
           📖 How to Play:
         </Typography>
+        {bodyType === 'fbx' && (
+          <Typography variant="caption" sx={{ display: 'block', color: '#ff9800', mb: 0.5, fontSize: '0.72rem', lineHeight: 1.5 }}>
+            📁 Place your FBX at:<br />
+            <code>public/models/body/human-body.fbx</code>
+          </Typography>
+        )}
         <Typography variant="body2" sx={{ fontSize: '0.85rem' }}>
           {mode === 'explore' ? (
             <>

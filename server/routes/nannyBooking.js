@@ -1,9 +1,32 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const auth = require('../middleware/auth');
 const NannyBooking = require('../models/NannyBooking');
 const User = require('../models/User');
 const { sendMail } = require('../utils/mailer');
+
+const nannyDocsDir = path.join(__dirname, '..', 'uploads', 'nanny_docs');
+fs.mkdirSync(nannyDocsDir, { recursive: true });
+const nannyDocStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, nannyDocsDir),
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.pdf';
+    const base = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+    cb(null, `${base}${ext}`);
+  }
+});
+const nannyDocUpload = multer({
+  storage: nannyDocStorage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png'];
+    if (allowed.includes(file.mimetype)) return cb(null, true);
+    cb(new Error('Only PDF/JPG/PNG files are allowed'));
+  }
+});
 
 // Helper: determine if current user is a nanny (supports both staff+nanny and dedicated nanny role)
 function isNannyUser(user) {
@@ -28,6 +51,87 @@ function isNannyUser(user) {
 function isAdmin(user) {
   return !!user && user.role === 'admin';
 }
+
+function mandatoryNannyDocStatus(staff = {}) {
+  return {
+    certificateUrl: !!staff.certificateUrl,
+    aadharCard: !!staff.documents?.aadharCard,
+    panCard: !!staff.documents?.panCard,
+    policeClearance: !!staff.documents?.policeClearance
+  };
+}
+
+function hasMandatoryNannyDocs(staff = {}) {
+  const s = mandatoryNannyDocStatus(staff);
+  return s.certificateUrl && s.aadharCard && s.panCard && s.policeClearance;
+}
+
+// Nanny uploads/updates mandatory documents
+router.post('/profile/documents', auth, nannyDocUpload.single('document'), async (req, res) => {
+  try {
+    if (!isNannyUser(req.user)) {
+      return res.status(403).json({ message: 'Only nanny users can upload documents' });
+    }
+    if (!req.file) {
+      return res.status(400).json({ message: 'Document file is required' });
+    }
+
+    const docType = String(req.body?.docType || '').trim();
+    const allowedDocTypes = ['certificate', 'aadharCard', 'panCard', 'policeClearance', 'drivingLicense'];
+    if (!allowedDocTypes.includes(docType)) {
+      return res.status(400).json({ message: 'Invalid docType' });
+    }
+
+    const url = `/uploads/nanny_docs/${req.file.filename}`;
+    const nannyUser = await User.findById(req.user.userId);
+    if (!nannyUser) return res.status(404).json({ message: 'Nanny user not found' });
+
+    nannyUser.staff = nannyUser.staff || {};
+    nannyUser.staff.documents = nannyUser.staff.documents || {};
+
+    if (docType === 'certificate') {
+      nannyUser.staff.certificateUrl = url;
+    } else {
+      nannyUser.staff.documents[docType] = url;
+    }
+
+    await nannyUser.save();
+
+    const mandatoryStatus = mandatoryNannyDocStatus(nannyUser.staff);
+    res.json({
+      message: 'Document uploaded successfully',
+      documentUrl: url,
+      mandatoryStatus,
+      complete: hasMandatoryNannyDocs(nannyUser.staff)
+    });
+  } catch (error) {
+    console.error('Error uploading nanny document:', error);
+    res.status(500).json({ message: 'Server error uploading nanny document' });
+  }
+});
+
+// Nanny profile document status
+router.get('/profile/documents', auth, async (req, res) => {
+  try {
+    if (!isNannyUser(req.user)) {
+      return res.status(403).json({ message: 'Only nanny users can view document status' });
+    }
+    const nannyUser = await User.findById(req.user.userId).select(
+      'staff.certificateUrl staff.documents staff.staffType firstName lastName'
+    );
+    if (!nannyUser) return res.status(404).json({ message: 'Nanny user not found' });
+
+    const mandatoryStatus = mandatoryNannyDocStatus(nannyUser.staff || {});
+    res.json({
+      nanny: nannyUser,
+      mandatoryStatus,
+      complete: hasMandatoryNannyDocs(nannyUser.staff || {})
+    });
+  } catch (error) {
+    console.error('Error fetching nanny document status:', error);
+    res.status(500).json({ message: 'Server error fetching nanny document status' });
+  }
+});
 
 // Get all nannies (for parents to view)
 router.get('/nannies', auth, async (req, res) => {

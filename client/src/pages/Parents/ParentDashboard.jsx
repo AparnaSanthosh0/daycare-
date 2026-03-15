@@ -47,6 +47,7 @@ import {
   Assessment,
   LocalHospital,
   Add,
+  Edit,
   CheckCircle,
   Home,
   Favorite,
@@ -241,6 +242,17 @@ const ParentDashboard = ({ initialTab }) => {
     emergencyContactPhone: ''
   });
   const [addChildLoading, setAddChildLoading] = useState(false);
+  const [editChildDialog, setEditChildDialog] = useState(false);
+  const [editChildLoading, setEditChildLoading] = useState(false);
+  const [editChildError, setEditChildError] = useState('');
+  const [editChildForm, setEditChildForm] = useState({
+    firstName: '',
+    lastName: '',
+    dateOfBirth: '',
+    gender: 'male',
+    program: 'preschool',
+    notes: ''
+  });
 
   // After School Program states
   const [afterSchoolPrograms, setAfterSchoolPrograms] = useState([]);
@@ -449,6 +461,47 @@ const ParentDashboard = ({ initialTab }) => {
       setAddChildError(error.response?.data?.message || 'Failed to submit admission request');
     } finally {
       setAddChildLoading(false);
+    }
+  };
+
+  const openEditChildDialog = () => {
+    if (!profile) return;
+    setEditChildError('');
+    setEditChildForm({
+      firstName: profile.firstName || '',
+      lastName: profile.lastName || '',
+      dateOfBirth: profile.dateOfBirth ? new Date(profile.dateOfBirth).toISOString().slice(0, 10) : '',
+      gender: profile.gender || 'male',
+      program: profile.program || 'preschool',
+      notes: profile.notes || ''
+    });
+    setEditChildDialog(true);
+  };
+
+  const handleSaveChildProfile = async () => {
+    try {
+      if (!activeChildId) return;
+      setEditChildLoading(true);
+      setEditChildError('');
+
+      const payload = {
+        firstName: editChildForm.firstName,
+        lastName: editChildForm.lastName,
+        dateOfBirth: editChildForm.dateOfBirth,
+        gender: editChildForm.gender,
+        program: editChildForm.program,
+        notes: editChildForm.notes
+      };
+
+      await api.put(`/children/${activeChildId}`, payload);
+      alert('Child profile updated successfully.');
+      setEditChildDialog(false);
+      fetchChildData(activeChildId);
+      loadChildren();
+    } catch (error) {
+      setEditChildError(error.response?.data?.message || 'Failed to update child profile');
+    } finally {
+      setEditChildLoading(false);
     }
   };
 
@@ -2190,6 +2243,15 @@ const ParentDashboard = ({ initialTab }) => {
               }}
             >
               Add Child
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<Edit />}
+              onClick={openEditChildDialog}
+              disabled={!activeChildId || !profile}
+              sx={{ textTransform: 'none' }}
+            >
+              Edit Child Profile
             </Button>
             <IconButton onClick={() => activeChildId && fetchChildData(activeChildId)} color="primary">
               <Refresh />
@@ -5987,6 +6049,113 @@ const ParentDashboard = ({ initialTab }) => {
             sx={{ bgcolor: '#14B8A6', '&:hover': { bgcolor: '#0F766E' } }}
           >
             {addChildLoading ? 'Submitting...' : 'Submit Request'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Edit Child Profile Dialog */}
+      <Dialog
+        open={editChildDialog}
+        onClose={() => {
+          if (editChildLoading) return;
+          setEditChildDialog(false);
+          setEditChildError('');
+        }}
+        maxWidth="sm"
+        fullWidth
+      >
+        <DialogTitle sx={{ bgcolor: '#0ea5e9', color: 'white' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Edit />
+            Edit Child Profile
+          </Box>
+        </DialogTitle>
+        <DialogContent sx={{ mt: 2 }}>
+          {editChildError && <Alert severity="error" sx={{ mb: 2 }}>{editChildError}</Alert>}
+          <Grid container spacing={2}>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="First Name"
+                value={editChildForm.firstName}
+                onChange={(e) => setEditChildForm((f) => ({ ...f, firstName: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                label="Last Name"
+                value={editChildForm.lastName}
+                onChange={(e) => setEditChildForm((f) => ({ ...f, lastName: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                type="date"
+                label="Date of Birth"
+                InputLabelProps={{ shrink: true }}
+                value={editChildForm.dateOfBirth}
+                onChange={(e) => setEditChildForm((f) => ({ ...f, dateOfBirth: e.target.value }))}
+              />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth>
+                <InputLabel>Gender</InputLabel>
+                <Select
+                  label="Gender"
+                  value={editChildForm.gender}
+                  onChange={(e) => setEditChildForm((f) => ({ ...f, gender: e.target.value }))}
+                >
+                  <MenuItem value="male">Male</MenuItem>
+                  <MenuItem value="female">Female</MenuItem>
+                  <MenuItem value="other">Other</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Program</InputLabel>
+                <Select
+                  label="Program"
+                  value={editChildForm.program}
+                  onChange={(e) => setEditChildForm((f) => ({ ...f, program: e.target.value }))}
+                >
+                  <MenuItem value="toddler">Toddler</MenuItem>
+                  <MenuItem value="preschool">Preschool</MenuItem>
+                  <MenuItem value="prekindergarten">Pre-Kindergarten</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                rows={3}
+                label="Notes"
+                value={editChildForm.notes}
+                onChange={(e) => setEditChildForm((f) => ({ ...f, notes: e.target.value }))}
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button
+            onClick={() => {
+              setEditChildDialog(false);
+              setEditChildError('');
+            }}
+            disabled={editChildLoading}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSaveChildProfile}
+            disabled={editChildLoading}
+            startIcon={editChildLoading ? <CircularProgress size={18} /> : <CheckCircle />}
+          >
+            {editChildLoading ? 'Saving...' : 'Save Changes'}
           </Button>
         </DialogActions>
       </Dialog>

@@ -1,0 +1,4 @@
+# Customization 3D Models
+Place your GLB file here as: outfit.glb
+
+The DressCustomizer will load it when you click the "3D View" toggle button in the Live Preview panel.

@@ -74,6 +74,12 @@ router.post('/register', upload.single('certificate'), [
 
     const { firstName, lastName, email, password, role, phone, address, yearsOfExperience, qualification, username, notifyByEmail, staffType, licenseNumber, vehicleType, deliveryArea, serviceArea, availability, certification, hasMultipleChildren, numberOfChildren, additionalChildren } = req.body;
 
+    const normalizedRole = role || 'parent';
+    const normalizedStaffType = staffType || 'teacher';
+    if (normalizedRole === 'staff' && normalizedStaffType === 'nanny' && !req.file) {
+      return res.status(400).json({ message: 'Nanny registration requires a work certificate upload' });
+    }
+
     // Check if user already exists
     const existingUser = await User.findOne({ $or: [{ email }, ...(username ? [{ username }] : [])] });
     if (existingUser) {
@@ -86,12 +92,12 @@ router.post('/register', upload.single('certificate'), [
       lastName,
       email,
       password,
-      role: role || 'parent',
+      role: normalizedRole,
       phone,
       address,
       username: username || undefined,
-      staff: role === 'staff' ? {
-        staffType: staffType || 'teacher',
+      staff: normalizedRole === 'staff' ? {
+        staffType: normalizedStaffType,
         yearsOfExperience: yearsOfExperience === undefined || yearsOfExperience === '' ? 0 : Number(yearsOfExperience),
         qualification: qualification || '',
         certificateUrl: req.file ? `/uploads/certificates/${req.file.filename}` : null,

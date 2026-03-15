@@ -136,6 +136,58 @@ router.get('/me/communications', auth, async (req, res) => {
   }
 });
 
+// Parent self profile update
+router.put('/me/profile', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'parent') {
+      return res.status(403).json({ message: 'Only parents can update profile' });
+    }
+
+    const {
+      firstName,
+      lastName,
+      phone,
+      address,
+      emergencyContact
+    } = req.body || {};
+
+    const update = {};
+    if (typeof firstName === 'string' && firstName.trim()) update.firstName = firstName.trim();
+    if (typeof lastName === 'string' && lastName.trim()) update.lastName = lastName.trim();
+    if (typeof phone === 'string') update.phone = phone.trim();
+    if (address && typeof address === 'object') {
+      update.address = {
+        street: String(address.street || '').trim(),
+        city: String(address.city || '').trim(),
+        state: String(address.state || '').trim(),
+        zipCode: String(address.zipCode || '').trim()
+      };
+    }
+    if (emergencyContact && typeof emergencyContact === 'object') {
+      update.emergencyContact = {
+        name: String(emergencyContact.name || '').trim(),
+        phone: String(emergencyContact.phone || '').trim(),
+        relationship: String(emergencyContact.relationship || '').trim()
+      };
+    }
+
+    const parent = await User.findByIdAndUpdate(
+      req.user.userId,
+      update,
+      { new: true }
+    ).select('-password');
+
+    if (!parent) {
+      return res.status(404).json({ message: 'Parent user not found' });
+    }
+
+    res.json({ message: 'Profile updated successfully', parent });
+  } catch (error) {
+    console.error('Update parent profile error:', error);
+    res.status(500).json({ message: 'Server error updating profile' });
+  }
+});
+
 // Parent messaging: list my messages
 router.get('/me/messages', auth, async (req, res) => {
   try {

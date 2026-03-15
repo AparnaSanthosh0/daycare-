@@ -27,7 +27,7 @@ import SimpleCart from './SimpleCart';
 import ShopHeader from './ShopHeader';
 import CategoryBar from './CategoryBar';
 import HeroCarousel from './HeroCarousel';
-import OutfitBuilder2D from './OutfitBuilder2D';
+import DressCustomizer from './DressCustomizer';
 import api, { API_BASE_URL } from '../../config/api';
 import { useAuth } from '../../contexts/AuthContext';
 import { useShop } from '../../contexts/ShopContext';
@@ -662,16 +662,12 @@ const EcommerceDemo = ({ initialCategory = 'all', initialQuery = '', filterMode 
       {/* Custom Outfit Designer Section - only show on main shop page */}
       {!isFashionKey && !searchImage && selectedCategory === 'all' && (
         <Container maxWidth="lg" sx={{ pt: 4, pb: 6 }}>
-          <OutfitBuilder2D 
-            product={{ 
-              id: 'custom-design',
-              name: 'Custom Outfit',
-              price: 999,
-              category: 'Fashion'
-            }}
-            onAddToCart={(product, customization) => {
-              // Add customized outfit to cart
-              addToCart(product, 1, null, customization);
+          <DressCustomizer
+            onAddToCart={(customizationNote) => {
+              addToCart(
+                { id: 'custom-design', name: 'Custom Outfit', price: 999, category: 'Fashion' },
+                null, 1, customizationNote
+              );
               setCartOpen(true);
             }}
           />

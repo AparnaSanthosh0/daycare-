@@ -24,7 +24,7 @@ import {
   Select,
   MenuItem
 } from '@mui/material';
-import { Person, Payment, VerifiedUser } from '@mui/icons-material';
+import { Person, Payment, VerifiedUser, Visibility } from '@mui/icons-material';
 import api, { API_BASE_URL } from '../config/api';
 import { useAuth } from '../contexts/AuthContext';
 import { RAZORPAY_CONFIG } from '../config/razorpay';
@@ -58,6 +58,7 @@ const NannyServicesTab = () => {
   const [bookings, setBookings] = useState([]);
   const [selectedNanny, setSelectedNanny] = useState(null);
   const [bookingDialog, setBookingDialog] = useState(false);
+  const [nannyDetailsDialog, setNannyDetailsDialog] = useState(false);
   const [reviewDialog, setReviewDialog] = useState(false);
   const [paymentConfirmDialog, setPaymentConfirmDialog] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
@@ -360,8 +361,20 @@ const NannyServicesTab = () => {
                   </Alert>
                   <Button
                     fullWidth
+                    variant="outlined"
+                    startIcon={<Visibility />}
+                    sx={{ mt: 2 }}
+                    onClick={() => {
+                      setSelectedNanny(nanny);
+                      setNannyDetailsDialog(true);
+                    }}
+                  >
+                    View Full Nanny Details
+                  </Button>
+                  <Button
+                    fullWidth
                     variant="contained"
-                    sx={{ mt: 2, bgcolor: '#e91e63', '&:hover': { bgcolor: '#d81b60' } }}
+                    sx={{ mt: 1.5, bgcolor: '#e91e63', '&:hover': { bgcolor: '#d81b60' } }}
                     onClick={() => {
                       setSelectedNanny(nanny);
                       setBookingForm((prev) => ({ ...prev, nannyId: nanny._id }));
@@ -955,6 +968,51 @@ const NannyServicesTab = () => {
           <Button onClick={handleBookingSubmit} variant="contained" color="primary">
             Submit Booking
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Nanny Full Details Dialog */}
+      <Dialog open={nannyDetailsDialog} onClose={() => setNannyDetailsDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Nanny Full Details</DialogTitle>
+        <DialogContent>
+          {selectedNanny && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="h6" sx={{ mb: 1 }}>
+                {selectedNanny.firstName} {selectedNanny.lastName}
+              </Typography>
+              <Typography variant="body2" sx={{ mb: 0.75 }}><strong>Phone:</strong> {selectedNanny.phone || 'N/A'}</Typography>
+              <Typography variant="body2" sx={{ mb: 0.75 }}><strong>Experience:</strong> {selectedNanny.staff?.yearsOfExperience || 0} years</Typography>
+              <Typography variant="body2" sx={{ mb: 0.75 }}><strong>Qualification:</strong> {selectedNanny.staff?.qualification || 'N/A'}</Typography>
+              <Typography variant="body2" sx={{ mb: 0.75 }}><strong>Certification:</strong> {selectedNanny.staff?.certification || 'N/A'}</Typography>
+              <Typography variant="body2" sx={{ mb: 1.5 }}><strong>Service Area:</strong> {selectedNanny.staff?.serviceArea || 'N/A'}</Typography>
+              <Divider sx={{ my: 1.5 }} />
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Verification Documents</Typography>
+              {getVerificationDocs(selectedNanny.staff).length > 0 ? (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {getVerificationDocs(selectedNanny.staff).map((doc) => (
+                    <Button
+                      key={`doc-${doc.label}`}
+                      size="small"
+                      component="a"
+                      href={doc.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      variant="outlined"
+                    >
+                      View {doc.label}
+                    </Button>
+                  ))}
+                </Box>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  No verification documents uploaded yet.
+                </Typography>
+              )}
+            </Box>
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setNannyDetailsDialog(false)}>Close</Button>
         </DialogActions>
       </Dialog>
 

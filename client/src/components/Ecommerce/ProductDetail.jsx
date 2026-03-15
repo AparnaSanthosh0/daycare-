@@ -63,9 +63,7 @@ export default function ProductDetail() {
 
   // Determine if this product supports AR/customization
   const productCat = (product?.category || '').toLowerCase();
-  const productName = (product?.name || '').toLowerCase();
-  const isClothing = productCat.includes('cloth') || productCat.includes('dress') || productCat.includes('apparel') || productCat.includes('outfit') || productCat.includes('shirt') || productCat.includes('wear') || productCat.includes('skirt') || productCat.includes('romper');
-  const isFaceAR   = productCat.includes('access') || productCat.includes('hat') || productCat.includes('glass') || productName.includes('makeup') || productName.includes('face paint');
+  const isClothing = productCat.includes('cloth') || productCat.includes('dress') || productCat.includes('apparel') || productCat.includes('outfit') || productCat.includes('shirt') || productCat.includes('wear') || productCat.includes('skirt') || productCat.includes('romper') || productCat.includes('fashion') || productCat === 'boy' || productCat === 'girl' || productCat.includes('kurta') || productCat.includes('lehenga') || productCat.includes('top') || productCat.includes('pant') || productCat.includes('suit');
 
   React.useEffect(() => {
     let mounted = true;
@@ -310,6 +308,8 @@ export default function ProductDetail() {
                   <DressCustomizer
                     productImage={images?.[0] || product.image}
                     productName={product.name}
+                    model3DUrl={product.model3DUrl || null}
+                    model3DUrls={Array.isArray(product.model3DUrls) ? product.model3DUrls : null}
                     productPrice={product.price}
                     onAddToCart={(note) => {
                       addToCart(product, selectedSize || null, 1, note);

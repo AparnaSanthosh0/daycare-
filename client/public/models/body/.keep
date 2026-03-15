@@ -1,0 +1,4 @@
+# Body 3D Models
+Place your FBX file here as: human-body.fbx
+
+The VirtualBodyLearning room will load it automatically when you select the "3D (Your FBX)" option.

@@ -135,6 +135,11 @@ const AdminDashboard = () => {
   const [payoutForm, setPayoutForm] = useState({ payoutMethod: 'bank_transfer', payoutDetails: {}, payoutTransactionId: '' });
   const [afterSchoolSuggestions, setAfterSchoolSuggestions] = useState([]);
   const [afterSchoolLoading, setAfterSchoolLoading] = useState(false);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [familyStaffOverview, setFamilyStaffOverview] = useState({
+    parentChildDetails: [],
+    staffDetails: []
+  });
 
   // Fetch dashboard data
   const fetchDashboardData = async () => {
@@ -243,6 +248,22 @@ const AdminDashboard = () => {
     }
   };
 
+  const fetchFamilyStaffOverview = async () => {
+    try {
+      setOverviewLoading(true);
+      const response = await api.get('/admin/family-staff-overview');
+      setFamilyStaffOverview({
+        parentChildDetails: response.data?.parentChildDetails || [],
+        staffDetails: response.data?.staffDetails || []
+      });
+    } catch (error) {
+      console.error('Error fetching family-staff overview:', error);
+      setFamilyStaffOverview({ parentChildDetails: [], staffDetails: [] });
+    } finally {
+      setOverviewLoading(false);
+    }
+  };
+
   const handleAfterSchoolSuggestionAction = async (id, action) => {
     try {
       const endpoint = action === 'approve'
@@ -282,6 +303,16 @@ const AdminDashboard = () => {
     fetchNannyData();
     fetchPendingPayments();
     fetchAfterSchoolSuggestions();
+    fetchFamilyStaffOverview();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      fetchFamilyStaffOverview();
+      fetchAllUsersData();
+    }, 30000);
+    return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1148,6 +1179,7 @@ const AdminDashboard = () => {
           <Tab label="Payment Management" />
           <Tab label="Reports & Analytics" />
           <Tab label="After School Programs" />
+          <Tab label="Parent-Child & Staff Details" />
         </Tabs>
 
         <Box sx={{ mt: 3 }}>
@@ -1832,6 +1864,112 @@ const AdminDashboard = () => {
                     </TableBody>
                   </Table>
                 </TableContainer>
+              )}
+            </Box>
+          )}
+
+          {tabValue === 13 && (
+            <Box>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                <Typography variant="h5" sx={{ fontWeight: 600 }}>
+                  Parent-Child and Staff Details (Live)
+                </Typography>
+                <Button variant="outlined" onClick={fetchFamilyStaffOverview} sx={{ textTransform: 'none' }}>
+                  Refresh Live Data
+                </Button>
+              </Box>
+
+              {overviewLoading ? (
+                <CircularProgress size={24} />
+              ) : (
+                <Grid container spacing={3}>
+                  <Grid item xs={12} md={7}>
+                    <Paper sx={{ p: 2 }}>
+                      <Typography variant="h6" gutterBottom>Parents with Children</Typography>
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Parent</TableCell>
+                              <TableCell>Contact</TableCell>
+                              <TableCell>Children</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {(familyStaffOverview.parentChildDetails || []).map((row, idx) => (
+                              <TableRow key={`${row.parent?._id || 'p'}-${idx}`}>
+                                <TableCell>
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                    {(row.parent?.firstName || '')} {(row.parent?.lastName || '')}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">
+                                    {row.parent?.email || '-'}
+                                  </Typography>
+                                </TableCell>
+                                <TableCell>{row.parent?.phone || '-'}</TableCell>
+                                <TableCell>
+                                  {(row.children || []).length === 0 ? (
+                                    <Typography variant="caption" color="text.secondary">No child mapped</Typography>
+                                  ) : (
+                                    (row.children || []).map((c) => (
+                                      <Chip
+                                        key={c._id}
+                                        size="small"
+                                        sx={{ mr: 0.5, mb: 0.5 }}
+                                        label={`${c.firstName || ''} ${c.lastName || ''}`.trim()}
+                                      />
+                                    ))
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  </Grid>
+
+                  <Grid item xs={12} md={5}>
+                    <Paper sx={{ p: 2 }}>
+                      <Typography variant="h6" gutterBottom>All Staff Details</Typography>
+                      <TableContainer>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Staff</TableCell>
+                              <TableCell>Role</TableCell>
+                              <TableCell>Nanny Docs</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {(familyStaffOverview.staffDetails || []).map((s) => (
+                              <TableRow key={s._id}>
+                                <TableCell>
+                                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                                    {s.firstName} {s.lastName}
+                                  </Typography>
+                                  <Typography variant="caption" color="text.secondary">{s.email}</Typography>
+                                </TableCell>
+                                <TableCell>{s.staff?.staffType || 'staff'}</TableCell>
+                                <TableCell>
+                                  {s.staff?.staffType === 'nanny' ? (
+                                    <Chip
+                                      size="small"
+                                      color={s.nannyDocsComplete ? 'success' : 'warning'}
+                                      label={s.nannyDocsComplete ? 'Complete' : 'Pending'}
+                                    />
+                                  ) : (
+                                    <Typography variant="caption" color="text.secondary">N/A</Typography>
+                                  )}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </TableContainer>
+                    </Paper>
+                  </Grid>
+                </Grid>
               )}
             </Box>
           )}

@@ -23,6 +23,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  MenuItem,
 } from '@mui/material';
 import {
   Schedule,
@@ -38,7 +39,9 @@ import {
   Logout,
   Visibility,
   ShoppingCart,
-  KeyboardVoice
+  KeyboardVoice,
+  UploadFile,
+  VerifiedUser
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
@@ -74,6 +77,18 @@ const NannyDashboard = () => {
   const [routineLoading, setRoutineLoading] = useState(false);
   const [routineReminders, setRoutineReminders] = useState([]);
   const [vaOpen, setVaOpen] = useState(false);
+  const [docStatus, setDocStatus] = useState({
+    mandatoryStatus: {
+      certificateUrl: false,
+      aadharCard: false,
+      panCard: false,
+      policeClearance: false
+    },
+    complete: false
+  });
+  const [docType, setDocType] = useState('aadharCard');
+  const [docFile, setDocFile] = useState(null);
+  const [docUploading, setDocUploading] = useState(false);
 
   const recognitionRef = useRef(null);
   const isDictatingRef = useRef(false);
@@ -104,7 +119,50 @@ const NannyDashboard = () => {
     fetchHistory();
     fetchPayments();
     fetchRoutineSuggestions();
+    fetchDocStatus();
   }, []);
+
+  const fetchDocStatus = async () => {
+    try {
+      const response = await api.get('/nanny/profile/documents');
+      setDocStatus(response.data || {
+        mandatoryStatus: {
+          certificateUrl: false,
+          aadharCard: false,
+          panCard: false,
+          policeClearance: false
+        },
+        complete: false
+      });
+    } catch (e) {
+      console.error('Error fetching nanny document status:', e);
+    }
+  };
+
+  const handleUploadDocument = async () => {
+    try {
+      if (!docFile) {
+        setError('Please select a file before uploading.');
+        return;
+      }
+      const formData = new FormData();
+      formData.append('docType', docType);
+      formData.append('document', docFile);
+
+      setDocUploading(true);
+      await api.post('/nanny/profile/documents', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setSuccess('Document uploaded successfully.');
+      setDocFile(null);
+      await fetchDocStatus();
+    } catch (e) {
+      console.error('Document upload failed:', e);
+      setError(e.response?.data?.message || 'Failed to upload document');
+    } finally {
+      setDocUploading(false);
+    }
+  };
 
   // Update reminder countdown every minute
   useEffect(() => {
@@ -379,6 +437,11 @@ const NannyDashboard = () => {
 
   const handleRequestAction = async (id, status) => {
     try {
+      if (status === 'accepted' && !docStatus.complete) {
+        setError('Upload all mandatory documents first (Certificate, Aadhar, PAN, Police Clearance).');
+        setTab(6);
+        return;
+      }
       const endpoint = status === 'accepted' ? 'accept' : 'reject';
       await api.put(`/nanny/bookings/${id}/${endpoint}`);
       setSuccess(`Request ${status === 'accepted' ? 'accepted' : 'rejected'}.`);
@@ -392,6 +455,11 @@ const NannyDashboard = () => {
 
   const handleStartService = async (bookingId) => {
     try {
+      if (!docStatus.complete) {
+        setError('Upload all mandatory documents before starting services.');
+        setTab(6);
+        return;
+      }
       await api.put(`/nanny/bookings/${bookingId}/start`);
       setSuccess('Service started. Time tracking in progress.');
       // Refresh all data to show the updated booking
@@ -552,6 +620,7 @@ const NannyDashboard = () => {
           <Tab label="Service History" icon={<Description />} iconPosition="start" />
           <Tab label="Payment History" icon={<Star />} iconPosition="start" />
           <Tab label="Reviews" icon={<Star />} iconPosition="start" />
+          <Tab label="My Documents" icon={<UploadFile />} iconPosition="start" />
         </Tabs>
       </Box>
 
@@ -1142,6 +1211,91 @@ const NannyDashboard = () => {
               ))}
             </Stack>
           )}
+        </Box>
+      )}
+
+      {/* Documents */}
+      {tab === 6 && (
+        <Box>
+          <Typography variant="h5" sx={{ fontWeight: 'bold', mb: 2 }}>
+            Mandatory Work Documents
+          </Typography>
+
+          <Alert severity={docStatus.complete ? 'success' : 'warning'} sx={{ mb: 2 }}>
+            {docStatus.complete
+              ? 'All mandatory documents are uploaded. You can accept and start services.'
+              : 'Please upload all mandatory documents: Certificate, Aadhar Card, PAN Card, and Police Clearance.'}
+          </Alert>
+
+          <Grid container spacing={2} sx={{ mb: 3 }}>
+            {[
+              { key: 'certificateUrl', label: 'Certificate' },
+              { key: 'aadharCard', label: 'Aadhar Card' },
+              { key: 'panCard', label: 'PAN Card' },
+              { key: 'policeClearance', label: 'Police Clearance' }
+            ].map((d) => (
+              <Grid item xs={12} sm={6} md={3} key={d.key}>
+                <Paper sx={{ p: 2, textAlign: 'center' }}>
+                  <Typography variant="body2" sx={{ mb: 1 }}>{d.label}</Typography>
+                  <Chip
+                    icon={<VerifiedUser />}
+                    color={docStatus.mandatoryStatus?.[d.key] ? 'success' : 'default'}
+                    label={docStatus.mandatoryStatus?.[d.key] ? 'Uploaded' : 'Missing'}
+                    size="small"
+                  />
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" sx={{ mb: 2 }}>Upload / Replace Document</Typography>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} md={4}>
+                <TextField
+                  select
+                  fullWidth
+                  label="Document Type"
+                  value={docType}
+                  onChange={(e) => setDocType(e.target.value)}
+                >
+                  <MenuItem value="certificate">Certificate</MenuItem>
+                  <MenuItem value="aadharCard">Aadhar Card</MenuItem>
+                  <MenuItem value="panCard">PAN Card</MenuItem>
+                  <MenuItem value="policeClearance">Police Clearance</MenuItem>
+                  <MenuItem value="drivingLicense">Driving License (optional)</MenuItem>
+                </TextField>
+              </Grid>
+              <Grid item xs={12} md={5}>
+                <Button
+                  component="label"
+                  variant="outlined"
+                  fullWidth
+                  startIcon={<UploadFile />}
+                  sx={{ textTransform: 'none', py: 1.6 }}
+                >
+                  {docFile ? docFile.name : 'Choose PDF/JPG/PNG'}
+                  <input
+                    type="file"
+                    hidden
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    onChange={(e) => setDocFile(e.target.files?.[0] || null)}
+                  />
+                </Button>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  onClick={handleUploadDocument}
+                  disabled={docUploading}
+                  sx={{ bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' }, py: 1.6 }}
+                >
+                  {docUploading ? 'Uploading...' : 'Upload'}
+                </Button>
+              </Grid>
+            </Grid>
+          </Paper>
         </Box>
       )}
 
