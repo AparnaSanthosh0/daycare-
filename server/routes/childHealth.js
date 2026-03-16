@@ -882,18 +882,9 @@ router.get('/teacher/daily-plan', auth, authorize('staff', 'admin'), async (req,
  */
 router.post('/teacher/children/:childId/growth-record', auth, authorize('staff', 'admin'), async (req, res) => {
   try {
-    const childQuery = {
-      _id: req.params.childId,
-      isActive: true,
-    };
-
-    if (req.user.role === 'staff') {
-      childQuery.assignedStaff = req.user.userId;
-    }
-
-    const child = await Child.findOne(childQuery);
+    const child = await Child.findOne({ _id: req.params.childId, isActive: true });
     if (!child) {
-      return res.status(404).json({ success: false, message: 'Child not found or access denied' });
+      return res.status(404).json({ success: false, message: 'Child not found' });
     }
 
     if (req.body.weightKg === undefined || req.body.heightCm === undefined) {

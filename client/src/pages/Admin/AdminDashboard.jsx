@@ -42,7 +42,6 @@ import {
 } from '@mui/icons-material';
 import api from '../../config/api';
 import PurchasePrediction from '../../components/PurchasePrediction';
-import DemandPrediction from '../../components/DemandPrediction';
 import SmartSearch from '../../components/Common/SmartSearch';
 import TransportManagement from '../../components/Admin/TransportManagement';
 import VaccinationManagement from '../../components/Admin/VaccinationManagement';
@@ -1592,7 +1591,6 @@ const AdminDashboard = () => {
                 AI-Powered Predictions
               </Typography>
               <PurchasePrediction />
-              <DemandPrediction />
             </Box>
           )}
 

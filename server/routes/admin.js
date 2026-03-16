@@ -888,13 +888,13 @@ router.put('/admissions/:id/approve', adminOnly, async (req, res) => {
     if (!ar) return res.status(404).json({ message: 'Admission request not found' });
     if (ar.status !== 'pending') return res.status(400).json({ message: 'Admission request already handled' });
 
-    // Validate DOB (6 months to 8 years) - match parent submission validation
+    // Validate DOB (6 months to 12 years)
     const dob = new Date(ar.child.dateOfBirth);
     const today = new Date();
-    const minDob = new Date(today.getFullYear() - 8, today.getMonth(), today.getDate());
+    const minDob = new Date(today.getFullYear() - 12, today.getMonth(), today.getDate());
     const maxDob = new Date(today.getFullYear(), today.getMonth() - 6, today.getDate());
     if (!(dob >= minDob && dob <= maxDob)) {
-      return res.status(400).json({ message: 'Child age must be between 6 months and 8 years old' });
+      return res.status(400).json({ message: 'Child age must be between 6 months and 12 years old' });
     }
 
     // Ensure parent exists and activate parent
@@ -1013,7 +1013,7 @@ router.post('/children', adminOnly, [
   body('dateOfBirth').isISO8601().withMessage('Valid date of birth is required'),
   body('gender').isIn(['male', 'female']).withMessage('Gender must be male or female'),
   body('parentId').notEmpty().withMessage('Parent ID is required'),
-  body('program').isIn(['toddler', 'preschool', 'prekindergarten']).withMessage('Valid program is required')
+  body('program').isIn(['infant', 'toddler', 'preschool', 'prekindergarten']).withMessage('Valid program is required')
 ], async (req, res) => {
   try {
     console.log('Admin creating child with body:', req.body);
@@ -1047,13 +1047,13 @@ router.post('/children', adminOnly, [
       console.log('Parent activated successfully');
     }
 
-    // Validate child age (6 months to 8 years) - more flexible for daycare
+    // Validate child age (6 months to 12 years)
     const dob = new Date(dateOfBirth);
     const today = new Date();
-    const minDob = new Date(today.getFullYear() - 8, today.getMonth(), today.getDate());
+    const minDob = new Date(today.getFullYear() - 12, today.getMonth(), today.getDate());
     const maxDob = new Date(today.getFullYear(), today.getMonth() - 6, today.getDate()); // 6 months old minimum
     if (!(dob >= minDob && dob <= maxDob)) {
-      return res.status(400).json({ message: 'Child age must be between 6 months and 8 years old' });
+      return res.status(400).json({ message: 'Child age must be between 6 months and 12 years old' });
     }
 
     // Set tuition rate based on program if not provided

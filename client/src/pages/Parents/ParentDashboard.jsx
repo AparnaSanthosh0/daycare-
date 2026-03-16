@@ -204,6 +204,18 @@ const ParentDashboard = ({ initialTab }) => {
   const [appointmentError, setAppointmentError] = useState('');
   const [appointmentSuccess, setAppointmentSuccess] = useState('');
 
+  // Slot-based booking state
+  const [availableDoctors, setAvailableDoctors] = useState([]);
+  const [selectedDoctorId, setSelectedDoctorId] = useState('');
+  const [slotBookingDate, setSlotBookingDate] = useState(new Date().toISOString().slice(0, 10));
+  const [availableSlots, setAvailableSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [selectedSlot, setSelectedSlot] = useState(null);
+  const [slotBookingReason, setSlotBookingReason] = useState('');
+  const [slotBookingType, setSlotBookingType] = useState('onsite');
+  const [slotBookingChildId, setSlotBookingChildId] = useState('');
+  const [slotBookingStep, setSlotBookingStep] = useState(1); // 1=select slot, 2=pay
+
   // Transport enrollment states
   const [transportForm, setTransportForm] = useState({
     pickupAddress: '',
@@ -1663,6 +1675,61 @@ const ParentDashboard = ({ initialTab }) => {
       fetchAppointments();
     } catch (error) {
       setAppointmentError(error.response?.data?.message || 'Failed to confirm payment');
+    }
+  };
+
+  // Slot-based booking helpers
+  const fetchAvailableDoctors = async () => {
+    try {
+      const res = await api.get('/admin/users', { params: { role: 'doctor' } });
+      const docs = (Array.isArray(res.data) ? res.data : res.data?.users || []).filter(u => u.isActive);
+      setAvailableDoctors(docs);
+      if (docs.length > 0 && !selectedDoctorId) setSelectedDoctorId(docs[0]._id);
+    } catch {
+      // fallback: try single doctor endpoint
+      try {
+        const res = await api.get('/doctor/profile');
+        if (res.data?._id) { setAvailableDoctors([res.data]); setSelectedDoctorId(res.data._id); }
+      } catch { /* ignore */ }
+    }
+  };
+
+  const fetchAvailableSlots = async (doctorId, date) => {
+    if (!doctorId) return;
+    try {
+      setSlotsLoading(true);
+      const res = await api.get(`/doctor/slots/available/${doctorId}`, { params: { date } });
+      setAvailableSlots(res.data || []);
+    } catch (err) {
+      console.error('Fetch slots error:', err);
+      setAvailableSlots([]);
+    } finally {
+      setSlotsLoading(false);
+    }
+  };
+
+  const handleBookSlot = async () => {
+    if (!selectedSlot || !slotBookingChildId || !slotBookingReason) {
+      setAppointmentError('Please select a child, slot, and provide a reason');
+      return;
+    }
+    try {
+      setAppointmentLoading(true);
+      setAppointmentError('');
+      const res = await api.post('/appointments/book-slot', {
+        childId: slotBookingChildId,
+        slotId: selectedSlot._id,
+        reason: slotBookingReason,
+        appointmentType: slotBookingType
+      });
+      // Proceed to payment
+      setSlotBookingStep(2);
+      // Trigger payment immediately
+      await handlePayDoctor(res.data.appointment);
+    } catch (err) {
+      setAppointmentError(err.response?.data?.message || 'Failed to book slot');
+    } finally {
+      setAppointmentLoading(false);
     }
   };
 
@@ -3490,7 +3557,7 @@ const ParentDashboard = ({ initialTab }) => {
                         <Button
                           variant="contained"
                           fullWidth
-                          onClick={() => setAppointmentDialog(true)}
+                          onClick={() => { setAppointmentDialog(true); fetchAvailableDoctors(); fetchAvailableSlots(selectedDoctorId, slotBookingDate); }}
                           sx={{
                             bgcolor: '#E91E63',
                             color: 'white',
@@ -4579,7 +4646,7 @@ const ParentDashboard = ({ initialTab }) => {
 
 
             {/* Tab 8: AI Sentiment Analysis */}
-            {tab === 8 && (
+            {tab === 8 && ( 
               <Box>
                 <Card>
                   <CardHeader 
@@ -5542,11 +5609,10 @@ const ParentDashboard = ({ initialTab }) => {
                         variant="contained"
                         startIcon={<Add />}
                         onClick={() => {
-                          setAppointmentForm({
-                            ...appointmentForm,
-                            childId: activeChildId || ''
-                          });
+                          setSlotBookingChildId(activeChildId || '');
                           setAppointmentDialog(true);
+                          fetchAvailableDoctors();
+                          fetchAvailableSlots(selectedDoctorId, slotBookingDate);
                         }}
                       >
                         Book Appointment
@@ -5570,11 +5636,10 @@ const ParentDashboard = ({ initialTab }) => {
                               variant="contained"
                               startIcon={<Add />}
                               onClick={() => {
-                                setAppointmentForm({
-                                  ...appointmentForm,
-                                  childId: activeChildId || ''
-                                });
+                                setSlotBookingChildId(activeChildId || '');
                                 setAppointmentDialog(true);
+                                fetchAvailableDoctors();
+                                fetchAvailableSlots(selectedDoctorId, slotBookingDate);
                               }}
                             >
                               Book Now
@@ -5661,6 +5726,36 @@ const ParentDashboard = ({ initialTab }) => {
                                   {appointment.isEmergency && (
                                     <Grid item xs={12}>
                                       <Chip label="Emergency" size="small" color="error" />
+                                    </Grid>
+                                  )}
+
+                                  {/* Meeting link for online consultations */}
+                                  {appointment.appointmentType === 'online' && appointment.meetingLink && appointment.status === 'confirmed' && (
+                                    <Grid item xs={12} sx={{ mt: 1 }}>
+                                      <Alert severity="info" icon={false}>
+                                        <Typography variant="body2" fontWeight={600}>Online Consultation</Typography>
+                                        <Typography variant="caption">Time: {appointment.appointmentTime}</Typography>
+                                        <Box sx={{ mt: 1 }}>
+                                          <Button size="small" variant="contained" color="info"
+                                            onClick={() => window.open(appointment.meetingLink, '_blank')}>
+                                            Join Meeting
+                                          </Button>
+                                        </Box>
+                                      </Alert>
+                                    </Grid>
+                                  )}
+
+                                  {/* Prescription details */}
+                                  {appointment.prescriptionDetails?.diagnosis && (
+                                    <Grid item xs={12}>
+                                      <Typography variant="caption" color="text.secondary">Prescription</Typography>
+                                      <Typography variant="body2" fontWeight={600}>{appointment.prescriptionDetails.diagnosis}</Typography>
+                                      {appointment.prescriptionDetails.medicines?.map((m, i) => (
+                                        <Typography key={i} variant="caption" display="block">• {m.name} {m.dosage} — {m.frequency} for {m.duration}</Typography>
+                                      ))}
+                                      {appointment.prescriptionDetails.advice && (
+                                        <Typography variant="caption" color="text.secondary">Advice: {appointment.prescriptionDetails.advice}</Typography>
+                                      )}
                                     </Grid>
                                   )}
 
@@ -5772,142 +5867,120 @@ const ParentDashboard = ({ initialTab }) => {
         </DialogActions>
       </Dialog>
 
-      {/* Book Appointment Dialog */}
-      <Dialog 
-        open={appointmentDialog} 
-        onClose={() => !appointmentLoading && setAppointmentDialog(false)}
-        maxWidth="md" 
+      {/* Book Appointment Dialog — Slot-based */}
+      <Dialog
+        open={appointmentDialog}
+        onClose={() => { if (!appointmentLoading) { setAppointmentDialog(false); setSlotBookingStep(1); setSelectedSlot(null); setAvailableSlots([]); setAppointmentError(''); } }}
+        maxWidth="md"
         fullWidth
       >
-        <DialogTitle>
-          Book Doctor Appointment
-        </DialogTitle>
-        <DialogContent>
-          <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
+        <DialogTitle>Book Doctor Appointment</DialogTitle>
+        <DialogContent dividers>
+          {appointmentError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setAppointmentError('')}>{appointmentError}</Alert>}
+          {appointmentSuccess && <Alert severity="success" sx={{ mb: 2 }}>{appointmentSuccess}</Alert>}
+
+          <Grid container spacing={2} sx={{ pt: 1 }}>
+            {/* Child */}
+            <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
                 <InputLabel>Select Child</InputLabel>
-                <Select
-                  value={appointmentForm.childId}
-                  onChange={(e) => setAppointmentForm({ ...appointmentForm, childId: e.target.value })}
-                  label="Select Child"
-                >
+                <Select value={slotBookingChildId} onChange={(e) => setSlotBookingChildId(e.target.value)} label="Select Child">
                   {children.map((child) => (
-                    <MenuItem key={child._id} value={child._id}>
-                      {child.firstName} {child.lastName}
-                    </MenuItem>
+                    <MenuItem key={child._id} value={child._id}>{child.firstName} {child.lastName}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
 
+            {/* Consultation Type */}
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                type="date"
-                label="Appointment Date"
-                value={appointmentForm.appointmentDate}
-                onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentDate: e.target.value })}
+              <FormControl fullWidth>
+                <InputLabel>Consultation Type</InputLabel>
+                <Select value={slotBookingType} onChange={(e) => setSlotBookingType(e.target.value)} label="Consultation Type">
+                  <MenuItem value="onsite">On-site Visit</MenuItem>
+                  <MenuItem value="online">Online Consultation (Video Call)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+
+            {/* Date */}
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth type="date" label="Select Date" value={slotBookingDate}
                 InputLabelProps={{ shrink: true }}
-                inputProps={{ 
-                  min: new Date().toISOString().split('T')[0],
-                  max: new Date(new Date().setMonth(new Date().getMonth() + 3)).toISOString().split('T')[0]
-                }}
-                helperText="Appointments can be booked up to 3 months in advance"
-              />
+                inputProps={{ min: new Date().toISOString().slice(0, 10) }}
+                onChange={(e) => {
+                  setSlotBookingDate(e.target.value);
+                  setSelectedSlot(null);
+                  if (selectedDoctorId) fetchAvailableSlots(selectedDoctorId, e.target.value);
+                }} />
             </Grid>
 
+            {/* Doctor selector */}
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth>
-                <InputLabel>Appointment Time</InputLabel>
-                <Select
-                  value={appointmentForm.appointmentTime}
-                  onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentTime: e.target.value })}
-                  label="Appointment Time"
-                >
-                  <MenuItem value="09:00">09:00 AM</MenuItem>
-                  <MenuItem value="09:30">09:30 AM</MenuItem>
-                  <MenuItem value="10:00">10:00 AM</MenuItem>
-                  <MenuItem value="10:30">10:30 AM</MenuItem>
-                  <MenuItem value="11:00">11:00 AM</MenuItem>
-                  <MenuItem value="11:30">11:30 AM</MenuItem>
-                  <MenuItem value="12:00">12:00 PM</MenuItem>
-                  <MenuItem value="14:00">02:00 PM</MenuItem>
-                  <MenuItem value="14:30">02:30 PM</MenuItem>
-                  <MenuItem value="15:00">03:00 PM</MenuItem>
-                  <MenuItem value="15:30">03:30 PM</MenuItem>
-                  <MenuItem value="16:00">04:00 PM</MenuItem>
-                  <MenuItem value="16:30">04:30 PM</MenuItem>
-                  <MenuItem value="17:00">05:00 PM</MenuItem>
-                  <MenuItem value="17:30">05:30 PM</MenuItem>
-                  <MenuItem value="18:00">06:00 PM</MenuItem>
+                <InputLabel>Doctor</InputLabel>
+                <Select value={selectedDoctorId} label="Doctor"
+                  onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedSlot(null); fetchAvailableSlots(e.target.value, slotBookingDate); }}>
+                  {availableDoctors.map((d) => (
+                    <MenuItem key={d._id} value={d._id}>Dr. {d.firstName} {d.lastName}{d.doctor?.specialization ? ` — ${d.doctor.specialization}` : ''}</MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
 
+            {/* Available Slots */}
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                multiline
-                rows={3}
-                label="Reason for Consultation"
-                placeholder="e.g., Fever, Allergy symptoms, Routine check-up..."
-                value={appointmentForm.reason}
-                onChange={(e) => setAppointmentForm({ ...appointmentForm, reason: e.target.value })}
-              />
+              <Typography variant="subtitle2" gutterBottom>Available Time Slots</Typography>
+              {slotsLoading ? (
+                <Typography color="text.secondary">Loading slots...</Typography>
+              ) : availableSlots.length === 0 ? (
+                <Alert severity="info">No available slots for this date. Try another date.</Alert>
+              ) : (
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                  {availableSlots.map((slot) => {
+                    const isCompatible = slot.appointmentType === 'both' || slot.appointmentType === slotBookingType;
+                    return (
+                      <Chip
+                        key={slot._id}
+                        label={`${slot.startTime} – ${slot.endTime}  ₹${slot.consultationFee}`}
+                        onClick={() => isCompatible && setSelectedSlot(slot)}
+                        color={selectedSlot?._id === slot._id ? 'primary' : 'default'}
+                        variant={selectedSlot?._id === slot._id ? 'filled' : 'outlined'}
+                        disabled={!isCompatible}
+                        sx={{ cursor: isCompatible ? 'pointer' : 'not-allowed', fontSize: '0.85rem', py: 2 }}
+                      />
+                    );
+                  })}
+                </Box>
+              )}
             </Grid>
 
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Appointment Type</InputLabel>
-                <Select
-                  value={appointmentForm.appointmentType}
-                  onChange={(e) => setAppointmentForm({ ...appointmentForm, appointmentType: e.target.value })}
-                  label="Appointment Type"
-                >
-                  <MenuItem value="onsite">On-site (Daycare Visit)</MenuItem>
-                  <MenuItem value="online">Online Consultation</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Priority</InputLabel>
-                <Select
-                  value={appointmentForm.isEmergency ? 'emergency' : 'normal'}
-                  onChange={(e) => setAppointmentForm({ ...appointmentForm, isEmergency: e.target.value === 'emergency' })}
-                  label="Priority"
-                >
-                  <MenuItem value="normal">Normal</MenuItem>
-                  <MenuItem value="emergency">Emergency</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-
-            {appointmentForm.isEmergency && (
+            {/* Selected slot summary */}
+            {selectedSlot && (
               <Grid item xs={12}>
-                <Alert severity="warning">
-                  Emergency appointments will be prioritized and admin/staff will be notified immediately.
+                <Alert severity="success" icon={false}>
+                  Selected: {selectedSlot.startTime} – {selectedSlot.endTime} &nbsp;|&nbsp;
+                  Fee: ₹{selectedSlot.consultationFee} &nbsp;|&nbsp;
+                  {slotBookingType === 'online' ? '🎥 Online — meeting link will be generated after payment' : '🏥 On-site visit'}
                 </Alert>
               </Grid>
             )}
+
+            {/* Reason */}
+            <Grid item xs={12}>
+              <TextField fullWidth multiline rows={2} label="Reason for Consultation"
+                placeholder="e.g., Fever, Allergy symptoms, Routine check-up..."
+                value={slotBookingReason} onChange={(e) => setSlotBookingReason(e.target.value)} />
+            </Grid>
           </Grid>
         </DialogContent>
         <DialogActions>
-          <Button 
-            onClick={() => setAppointmentDialog(false)}
-            disabled={appointmentLoading}
-          >
+          <Button onClick={() => { setAppointmentDialog(false); setSlotBookingStep(1); setSelectedSlot(null); setAvailableSlots([]); setAppointmentError(''); }}>
             Cancel
           </Button>
-          <Button 
-            onClick={handleBookAppointment}
-            variant="contained"
-            disabled={appointmentLoading}
-            startIcon={appointmentLoading ? <CircularProgress size={20} /> : <CheckCircle />}
-          >
-            {appointmentLoading ? 'Booking...' : 'Book Appointment'}
+          <Button variant="contained" onClick={handleBookSlot}
+            disabled={appointmentLoading || !selectedSlot || !slotBookingChildId || !slotBookingReason}>
+            {appointmentLoading ? 'Processing...' : `Book & Pay ₹${selectedSlot?.consultationFee || ''}`}
           </Button>
         </DialogActions>
       </Dialog>

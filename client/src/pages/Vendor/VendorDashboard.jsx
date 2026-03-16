@@ -29,6 +29,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import SmartSearch from '../../components/Common/SmartSearch';
 import VoiceAssistant from '../../VoiceAssistant';
+import DemandPrediction from '../../components/DemandPrediction';
 
 // Simple TabPanel helper
 function TabPanel({ children, value, index }) {
@@ -326,6 +327,9 @@ const VendorDashboard = () => {
                   </Grid>
                   <Grid item xs={12} sm={6} md={3}>
                     <Button fullWidth variant="outlined" onClick={() => navigate('/vendor?tab=4')}>Open Tickets</Button>
+                  </Grid>
+                  <Grid item xs={12} sm={6} md={3}>
+                    <Button fullWidth variant="outlined" onClick={() => navigate('/vendor?tab=8')}>AI Demand Forecast</Button>
                   </Grid>
                 </Grid>
               </Paper>
@@ -690,6 +694,12 @@ const VendorDashboard = () => {
             {/* Products Management */}
             <TabPanel value={tab} index={7}>
               <ProductsTab />
+            </TabPanel>
+
+            {/* AI Demand Forecast */}
+            <TabPanel value={tab} index={8}>
+              <Typography variant="h6" sx={{ mb: 2 }}>AI Product Demand Forecast</Typography>
+              <DemandPrediction />
             </TabPanel>
           </Paper>
         )}

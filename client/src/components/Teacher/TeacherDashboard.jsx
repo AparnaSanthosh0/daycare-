@@ -474,22 +474,11 @@ const TeacherDashboard = () => {
   const fetchStudents = async () => {
     try {
       setLoading(true);
-      // Reuse the same endpoint used elsewhere for staff-assigned children.
-      if (user?._id) {
-        const res = await api.get(`/api/children/staff/${user._id}`);
-        setStudents(res.data?.children || []);
-        return;
-      }
-      setStudents([]);
+      const res = await api.get('/children');
+      setStudents(Array.isArray(res.data) ? res.data : (res.data?.children || []));
     } catch (error) {
       console.error('Error fetching students:', error);
-      // Best-effort fallback for older routes (if any).
-      try {
-        const res = await api.get('/children');
-        setStudents(Array.isArray(res.data) ? res.data : (res.data?.children || []));
-      } catch (e) {
-        setStudents([]);
-      }
+      setStudents([]);
     } finally {
       setLoading(false);
     }

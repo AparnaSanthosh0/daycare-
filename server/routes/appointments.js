@@ -4,11 +4,85 @@ const Appointment = require('../models/Appointment');
 const Child = require('../models/Child');
 const User = require('../models/User');
 const DoctorEarning = require('../models/DoctorEarning');
+const DoctorSlot = require('../models/DoctorSlot');
 const auth = require('../middleware/auth');
 const { sendMail } = require('../utils/mailer');
 
-// Create appointment (Parent)
-router.post('/', auth, async (req, res) => {
+// Generate a Jitsi Meet room link
+function generateMeetingLink(appointmentId) {
+  const roomId = `tinytots_${appointmentId}_${Date.now()}`;
+  return { meetingLink: `https://meet.jit.si/${roomId}`, meetingRoomId: roomId };
+}
+
+// Book appointment by slot (Parent) — payment happens separately via /payments
+router.post('/book-slot', auth, async (req, res) => {
+  try {
+    const { childId, slotId, reason, appointmentType } = req.body;
+
+    if (!childId || !slotId || !reason) {
+      return res.status(400).json({ message: 'childId, slotId and reason are required' });
+    }
+
+    const child = await Child.findById(childId);
+    if (!child) return res.status(404).json({ message: 'Child not found' });
+
+    const isParent = child.parents.some(p => p.toString() === req.user.userId);
+    if (!isParent && req.user.role !== 'admin') {
+      return res.status(403).json({ message: 'Not authorized for this child' });
+    }
+
+    const slot = await DoctorSlot.findById(slotId);
+    if (!slot) return res.status(404).json({ message: 'Slot not found' });
+    if (slot.status !== 'available') return res.status(400).json({ message: 'Slot is no longer available' });
+
+    const type = appointmentType || 'onsite';
+    if (slot.appointmentType !== 'both' && slot.appointmentType !== type) {
+      return res.status(400).json({ message: `This slot only supports ${slot.appointmentType} consultations` });
+    }
+
+    // Reserve slot immediately
+    slot.status = 'booked';
+    slot.bookedBy = req.user.userId;
+
+    const appointment = new Appointment({
+      child: childId,
+      parent: req.user.userId,
+      doctor: slot.doctor,
+      slot: slot._id,
+      appointmentDate: slot.date,
+      appointmentTime: `${slot.startTime} – ${slot.endTime}`,
+      reason,
+      appointmentType: type,
+      status: 'pending',
+      requestedBy: 'parent',
+      payment: {
+        status: 'pending',
+        consultationFee: slot.consultationFee,
+        commissionRate: 30
+      }
+    });
+
+    // Generate meeting link for online consultations
+    if (type === 'online') {
+      const { meetingLink, meetingRoomId } = generateMeetingLink(appointment._id);
+      appointment.meetingLink = meetingLink;
+      appointment.meetingRoomId = meetingRoomId;
+    }
+
+    await appointment.save();
+    slot.appointment = appointment._id;
+    await slot.save();
+
+    await appointment.populate('child parent doctor slot');
+
+    res.status(201).json({ message: 'Slot booked. Please complete payment to confirm.', appointment });
+  } catch (error) {
+    console.error('Book slot error:', error);
+    res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+
   try {
     const { childId, appointmentDate, appointmentTime, reason, appointmentType, isEmergency } = req.body;
 
@@ -232,18 +306,7 @@ router.patch('/:id/status', auth, async (req, res) => {
       return res.status(403).json({ message: 'Access denied' });
     }
 
-    // Check if appointment date has passed and trying to confirm
-    if (status === 'confirmed') {
-      const appointmentDate = new Date(appointment.appointmentDate);
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      if (appointmentDate < today) {
-        return res.status(400).json({ 
-          message: 'Cannot confirm past appointment. Please reschedule instead.' 
-        });
-      }
-    }
+    // No date restriction on confirming — doctor can confirm any pending appointment
 
     appointment.status = status;
 
@@ -663,6 +726,42 @@ router.get('/:id/messages', auth, async (req, res) => {
     res.json({ messages: appointment.messages });
   } catch (error) {
     console.error('Error fetching messages:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Doctor: save structured prescription after consultation
+router.patch('/:id/prescription', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'doctor') return res.status(403).json({ message: 'Access denied' });
+    const { diagnosis, medicines, advice, followUpDate } = req.body;
+    const appointment = await Appointment.findById(req.params.id);
+    if (!appointment) return res.status(404).json({ message: 'Appointment not found' });
+    if (appointment.doctor.toString() !== req.user.userId) return res.status(403).json({ message: 'Not your appointment' });
+
+    appointment.prescriptionDetails = {
+      diagnosis: diagnosis || '',
+      medicines: Array.isArray(medicines) ? medicines : [],
+      advice: advice || '',
+      followUpDate: followUpDate ? new Date(followUpDate) : null,
+      uploadedAt: new Date()
+    };
+    // Also update legacy fields for backward compat
+    appointment.diagnosis = diagnosis || appointment.diagnosis;
+    appointment.healthAdvice = advice || appointment.healthAdvice;
+    appointment.prescription = Array.isArray(medicines)
+      ? medicines.map(m => `${m.name} ${m.dosage} ${m.frequency} for ${m.duration}`).join('; ')
+      : appointment.prescription;
+
+    if (appointment.status === 'confirmed') {
+      appointment.status = 'completed';
+      appointment.completedAt = new Date();
+    }
+    await appointment.save();
+    await appointment.populate('child parent doctor');
+    res.json({ message: 'Prescription saved', appointment });
+  } catch (err) {
+    console.error('Save prescription error:', err);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -87,6 +87,27 @@ const appointmentSchema = new mongoose.Schema({
     enum: ['parent', 'staff', 'admin'],
     default: 'parent'
   },
+  // Slot reference
+  slot: { type: mongoose.Schema.Types.ObjectId, ref: 'DoctorSlot', default: null },
+
+  // Online consultation meeting link (Jitsi)
+  meetingLink: { type: String, default: '' },
+  meetingRoomId: { type: String, default: '' },
+
+  // Structured prescription (doctor fills after consultation)
+  prescriptionDetails: {
+    diagnosis: { type: String, default: '' },
+    medicines: [{
+      name: String,
+      dosage: String,
+      frequency: String,
+      duration: String
+    }],
+    advice: { type: String, default: '' },
+    followUpDate: { type: Date, default: null },
+    uploadedAt: { type: Date, default: null }
+  },
+
   rescheduledDate: Date,
   rescheduledTime: String,
   rescheduledReason: String,
@@ -96,14 +117,14 @@ const appointmentSchema = new mongoose.Schema({
 
   // Escrow payment (parent pays to platform → held → parent confirms → admin releases to doctor)
   payment: {
-    status: { type: String, enum: ['pending', 'payment_held', 'parent_confirmed', 'admin_approved', 'paid_to_doctor'], default: 'pending' },
+    status: { type: String, enum: ['pending', 'payment_held', 'parent_confirmed', 'admin_approved', 'paid_to_doctor', 'released'], default: 'pending' },
     consultationFee: { type: Number, default: 500 },
     paymentId: String,
     paidAt: Date,
     heldAt: Date,
     parentConfirmedAt: Date,
     paidToDoctorAt: Date,
-    commissionRate: { type: Number, default: 10 },
+    commissionRate: { type: Number, default: 30 },
     commissionAmount: Number,
     doctorPayoutAmount: Number,
     parentConfirmation: {

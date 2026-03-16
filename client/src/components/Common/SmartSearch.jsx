@@ -104,8 +104,8 @@ function SmartSearch({
         </ListItemAvatar>
         <ListItemText
           primary={
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="body1">
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Typography variant="body1" component="span">
                 {item.name || item.title || 'Unknown'}
               </Typography>
               <Chip 
@@ -114,14 +114,14 @@ function SmartSearch({
                 color="success"
                 sx={{ height: 20 }}
               />
-            </Box>
+            </span>
           }
           secondary={
-            <Box>
-              {item.email && <Typography variant="caption" display="block">{item.email}</Typography>}
-              {item.parentName && <Typography variant="caption" display="block">Parent: {item.parentName}</Typography>}
-              {item.age && <Typography variant="caption" display="block">Age: {item.age}</Typography>}
-            </Box>
+            <span>
+              {item.email && <Typography variant="caption" display="block" component="span">{item.email}</Typography>}
+              {item.parentName && <Typography variant="caption" display="block" component="span">Parent: {item.parentName}</Typography>}
+              {item.age && <Typography variant="caption" display="block" component="span">Age: {item.age}</Typography>}
+            </span>
           }
         />
       </ListItem>

@@ -184,22 +184,24 @@ router.post('/verify-payment', (req, res, next) => {
         try {
           const Appointment = require('../models/Appointment');
           const DoctorPayment = require('../models/DoctorPayment');
-          const appointment = await Appointment.findById(appointmentId).populate('doctor', 'firstName lastName');
+          const DoctorSlot = require('../models/DoctorSlot');
+          const appointment = await Appointment.findById(appointmentId).populate('doctor', 'firstName lastName email').populate('child', 'firstName lastName').populate('parent', 'firstName lastName email phone');
           if (!appointment) {
             return res.status(404).json({ success: false, message: 'Appointment not found' });
           }
-          if (appointment.parent.toString() !== req.user.userId) {
+          if (appointment.parent._id.toString() !== req.user.userId) {
             return res.status(403).json({ success: false, message: 'Not authorized to pay for this appointment' });
           }
           const doctorId = appointment.doctor?._id || appointment.doctor;
           const consultationFee = appointment.payment?.consultationFee ?? 500;
-          const commissionRate = 10;
+          const commissionRate = 30;
           const commissionAmount = Math.round((consultationFee * commissionRate / 100) * 100) / 100;
           const doctorPayout = Math.round((consultationFee - commissionAmount) * 100) / 100;
+
           const paymentRecord = new DoctorPayment({
             appointment: appointment._id,
             doctor: doctorId,
-            parent: appointment.parent,
+            parent: appointment.parent._id,
             totalAmount: consultationFee,
             commissionRate,
             commissionAmount,
@@ -210,7 +212,10 @@ router.post('/verify-payment', (req, res, next) => {
             paymentHeldAt: new Date()
           });
           await paymentRecord.save();
-          if (!appointment.payment) appointment.payment = {};
+
+          // Auto-confirm appointment after payment
+          appointment.status = 'confirmed';
+          appointment.payment = appointment.payment || {};
           appointment.payment.status = 'payment_held';
           appointment.payment.paymentId = razorpay_payment_id;
           appointment.payment.paidAt = new Date();
@@ -220,12 +225,55 @@ router.post('/verify-payment', (req, res, next) => {
           appointment.payment.commissionAmount = commissionAmount;
           appointment.payment.doctorPayoutAmount = doctorPayout;
           await appointment.save();
-          console.log('Doctor appointment payment held:', appointmentId);
+
+          // Send confirmation emails
+          try {
+            const parentEmail = appointment.parent?.email;
+            const doctorEmail = appointment.doctor?.email;
+            const childName = `${appointment.child?.firstName || ''} ${appointment.child?.lastName || ''}`.trim();
+            const apptDate = new Date(appointment.appointmentDate).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+            const apptTime = appointment.appointmentTime;
+            const isOnline = appointment.appointmentType === 'online';
+
+            if (parentEmail) {
+              await sendMail({
+                to: parentEmail,
+                subject: 'Appointment Confirmed — TinyTots',
+                html: `<h2>Appointment Confirmed ✅</h2>
+                  <p>Your appointment for <b>${childName}</b> has been confirmed.</p>
+                  <p><b>Doctor:</b> Dr. ${appointment.doctor?.firstName} ${appointment.doctor?.lastName}</p>
+                  <p><b>Date:</b> ${apptDate}</p>
+                  <p><b>Time:</b> ${apptTime}</p>
+                  <p><b>Type:</b> ${isOnline ? 'Online Consultation' : 'On-site Visit'}</p>
+                  ${isOnline && appointment.meetingLink ? `<p><b>Meeting Link:</b> <a href="${appointment.meetingLink}">${appointment.meetingLink}</a></p>` : ''}
+                  <p><b>Fee Paid:</b> ₹${consultationFee}</p>`
+              });
+            }
+            if (doctorEmail) {
+              await sendMail({
+                to: doctorEmail,
+                subject: 'New Confirmed Appointment — TinyTots',
+                html: `<h2>New Appointment Confirmed</h2>
+                  <p><b>Patient:</b> ${childName}</p>
+                  <p><b>Parent:</b> ${appointment.parent?.firstName} ${appointment.parent?.lastName} (${appointment.parent?.phone || ''})</p>
+                  <p><b>Date:</b> ${apptDate}</p>
+                  <p><b>Time:</b> ${apptTime}</p>
+                  <p><b>Reason:</b> ${appointment.reason}</p>
+                  <p><b>Type:</b> ${isOnline ? 'Online Consultation' : 'On-site Visit'}</p>
+                  ${isOnline && appointment.meetingLink ? `<p><b>Meeting Link:</b> <a href="${appointment.meetingLink}">${appointment.meetingLink}</a></p>` : ''}
+                  <p><b>Your Payout:</b> ₹${doctorPayout} (after 30% platform fee)</p>`
+              });
+            }
+          } catch (mailErr) {
+            console.warn('Appointment confirmation email failed:', mailErr?.message);
+          }
+
           return res.json({
             success: true,
-            message: 'Payment successful! Your appointment is confirmed. The doctor will contact you shortly.',
+            message: 'Payment successful! Appointment confirmed.',
             paymentType: 'doctor',
             appointment,
+            meetingLink: appointment.meetingLink || null,
             payment_id: razorpay_payment_id
           });
         } catch (err) {

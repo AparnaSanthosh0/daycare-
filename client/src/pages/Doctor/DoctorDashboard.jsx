@@ -205,6 +205,22 @@ const DoctorDashboard = () => {
     severity: 'medium',
     description: ''
   });
+
+  // Slot Management state
+  const [slots, setSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(false);
+  const [slotDate, setSlotDate] = useState(new Date().toISOString().slice(0, 10));
+  const [slotFee, setSlotFee] = useState(500);
+  const [slotType, setSlotType] = useState('both');
+  const [slotStartTime, setSlotStartTime] = useState('09:00');
+  const [slotDuration, setSlotDuration] = useState(30);
+  const [slotCount, setSlotCount] = useState(6);
+  const [slotSaving, setSlotSaving] = useState(false);
+  const [earningsSummary, setEarningsSummary] = useState(null);
+  // Prescription dialog state
+  const [prescriptionDialog, setPrescriptionDialog] = useState({ open: false, appointment: null });
+  const [prescriptionForm, setPrescriptionForm] = useState({ diagnosis: '', medicines: [{ name: '', dosage: '', frequency: '', duration: '' }], advice: '', followUpDate: '' });
+
   const [aiInsightsLog, setAiInsightsLog] = useState(() => {
     try {
       const raw = localStorage.getItem('tinytots_doctor_ai_insights_v1');
@@ -649,6 +665,99 @@ const DoctorDashboard = () => {
     } catch (error) {
       console.error('Error fetching appointments:', error);
       setError('Failed to load appointments');
+    }
+  };
+
+  // Slot management functions
+  const fetchSlots = async (date) => {
+    try {
+      setSlotsLoading(true);
+      const res = await api.get('/doctor/slots', { params: { date: date || slotDate } });
+      setSlots(res.data || []);
+    } catch (err) {
+      console.error('Fetch slots error:', err);
+    } finally {
+      setSlotsLoading(false);
+    }
+  };
+
+  const generateTimeSlots = (startTime, durationMins, count) => {
+    const slots = [];
+    let [h, m] = startTime.split(':').map(Number);
+    for (let i = 0; i < count; i++) {
+      const start = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      m += durationMins;
+      if (m >= 60) { h += Math.floor(m / 60); m = m % 60; }
+      const end = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      slots.push({ startTime: start, endTime: end });
+    }
+    return slots;
+  };
+
+  const handleCreateSlots = async () => {
+    try {
+      setSlotSaving(true);
+      const generated = generateTimeSlots(slotStartTime, slotDuration, slotCount);
+      await api.post('/doctor/slots', { date: slotDate, slots: generated, consultationFee: slotFee, appointmentType: slotType });
+      setSuccess(`${generated.length} slots created for ${slotDate}`);
+      fetchSlots(slotDate);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to create slots');
+    } finally {
+      setSlotSaving(false);
+    }
+  };
+
+  const handleDeleteSlot = async (slotId) => {
+    try {
+      await api.delete(`/doctor/slots/${slotId}`);
+      setSlots(prev => prev.filter(s => s._id !== slotId));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete slot');
+    }
+  };
+
+  const fetchEarningsSummary = async () => {
+    try {
+      const res = await api.get('/doctor/earnings/summary');
+      setEarningsSummary(res.data);
+    } catch (err) {
+      console.error('Earnings summary error:', err);
+    }
+  };
+
+  const handleWithdraw = async () => {
+    try {
+      const res = await api.post('/doctor/earnings/withdraw');
+      setSuccess(res.data.message);
+      fetchEarningsSummary();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Withdrawal failed');
+    }
+  };
+
+  const handleOpenPrescription = (appointment) => {
+    setPrescriptionForm({
+      diagnosis: appointment.prescriptionDetails?.diagnosis || appointment.diagnosis || '',
+      medicines: appointment.prescriptionDetails?.medicines?.length
+        ? appointment.prescriptionDetails.medicines
+        : [{ name: '', dosage: '', frequency: '', duration: '' }],
+      advice: appointment.prescriptionDetails?.advice || appointment.healthAdvice || '',
+      followUpDate: appointment.prescriptionDetails?.followUpDate
+        ? new Date(appointment.prescriptionDetails.followUpDate).toISOString().slice(0, 10) : ''
+    });
+    setPrescriptionDialog({ open: true, appointment });
+  };
+
+  const handleSavePrescription = async () => {
+    try {
+      if (!prescriptionDialog.appointment) return;
+      await api.patch(`/appointments/${prescriptionDialog.appointment._id}/prescription`, prescriptionForm);
+      setSuccess('Prescription saved successfully');
+      setPrescriptionDialog({ open: false, appointment: null });
+      fetchAppointments(appointmentFilter);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to save prescription');
     }
   };
 
@@ -1126,6 +1235,10 @@ const DoctorDashboard = () => {
     if (activeTab === 7) {
       fetchClinicalChildren();
     }
+    if (activeTab === 8) {
+      fetchSlots(slotDate);
+      fetchEarningsSummary();
+    }
   }, [activeTab, fetchClinicalChildren, fetchEarnings]);
 
   useEffect(() => {
@@ -1268,7 +1381,7 @@ const DoctorDashboard = () => {
         </Grid>
       </Grid>
 
-      <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 3 }}>
+      <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)} sx={{ mb: 3 }} variant="scrollable" scrollButtons="auto">
         <Tab label="Overview" icon={<People />} />
         <Tab label="Medical Records" icon={<MedicalServices />} />
         <Tab label="Appointments" icon={<CalendarToday />} />
@@ -1277,6 +1390,7 @@ const DoctorDashboard = () => {
         <Tab label="Earnings" icon={<AccountBalance />} />
         <Tab label="Emergencies" icon={<WarningAmber />} />
         <Tab label="Clinical Panel" icon={<LocalHospital />} />
+        <Tab label="Slot Management" icon={<EventAvailable />} />
       </Tabs>
 
       {/* Assigned Children Tab */}
@@ -1777,6 +1891,15 @@ const DoctorDashboard = () => {
                                   <Add fontSize="small" />
                                 </IconButton>
                               </Tooltip>
+                              <Tooltip title="Write Prescription">
+                                <IconButton
+                                  size="small"
+                                  color="secondary"
+                                  onClick={() => handleOpenPrescription(appointment)}
+                                >
+                                  <Medication fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
                               {appointment.status === 'confirmed' && (
                                 <Tooltip title="Mark as Completed">
                                   <IconButton
@@ -1785,6 +1908,13 @@ const DoctorDashboard = () => {
                                     onClick={() => handleUpdateAppointmentStatus(appointment._id, 'completed')}
                                   >
                                     <EventAvailable fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                              {appointment.meetingLink && (
+                                <Tooltip title="Join Meeting">
+                                  <IconButton size="small" color="info" onClick={() => window.open(appointment.meetingLink, '_blank')}>
+                                    <LocalHospital fontSize="small" />
                                   </IconButton>
                                 </Tooltip>
                               )}
@@ -2297,6 +2427,167 @@ const DoctorDashboard = () => {
           >
             Save
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Appointment Detail Dialog */}
+      <Dialog
+        open={Boolean(selectedAppointment && !consultationDialog.open)}
+        onClose={() => setSelectedAppointment(null)}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>
+          Appointment Details
+        </DialogTitle>
+        <DialogContent dividers>
+          {selectedAppointment && (
+            <Grid container spacing={2} sx={{ pt: 1 }}>
+              {/* Child Info */}
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">Child</Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  {selectedAppointment.child?.firstName} {selectedAppointment.child?.lastName}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">Date of Birth</Typography>
+                <Typography variant="body1">
+                  {selectedAppointment.child?.dateOfBirth
+                    ? new Date(selectedAppointment.child.dateOfBirth).toLocaleDateString()
+                    : 'N/A'}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">Gender</Typography>
+                <Typography variant="body1">{selectedAppointment.child?.gender || 'N/A'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">Program</Typography>
+                <Typography variant="body1">{selectedAppointment.child?.program || 'N/A'}</Typography>
+              </Grid>
+              {selectedAppointment.child?.allergies?.length > 0 && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">Allergies</Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                    {selectedAppointment.child.allergies.map((a, i) => (
+                      <Chip key={i} label={a} size="small" color="warning" />
+                    ))}
+                  </Box>
+                </Grid>
+              )}
+              {selectedAppointment.child?.medicalConditions?.length > 0 && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">Medical Conditions</Typography>
+                  {selectedAppointment.child.medicalConditions.map((mc, i) => (
+                    <Typography key={i} variant="body2">• {mc.condition}{mc.medication ? ` — ${mc.medication}` : ''}</Typography>
+                  ))}
+                </Grid>
+              )}
+              <Grid item xs={12}><Divider /></Grid>
+              {/* Parent Info */}
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">Parent</Typography>
+                <Typography variant="body1">
+                  {selectedAppointment.parent?.firstName} {selectedAppointment.parent?.lastName}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">Parent Contact</Typography>
+                <Typography variant="body1">{selectedAppointment.parent?.phone || selectedAppointment.parent?.email || 'N/A'}</Typography>
+              </Grid>
+              <Grid item xs={12}><Divider /></Grid>
+              {/* Appointment Info */}
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">Appointment Date</Typography>
+                <Typography variant="body1">
+                  {new Date(selectedAppointment.appointmentDate).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                </Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">Time</Typography>
+                <Typography variant="body1">{selectedAppointment.appointmentTime || 'N/A'}</Typography>
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">Type</Typography>
+                <Chip
+                  label={selectedAppointment.appointmentType === 'online' ? 'Online' : 'On-site'}
+                  size="small"
+                  color={selectedAppointment.appointmentType === 'online' ? 'info' : 'default'}
+                />
+                {selectedAppointment.isEmergency && (
+                  <Chip label="Emergency" size="small" color="error" sx={{ ml: 0.5 }} />
+                )}
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Typography variant="subtitle2" color="text.secondary">Status</Typography>
+                <Chip
+                  label={selectedAppointment.status?.charAt(0).toUpperCase() + selectedAppointment.status?.slice(1)}
+                  size="small"
+                  color={
+                    selectedAppointment.status === 'confirmed' ? 'success' :
+                    selectedAppointment.status === 'completed' ? 'info' :
+                    selectedAppointment.status === 'cancelled' ? 'error' : 'warning'
+                  }
+                />
+              </Grid>
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" color="text.secondary">Reason for Visit</Typography>
+                <Typography variant="body1">{selectedAppointment.reason || 'N/A'}</Typography>
+              </Grid>
+              {selectedAppointment.diagnosis && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">Diagnosis</Typography>
+                  <Typography variant="body1">{selectedAppointment.diagnosis}</Typography>
+                </Grid>
+              )}
+              {selectedAppointment.prescription && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">Prescription</Typography>
+                  <Typography variant="body1">{selectedAppointment.prescription}</Typography>
+                </Grid>
+              )}
+              {selectedAppointment.healthAdvice && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">Health Advice</Typography>
+                  <Typography variant="body1">{selectedAppointment.healthAdvice}</Typography>
+                </Grid>
+              )}
+              {selectedAppointment.notes && (
+                <Grid item xs={12}>
+                  <Typography variant="subtitle2" color="text.secondary">Notes</Typography>
+                  <Typography variant="body1">{selectedAppointment.notes}</Typography>
+                </Grid>
+              )}
+            </Grid>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {selectedAppointment?.status === 'pending' && (
+            <Button
+              variant="contained"
+              color="success"
+              onClick={() => {
+                handleUpdateAppointmentStatus(selectedAppointment._id, 'confirmed');
+                setSelectedAppointment(null);
+              }}
+            >
+              Confirm Appointment
+            </Button>
+          )}
+          {(selectedAppointment?.status === 'confirmed' || selectedAppointment?.status === 'completed') && (
+            <Button
+              variant="contained"
+              color="primary"
+              onClick={() => {
+                handleOpenConsultation(selectedAppointment);
+                setSelectedAppointment(null);
+              }}
+            >
+              Add Consultation
+            </Button>
+          )}
+          <Button onClick={() => setSelectedAppointment(null)}>Close</Button>
         </DialogActions>
       </Dialog>
 
@@ -4053,6 +4344,202 @@ const DoctorDashboard = () => {
           <Button onClick={() => setEmergencyDialog({ open: false })}>Cancel</Button>
           <Button variant="contained" color="error" onClick={handleSubmitEmergency}>
             Submit
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Slot Management Tab */}
+      {activeTab === 8 && (
+        <Box>
+          {/* Earnings Summary */}
+          {earningsSummary && (
+            <Grid container spacing={2} sx={{ mb: 3 }}>
+              {[
+                { label: "Today's Consultations", value: earningsSummary.todayConsultations },
+                { label: "Today's Earnings", value: `₹${(earningsSummary.todayEarnings || 0).toFixed(2)}` },
+                { label: 'Pending Payout', value: `₹${(earningsSummary.pendingPayout || 0).toFixed(2)}` },
+                { label: 'Total Earnings', value: `₹${(earningsSummary.totalEarnings || 0).toFixed(2)}` }
+              ].map((stat) => (
+                <Grid item xs={6} sm={3} key={stat.label}>
+                  <Card sx={{ textAlign: 'center', p: 2 }}>
+                    <Typography variant="caption" color="text.secondary">{stat.label}</Typography>
+                    <Typography variant="h6" fontWeight={700}>{stat.value}</Typography>
+                  </Card>
+                </Grid>
+              ))}
+              <Grid item xs={12}>
+                <Button variant="contained" color="success" onClick={handleWithdraw}>
+                  Withdraw Earnings
+                </Button>
+              </Grid>
+            </Grid>
+          )}
+
+          {/* Create Slots */}
+          <Paper sx={{ p: 3, mb: 3 }}>
+            <Typography variant="h6" gutterBottom>Create Available Slots</Typography>
+            <Grid container spacing={2} alignItems="center">
+              <Grid item xs={12} sm={3}>
+                <TextField fullWidth type="date" label="Date" value={slotDate}
+                  onChange={(e) => { setSlotDate(e.target.value); fetchSlots(e.target.value); }}
+                  InputLabelProps={{ shrink: true }} />
+              </Grid>
+              <Grid item xs={6} sm={2}>
+                <TextField fullWidth type="time" label="Start Time" value={slotStartTime}
+                  onChange={(e) => setSlotStartTime(e.target.value)} InputLabelProps={{ shrink: true }} />
+              </Grid>
+              <Grid item xs={6} sm={2}>
+                <FormControl fullWidth>
+                  <InputLabel>Duration</InputLabel>
+                  <Select value={slotDuration} onChange={(e) => setSlotDuration(e.target.value)} label="Duration">
+                    <MenuItem value={15}>15 min</MenuItem>
+                    <MenuItem value={30}>30 min</MenuItem>
+                    <MenuItem value={45}>45 min</MenuItem>
+                    <MenuItem value={60}>60 min</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={6} sm={1}>
+                <TextField fullWidth type="number" label="# Slots" value={slotCount}
+                  onChange={(e) => setSlotCount(Number(e.target.value))} inputProps={{ min: 1, max: 20 }} />
+              </Grid>
+              <Grid item xs={6} sm={2}>
+                <TextField fullWidth type="number" label="Fee (₹)" value={slotFee}
+                  onChange={(e) => setSlotFee(Number(e.target.value))} inputProps={{ min: 0 }} />
+              </Grid>
+              <Grid item xs={6} sm={2}>
+                <FormControl fullWidth>
+                  <InputLabel>Type</InputLabel>
+                  <Select value={slotType} onChange={(e) => setSlotType(e.target.value)} label="Type">
+                    <MenuItem value="both">Both</MenuItem>
+                    <MenuItem value="onsite">On-site Only</MenuItem>
+                    <MenuItem value="online">Online Only</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12}>
+                <Button variant="contained" onClick={handleCreateSlots} disabled={slotSaving}>
+                  {slotSaving ? 'Creating...' : `Generate ${slotCount} Slots`}
+                </Button>
+              </Grid>
+            </Grid>
+          </Paper>
+
+          {/* Slots List */}
+          <Paper sx={{ p: 3 }}>
+            <Typography variant="h6" gutterBottom>
+              Slots for {new Date(slotDate + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            </Typography>
+            {slotsLoading ? (
+              <Typography color="text.secondary">Loading slots...</Typography>
+            ) : slots.length === 0 ? (
+              <Alert severity="info">No slots created for this date. Use the form above to generate slots.</Alert>
+            ) : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Time</TableCell>
+                      <TableCell>Fee</TableCell>
+                      <TableCell>Type</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell>Booked By</TableCell>
+                      <TableCell>Patient</TableCell>
+                      <TableCell>Action</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {slots.map((slot) => (
+                      <TableRow key={slot._id}>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={600}>
+                            {slot.startTime} – {slot.endTime}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>₹{slot.consultationFee}</TableCell>
+                        <TableCell>
+                          <Chip label={slot.appointmentType} size="small"
+                            color={slot.appointmentType === 'online' ? 'info' : slot.appointmentType === 'both' ? 'default' : 'primary'} />
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={slot.status} size="small"
+                            color={slot.status === 'available' ? 'success' : slot.status === 'booked' ? 'warning' : 'default'} />
+                        </TableCell>
+                        <TableCell>
+                          {slot.bookedBy ? `${slot.bookedBy.firstName || ''} ${slot.bookedBy.lastName || ''}`.trim() : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {slot.appointment?.child
+                            ? `${slot.appointment.child.firstName} ${slot.appointment.child.lastName}`
+                            : '—'}
+                        </TableCell>
+                        <TableCell>
+                          {slot.status === 'available' && (
+                            <Tooltip title="Delete slot">
+                              <IconButton size="small" color="error" onClick={() => handleDeleteSlot(slot._id)}>
+                                <WarningAmber fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                          {slot.status === 'booked' && slot.appointment?.meetingLink && (
+                            <Tooltip title="Join Meeting">
+                              <IconButton size="small" color="info" onClick={() => window.open(slot.appointment.meetingLink, '_blank')}>
+                                <LocalHospital fontSize="small" />
+                              </IconButton>
+                            </Tooltip>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </Paper>
+        </Box>
+      )}
+
+      {/* Prescription Dialog */}
+      <Dialog open={prescriptionDialog.open} onClose={() => setPrescriptionDialog({ open: false, appointment: null })} maxWidth="md" fullWidth>
+        <DialogTitle>
+          Write Prescription — {prescriptionDialog.appointment?.child?.firstName} {prescriptionDialog.appointment?.child?.lastName}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2} sx={{ pt: 1 }}>
+            <Grid item xs={12}>
+              <TextField fullWidth multiline rows={2} label="Diagnosis" value={prescriptionForm.diagnosis}
+                onChange={(e) => setPrescriptionForm({ ...prescriptionForm, diagnosis: e.target.value })} />
+            </Grid>
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" gutterBottom>Medicines</Typography>
+              {prescriptionForm.medicines.map((med, idx) => (
+                <Grid container spacing={1} key={idx} sx={{ mb: 1 }}>
+                  <Grid item xs={3}><TextField fullWidth size="small" label="Medicine" value={med.name} onChange={(e) => { const m = [...prescriptionForm.medicines]; m[idx].name = e.target.value; setPrescriptionForm({ ...prescriptionForm, medicines: m }); }} /></Grid>
+                  <Grid item xs={3}><TextField fullWidth size="small" label="Dosage" value={med.dosage} onChange={(e) => { const m = [...prescriptionForm.medicines]; m[idx].dosage = e.target.value; setPrescriptionForm({ ...prescriptionForm, medicines: m }); }} /></Grid>
+                  <Grid item xs={3}><TextField fullWidth size="small" label="Frequency" value={med.frequency} onChange={(e) => { const m = [...prescriptionForm.medicines]; m[idx].frequency = e.target.value; setPrescriptionForm({ ...prescriptionForm, medicines: m }); }} /></Grid>
+                  <Grid item xs={2}><TextField fullWidth size="small" label="Duration" value={med.duration} onChange={(e) => { const m = [...prescriptionForm.medicines]; m[idx].duration = e.target.value; setPrescriptionForm({ ...prescriptionForm, medicines: m }); }} /></Grid>
+                  <Grid item xs={1}><IconButton size="small" color="error" onClick={() => { const m = prescriptionForm.medicines.filter((_, i) => i !== idx); setPrescriptionForm({ ...prescriptionForm, medicines: m.length ? m : [{ name: '', dosage: '', frequency: '', duration: '' }] }); }}><WarningAmber fontSize="small" /></IconButton></Grid>
+                </Grid>
+              ))}
+              <Button size="small" startIcon={<Add />} onClick={() => setPrescriptionForm({ ...prescriptionForm, medicines: [...prescriptionForm.medicines, { name: '', dosage: '', frequency: '', duration: '' }] })}>
+                Add Medicine
+              </Button>
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth multiline rows={2} label="Advice / Instructions" value={prescriptionForm.advice}
+                onChange={(e) => setPrescriptionForm({ ...prescriptionForm, advice: e.target.value })} />
+            </Grid>
+            <Grid item xs={12} sm={6}>
+              <TextField fullWidth type="date" label="Follow-up Date" value={prescriptionForm.followUpDate}
+                onChange={(e) => setPrescriptionForm({ ...prescriptionForm, followUpDate: e.target.value })}
+                InputLabelProps={{ shrink: true }} />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPrescriptionDialog({ open: false, appointment: null })}>Cancel</Button>
+          <Button variant="contained" onClick={handleSavePrescription} disabled={!prescriptionForm.diagnosis}>
+            Save Prescription
           </Button>
         </DialogActions>
       </Dialog>

@@ -41,7 +41,7 @@ async function canAccessChild(req, childId) {
 // Get all children (admin and staff can access)
 router.get('/', auth, authorize('admin', 'staff'), async (req, res) => {
   try {
-    const children = await Child.find({})
+    const children = await Child.find({ isActive: true })
       .populate('assignedStaff', 'firstName lastName email phone role')
       .populate('parents', 'firstName lastName email')
       .select('-__v');
@@ -779,42 +779,7 @@ router.delete('/:childId/unassign-staff/:staffId', auth, authorize('admin'), asy
   }
 });
 
-// Get children assigned to a specific staff member
-router.get('/staff/:staffId', auth, async (req, res) => {
-  try {
-    const { staffId } = req.params;
 
-    // Validate staffId
-    if (!staffId || staffId === 'undefined' || !mongoose.Types.ObjectId.isValid(staffId)) {
-      return res.status(400).json({ message: 'Invalid staff ID' });
-    }
-
-    // Verify the requesting user can access this (staff can only see their own assignments, admin can see all)
-    if (req.user.role === 'staff' && req.user._id !== staffId) {
-      return res.status(403).json({ message: 'Access denied' });
-    }
-
-    // Verify staff exists
-    const staff = await User.findOne({ _id: staffId, role: 'staff' });
-    if (!staff) {
-      return res.status(404).json({ message: 'Staff member not found' });
-    }
-
-    const children = await Child.find({
-      assignedStaff: staffId,
-      isActive: true
-    })
-    .populate('parents', 'firstName lastName email')
-    .populate('assignedStaff', 'firstName lastName email')
-    .select('firstName lastName dateOfBirth gender program age allergies medicalConditions emergencyContacts')
-    .sort({ firstName: 1 });
-
-    res.json({ staff, children });
-  } catch (error) {
-    console.error('Get staff children error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-});
 
 
 // Create new child (admin only)
@@ -885,28 +850,6 @@ router.post('/', auth, authorize('admin'), async (req, res) => {
   } catch (error) {
     console.error('Create child error:', error);
     res.status(500).json({ message: 'Server error creating child' });
-  }
-});
-
-// Get children assigned to a specific staff member
-router.get('/staff/:staffId', auth, authorize('admin', 'staff'), async (req, res) => {
-  try {
-    const { staffId } = req.params;
-    
-    // Staff can only view their own assigned children
-    if (req.user.role === 'staff' && req.user.userId !== staffId) {
-      return res.status(403).json({ message: 'Forbidden' });
-    }
-
-    const children = await Child.find({ assignedStaff: staffId, isActive: true })
-      .populate('parents', 'firstName lastName email phone')
-      .select('firstName lastName dateOfBirth gender program age allergies medicalConditions emergencyContacts authorizedPickup schedule tuitionRate')
-      .sort({ firstName: 1 });
-
-    res.json({ children });
-  } catch (error) {
-    console.error('Get staff children error:', error);
-    res.status(500).json({ message: 'Server error' });
   }
 });
 

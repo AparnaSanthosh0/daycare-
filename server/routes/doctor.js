@@ -1600,5 +1600,131 @@ async function analyzeHealthPatterns(children) {
   return patterns;
 }
 
+// ─── SLOT MANAGEMENT ────────────────────────────────────────────────────────
+
+const DoctorSlot = require('../models/DoctorSlot');
+
+// Doctor: create slots for a date
+router.post('/slots', doctorOnly, async (req, res) => {
+  try {
+    const { date, slots, consultationFee, appointmentType } = req.body;
+    if (!date || !Array.isArray(slots) || slots.length === 0) {
+      return res.status(400).json({ message: 'date and slots array are required' });
+    }
+    const doctorId = req.doctorUser._id;
+    const created = [];
+    for (const slot of slots) {
+      const exists = await DoctorSlot.findOne({ doctor: doctorId, date: new Date(date), startTime: slot.startTime });
+      if (exists) continue;
+      created.push({ doctor: doctorId, date: new Date(date), startTime: slot.startTime, endTime: slot.endTime, consultationFee: consultationFee || 500, appointmentType: appointmentType || 'both' });
+    }
+    const saved = await DoctorSlot.insertMany(created);
+    res.status(201).json({ message: `${saved.length} slot(s) created`, slots: saved });
+  } catch (err) {
+    console.error('Create slots error:', err);
+    res.status(500).json({ message: 'Server error creating slots' });
+  }
+});
+
+// Doctor: get own slots (optionally filter by date)
+router.get('/slots', doctorOnly, async (req, res) => {
+  try {
+    const { date } = req.query;
+    const filter = { doctor: req.doctorUser._id };
+    if (date) {
+      const d = new Date(date);
+      const next = new Date(d); next.setDate(next.getDate() + 1);
+      filter.date = { $gte: d, $lt: next };
+    }
+    const slots = await DoctorSlot.find(filter).populate('bookedBy', 'firstName lastName').populate({ path: 'appointment', populate: { path: 'child', select: 'firstName lastName' } }).sort({ date: 1, startTime: 1 });
+    res.json(slots);
+  } catch (err) {
+    console.error('Get slots error:', err);
+    res.status(500).json({ message: 'Server error fetching slots' });
+  }
+});
+
+// Doctor: delete/block a slot
+router.delete('/slots/:slotId', doctorOnly, async (req, res) => {
+  try {
+    const slot = await DoctorSlot.findOne({ _id: req.params.slotId, doctor: req.doctorUser._id });
+    if (!slot) return res.status(404).json({ message: 'Slot not found' });
+    if (slot.status === 'booked') return res.status(400).json({ message: 'Cannot delete a booked slot' });
+    await slot.deleteOne();
+    res.json({ message: 'Slot deleted' });
+  } catch (err) {
+    console.error('Delete slot error:', err);
+    res.status(500).json({ message: 'Server error deleting slot' });
+  }
+});
+
+// Public: get available slots for a doctor (parents use this)
+router.get('/slots/available/:doctorId', auth, async (req, res) => {
+  try {
+    const { date } = req.query;
+    const filter = { doctor: req.params.doctorId, status: 'available' };
+    if (date) {
+      const d = new Date(date);
+      const next = new Date(d); next.setDate(next.getDate() + 1);
+      filter.date = { $gte: d, $lt: next };
+    } else {
+      filter.date = { $gte: new Date() };
+    }
+    const slots = await DoctorSlot.find(filter).sort({ date: 1, startTime: 1 });
+    res.json(slots);
+  } catch (err) {
+    console.error('Get available slots error:', err);
+    res.status(500).json({ message: 'Server error fetching available slots' });
+  }
+});
+
+// Doctor: get earnings summary
+router.get('/earnings/summary', doctorOnly, async (req, res) => {
+  try {
+    const doctorId = req.doctorUser._id;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const todayEnd = new Date(today); todayEnd.setHours(23, 59, 59, 999);
+
+    const [todayEarnings, allEarnings, pendingPayout] = await Promise.all([
+      DoctorEarning.find({ doctor: doctorId, consultationDate: { $gte: today, $lte: todayEnd } }),
+      DoctorEarning.find({ doctor: doctorId }),
+      DoctorEarning.find({ doctor: doctorId, status: 'credited' })
+    ]);
+
+    const sum = (arr) => arr.reduce((s, e) => s + (e.netEarning || 0), 0);
+    res.json({
+      todayConsultations: todayEarnings.length,
+      todayEarnings: sum(todayEarnings),
+      totalEarnings: sum(allEarnings),
+      pendingPayout: sum(pendingPayout),
+      totalConsultations: allEarnings.length
+    });
+  } catch (err) {
+    console.error('Earnings summary error:', err);
+    res.status(500).json({ message: 'Server error fetching earnings summary' });
+  }
+});
+
+// Doctor: request withdrawal
+router.post('/earnings/withdraw', doctorOnly, async (req, res) => {
+  try {
+    const doctorId = req.doctorUser._id;
+    const pending = await DoctorEarning.find({ doctor: doctorId, status: 'credited' });
+    if (pending.length === 0) return res.status(400).json({ message: 'No pending earnings to withdraw' });
+    const total = pending.reduce((s, e) => s + (e.netEarning || 0), 0);
+    await DoctorEarning.updateMany({ doctor: doctorId, status: 'credited' }, { status: 'paid_out', paidOutAt: new Date() });
+    const doctor = await User.findById(doctorId);
+    if (doctor?.doctor) {
+      doctor.doctor.walletBalance = Math.max(0, (doctor.doctor.walletBalance || 0) - total);
+      doctor.doctor.pendingPayout = 0;
+      await doctor.save();
+    }
+    res.json({ message: `Withdrawal request submitted for ₹${total.toFixed(2)}. Admin will transfer to your bank account.`, amount: total });
+  } catch (err) {
+    console.error('Withdraw error:', err);
+    res.status(500).json({ message: 'Server error processing withdrawal' });
+  }
+});
+
 module.exports = router;
 
