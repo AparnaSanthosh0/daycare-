@@ -164,6 +164,31 @@ const NannyDashboard = () => {
     }
   };
 
+  const handleUpdateDocument = async () => {
+    try {
+      if (!docFile) {
+        setError('Please select a file before updating.');
+        return;
+      }
+      const formData = new FormData();
+      formData.append('docType', docType);
+      formData.append('document', docFile);
+
+      setDocUploading(true);
+      await api.patch('/nanny/profile/documents', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setSuccess('Document updated successfully. Old document replaced.');
+      setDocFile(null);
+      await fetchDocStatus();
+    } catch (e) {
+      console.error('Document update failed:', e);
+      setError(e.response?.data?.message || 'Failed to update document');
+    } finally {
+      setDocUploading(false);
+    }
+  };
+
   // Update reminder countdown every minute
   useEffect(() => {
     const interval = setInterval(() => {
@@ -1229,23 +1254,42 @@ const NannyDashboard = () => {
 
           <Grid container spacing={2} sx={{ mb: 3 }}>
             {[
-              { key: 'certificateUrl', label: 'Certificate' },
-              { key: 'aadharCard', label: 'Aadhar Card' },
-              { key: 'panCard', label: 'PAN Card' },
-              { key: 'policeClearance', label: 'Police Clearance' }
-            ].map((d) => (
-              <Grid item xs={12} sm={6} md={3} key={d.key}>
-                <Paper sx={{ p: 2, textAlign: 'center' }}>
-                  <Typography variant="body2" sx={{ mb: 1 }}>{d.label}</Typography>
-                  <Chip
-                    icon={<VerifiedUser />}
-                    color={docStatus.mandatoryStatus?.[d.key] ? 'success' : 'default'}
-                    label={docStatus.mandatoryStatus?.[d.key] ? 'Uploaded' : 'Missing'}
-                    size="small"
-                  />
-                </Paper>
-              </Grid>
-            ))}
+              { key: 'certificateUrl', label: 'Certificate', getUrl: (s) => s?.certificateUrl },
+              { key: 'aadharCard', label: 'Aadhar Card', getUrl: (s) => s?.documents?.aadharCard },
+              { key: 'panCard', label: 'PAN Card', getUrl: (s) => s?.documents?.panCard },
+              { key: 'policeClearance', label: 'Police Clearance', getUrl: (s) => s?.documents?.policeClearance }
+            ].map((d) => {
+              const uploaded = docStatus.mandatoryStatus?.[d.key];
+              const url = d.getUrl(docStatus.nanny?.staff);
+              return (
+                <Grid item xs={12} sm={6} md={3} key={d.key}>
+                  <Paper sx={{ p: 2, textAlign: 'center' }}>
+                    <Typography variant="body2" sx={{ mb: 1 }}>{d.label}</Typography>
+                    <Chip
+                      icon={<VerifiedUser />}
+                      color={uploaded ? 'success' : 'default'}
+                      label={uploaded ? 'Uploaded' : 'Missing'}
+                      size="small"
+                    />
+                    {uploaded && url && (
+                      <Box sx={{ mt: 1 }}>
+                        <Button
+                          size="small"
+                          variant="text"
+                          component="a"
+                          href={`http://localhost:5000${url}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{ textTransform: 'none', color: themeColor, fontSize: '0.75rem' }}
+                        >
+                          View Document
+                        </Button>
+                      </Box>
+                    )}
+                  </Paper>
+                </Grid>
+              );
+            })}
           </Grid>
 
           <Paper sx={{ p: 3 }}>
@@ -1284,17 +1328,35 @@ const NannyDashboard = () => {
                 </Button>
               </Grid>
               <Grid item xs={12} md={3}>
-                <Button
-                  variant="contained"
-                  fullWidth
-                  onClick={handleUploadDocument}
-                  disabled={docUploading}
-                  sx={{ bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' }, py: 1.6 }}
-                >
-                  {docUploading ? 'Uploading...' : 'Upload'}
-                </Button>
+                <Stack spacing={1}>
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    onClick={handleUploadDocument}
+                    disabled={docUploading}
+                    sx={{ bgcolor: themeColor, '&:hover': { bgcolor: '#169b83' }, py: 1 }}
+                  >
+                    {docUploading ? 'Uploading...' : 'Upload New'}
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={handleUpdateDocument}
+                    disabled={docUploading}
+                    sx={{ py: 1 }}
+                  >
+                    {docUploading ? 'Updating...' : 'Replace Existing'}
+                  </Button>
+                </Stack>
               </Grid>
             </Grid>
+            
+            <Alert severity="info" sx={{ mt: 2 }}>
+              <Typography variant="body2">
+                <strong>Upload New:</strong> Use if document doesn't exist<br/>
+                <strong>Replace Existing:</strong> Use to update an existing document (old file will be deleted)
+              </Typography>
+            </Alert>
           </Paper>
         </Box>
       )}

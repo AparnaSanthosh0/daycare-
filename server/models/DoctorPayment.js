@@ -18,7 +18,7 @@ const doctorPaymentSchema = new mongoose.Schema({
   },
 
   totalAmount: { type: Number, required: true },
-  commissionRate: { type: Number, default: 10 },
+  commissionRate: { type: Number, default: 30 }, // 30% admin commission
   commissionAmount: { type: Number, required: true },
   payoutAmount: { type: Number, required: true },
 

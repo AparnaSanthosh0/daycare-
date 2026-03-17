@@ -69,8 +69,81 @@ function hasMandatoryNannyDocs(staff = {}) {
 // Nanny uploads/updates mandatory documents
 router.post('/profile/documents', auth, nannyDocUpload.single('document'), async (req, res) => {
   try {
+    console.log('🔍 Nanny document upload request:', {
+      userId: req.user.userId,
+      userRole: req.user.role,
+      file: req.file?.originalname,
+      docType: req.body?.docType
+    });
+
     if (!isNannyUser(req.user)) {
+      console.log('❌ User is not a nanny:', req.user);
       return res.status(403).json({ message: 'Only nanny users can upload documents' });
+    }
+    if (!req.file) {
+      console.log('❌ No file received');
+      return res.status(400).json({ message: 'Document file is required' });
+    }
+
+    const docType = String(req.body?.docType || '').trim();
+    const allowedDocTypes = ['certificate', 'aadharCard', 'panCard', 'policeClearance', 'drivingLicense'];
+    if (!allowedDocTypes.includes(docType)) {
+      console.log('❌ Invalid docType:', docType);
+      return res.status(400).json({ message: 'Invalid docType' });
+    }
+
+    console.log('✅ Validation passed, finding user...');
+    const url = `/uploads/nanny_docs/${req.file.filename}`;
+    const nannyUser = await User.findById(req.user.userId);
+    if (!nannyUser) {
+      console.log('❌ Nanny user not found:', req.user.userId);
+      return res.status(404).json({ message: 'Nanny user not found' });
+    }
+
+    console.log('✅ User found, updating documents...');
+    console.log('Current staff structure:', JSON.stringify(nannyUser.staff, null, 2));
+
+    nannyUser.staff = nannyUser.staff || {};
+    nannyUser.staff.documents = nannyUser.staff.documents || {};
+
+    if (docType === 'certificate') {
+      nannyUser.staff.certificateUrl = url;
+    } else {
+      nannyUser.staff.documents[docType] = url;
+    }
+
+    console.log('📄 Updated staff structure:', JSON.stringify(nannyUser.staff, null, 2));
+
+    nannyUser.markModified('staff');
+    await nannyUser.save();
+    console.log('✅ User saved successfully');
+
+    const mandatoryStatus = mandatoryNannyDocStatus(nannyUser.staff);
+    const complete = hasMandatoryNannyDocs(nannyUser.staff);
+    
+    console.log('📋 Document status:', { mandatoryStatus, complete });
+
+    res.json({
+      message: 'Document uploaded successfully',
+      documentUrl: url,
+      mandatoryStatus,
+      complete
+    });
+  } catch (error) {
+    console.error('❌ Error uploading nanny document:', error);
+    console.error('Stack trace:', error.stack);
+    res.status(500).json({ 
+      message: 'Server error uploading nanny document',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Nanny updates/modifies existing documents
+router.patch('/profile/documents', auth, nannyDocUpload.single('document'), async (req, res) => {
+  try {
+    if (!isNannyUser(req.user)) {
+      return res.status(403).json({ message: 'Only nanny users can update documents' });
     }
     if (!req.file) {
       return res.status(400).json({ message: 'Document file is required' });
@@ -86,6 +159,19 @@ router.post('/profile/documents', auth, nannyDocUpload.single('document'), async
     const nannyUser = await User.findById(req.user.userId);
     if (!nannyUser) return res.status(404).json({ message: 'Nanny user not found' });
 
+    // Delete old document if it exists
+    const oldDocUrl = docType === 'certificate' 
+      ? nannyUser.staff?.certificateUrl 
+      : nannyUser.staff?.documents?.[docType];
+    
+    if (oldDocUrl) {
+      const oldFilePath = path.join(__dirname, '..', oldDocUrl);
+      if (fs.existsSync(oldFilePath)) {
+        fs.unlinkSync(oldFilePath);
+        console.log('Deleted old document:', oldFilePath);
+      }
+    }
+
     nannyUser.staff = nannyUser.staff || {};
     nannyUser.staff.documents = nannyUser.staff.documents || {};
 
@@ -95,18 +181,20 @@ router.post('/profile/documents', auth, nannyDocUpload.single('document'), async
       nannyUser.staff.documents[docType] = url;
     }
 
+    nannyUser.markModified('staff');
     await nannyUser.save();
 
     const mandatoryStatus = mandatoryNannyDocStatus(nannyUser.staff);
     res.json({
-      message: 'Document uploaded successfully',
+      message: 'Document updated successfully',
       documentUrl: url,
       mandatoryStatus,
-      complete: hasMandatoryNannyDocs(nannyUser.staff)
+      complete: hasMandatoryNannyDocs(nannyUser.staff),
+      updated: true
     });
   } catch (error) {
-    console.error('Error uploading nanny document:', error);
-    res.status(500).json({ message: 'Server error uploading nanny document' });
+    console.error('Error updating nanny document:', error);
+    res.status(500).json({ message: 'Server error updating nanny document' });
   }
 });
 

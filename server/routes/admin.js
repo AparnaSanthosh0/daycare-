@@ -10,6 +10,7 @@ const Product = require('../models/Product');
 const auth = require('../middleware/auth');
 const { authorize } = require('../middleware/auth');
 const { sendMail, parentApprovedEmail, parentRejectedEmail, staffApprovedEmail, staffRejectedEmail, childCreatedEmail, vendorApprovedEmail, vendorRejectedEmail, doctorAccountCreatedEmail } = require('../utils/mailer');
+const { getAdminRevenue } = require('../services/paymentService');
 
 const router = express.Router();
 
@@ -1569,6 +1570,63 @@ router.put('/doctors/:id/toggle-status', adminOnly, async (req, res) => {
   } catch (error) {
     console.error('Toggle doctor status error:', error);
     res.status(500).json({ message: 'Server error updating doctor status' });
+  }
+});
+
+// Admin: get revenue statistics
+router.get('/revenue', adminOnly, async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    let start = null;
+    let end = null;
+    
+    if (startDate) {
+      start = new Date(startDate);
+      if (isNaN(start.getTime())) {
+        return res.status(400).json({ message: 'Invalid start date format' });
+      }
+    }
+    
+    if (endDate) {
+      end = new Date(endDate);
+      if (isNaN(end.getTime())) {
+        return res.status(400).json({ message: 'Invalid end date format' });
+      }
+      end.setHours(23, 59, 59, 999); // End of day
+    }
+    
+    const revenueStats = await getAdminRevenue(start, end);
+    res.json(revenueStats);
+  } catch (error) {
+    console.error('Admin revenue error:', error);
+    res.status(500).json({ message: 'Server error fetching revenue statistics' });
+  }
+});
+
+// Admin: get escrow payments (money held waiting for completion)
+router.get('/payments/escrow', adminOnly, async (req, res) => {
+  try {
+    const DoctorPayment = require('../models/DoctorPayment');
+    
+    const escrowPayments = await DoctorPayment.find({ 
+      status: 'payment_held' 
+    })
+    .populate('doctor', 'firstName lastName email')
+    .populate('parent', 'firstName lastName email')
+    .populate({
+      path: 'appointment',
+      populate: {
+        path: 'child',
+        select: 'firstName lastName'
+      }
+    })
+    .sort({ paymentHeldAt: -1 });
+
+    res.json(escrowPayments);
+  } catch (error) {
+    console.error('Admin escrow payments error:', error);
+    res.status(500).json({ message: 'Server error fetching escrow payments' });
   }
 });
 

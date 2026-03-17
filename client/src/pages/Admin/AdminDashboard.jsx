@@ -131,6 +131,7 @@ const AdminDashboard = () => {
   const [pendingPayments, setPendingPayments] = useState([]);
   const [paymentLoading, setPaymentLoading] = useState(false);
   const [paymentDialog, setPaymentDialog] = useState({ open: false, payment: null });
+  const [escrowPayments, setEscrowPayments] = useState([]);
   const [payoutForm, setPayoutForm] = useState({ payoutMethod: 'bank_transfer', payoutDetails: {}, payoutTransactionId: '' });
   const [afterSchoolSuggestions, setAfterSchoolSuggestions] = useState([]);
   const [afterSchoolLoading, setAfterSchoolLoading] = useState(false);
@@ -229,6 +230,21 @@ const AdminDashboard = () => {
       setPendingPayments(response.data || []);
     } catch (error) {
       console.error('Error fetching pending payments:', error);
+      setError('Failed to load pending payments');
+    } finally {
+      setPaymentLoading(false);
+    }
+  };
+
+  // Fetch escrow payments (doctor appointments)
+  const fetchEscrowPayments = async () => {
+    try {
+      setPaymentLoading(true);
+      const response = await api.get('/admin/payments/escrow');
+      setEscrowPayments(response.data || []);
+    } catch (error) {
+      console.error('Error fetching escrow payments:', error);
+      setError('Failed to load escrow payments');
     } finally {
       setPaymentLoading(false);
     }
@@ -301,6 +317,7 @@ const AdminDashboard = () => {
     fetchAllUsersData();
     fetchNannyData();
     fetchPendingPayments();
+    fetchEscrowPayments();
     fetchAfterSchoolSuggestions();
     fetchFamilyStaffOverview();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -896,13 +913,62 @@ const AdminDashboard = () => {
         )}
       </Paper>
 
+      {/* Nanny Documents */}
+      {nannies.length > 0 && (
+        <Paper sx={{ p: 3, mb: 3 }}>
+          <Typography variant="h5" sx={{ mb: 2 }}>Nanny Documents</Typography>
+          <Box sx={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #e0e0e0', background: '#f9f9f9' }}>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Nanny</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Certificate</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Aadhar Card</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>PAN Card</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Police Clearance</th>
+                  <th style={{ padding: 12, textAlign: 'left' }}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {nannies.map((n) => {
+                  const docs = n.staff?.documents || {};
+                  const cert = n.staff?.certificateUrl;
+                  const allUploaded = !!(cert && docs.aadharCard && docs.panCard && docs.policeClearance);
+                  const docLink = (url) => url ? (
+                    <a href={`http://localhost:5000${url}`} target="_blank" rel="noopener noreferrer"
+                      style={{ color: '#1976d2', fontSize: '0.8rem' }}>View</a>
+                  ) : <span style={{ color: '#999', fontSize: '0.8rem' }}>Missing</span>;
+                  return (
+                    <tr key={n._id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                      <td style={{ padding: 12 }}>{n.firstName} {n.lastName}</td>
+                      <td style={{ padding: 12 }}>{docLink(cert)}</td>
+                      <td style={{ padding: 12 }}>{docLink(docs.aadharCard)}</td>
+                      <td style={{ padding: 12 }}>{docLink(docs.panCard)}</td>
+                      <td style={{ padding: 12 }}>{docLink(docs.policeClearance)}</td>
+                      <td style={{ padding: 12 }}>
+                        <span style={{ color: allUploaded ? 'green' : 'orange', fontWeight: 600, fontSize: '0.8rem' }}>
+                          {allUploaded ? '✓ Complete' : '⚠ Incomplete'}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </Box>
+        </Paper>
+      )}
+
       {/* Payment Management */}
       <Paper sx={{ p: 3, mb: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <Typography variant="h5">Payment Management</Typography>
           <Button
             variant="outlined"
-            onClick={fetchPendingPayments}
+            onClick={() => {
+              fetchPendingPayments();
+              fetchEscrowPayments();
+            }}
             sx={{ textTransform: 'none' }}
           >
             Refresh
@@ -1611,38 +1677,98 @@ const AdminDashboard = () => {
           {/* Payment Management Tab */}
           {tabValue === 10 && (
             <Box>
-              <Typography variant="h6" gutterBottom>Doctor Appointment Payments (Escrow)</Typography>
+              <Typography variant="h6" gutterBottom>💰 Doctor Appointment Payments (Escrow)</Typography>
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-                Monitor payments held in escrow for doctor appointments. Payments are released to doctors after service completion and parent confirmation.
+                Monitor payments held in escrow for doctor appointments. Payments are released to doctors after service completion.
               </Typography>
               
-              <TableContainer component={Paper}>
-                <Table>
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Appointment Date</TableCell>
-                      <TableCell>Parent</TableCell>
-                      <TableCell>Doctor</TableCell>
-                      <TableCell>Child</TableCell>
-                      <TableCell>Total Amount</TableCell>
-                      <TableCell>Commission</TableCell>
-                      <TableCell>Doctor Payout</TableCell>
-                      <TableCell>Payment Status</TableCell>
-                      <TableCell>Appointment Status</TableCell>
-                      <TableCell>Paid At</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell colSpan={10} align="center">
-                        <Typography variant="body2" color="text.secondary">
-                          Payment escrow management feature coming soon. Backend routes are ready at /api/appointments/payments/admin/pending
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              {paymentLoading ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <TableContainer component={Paper}>
+                  <Table>
+                    <TableHead>
+                      <TableRow>
+                        <TableCell>Appointment Date</TableCell>
+                        <TableCell>Parent</TableCell>
+                        <TableCell>Doctor</TableCell>
+                        <TableCell>Child</TableCell>
+                        <TableCell>Total Amount</TableCell>
+                        <TableCell>Commission (30%)</TableCell>
+                        <TableCell>Doctor Payout (70%)</TableCell>
+                        <TableCell>Payment Status</TableCell>
+                        <TableCell>Held Since</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {escrowPayments.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={9} align="center">
+                            <Typography variant="body2" color="text.secondary" sx={{ py: 3 }}>
+                              No payments currently held in escrow
+                            </Typography>
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        escrowPayments.map((payment) => (
+                          <TableRow key={payment._id}>
+                            <TableCell>
+                              {payment.appointment?.appointmentDate 
+                                ? new Date(payment.appointment.appointmentDate).toLocaleDateString()
+                                : 'N/A'
+                              }
+                            </TableCell>
+                            <TableCell>
+                              {payment.parent?.firstName} {payment.parent?.lastName}
+                            </TableCell>
+                            <TableCell>
+                              {payment.doctor?.firstName} {payment.doctor?.lastName}
+                            </TableCell>
+                            <TableCell>
+                              {payment.appointment?.child?.firstName} {payment.appointment?.child?.lastName}
+                            </TableCell>
+                            <TableCell sx={{ fontWeight: 'bold' }}>
+                              ₹{payment.totalAmount}
+                            </TableCell>
+                            <TableCell sx={{ color: 'error.main' }}>
+                              -₹{payment.commissionAmount}
+                            </TableCell>
+                            <TableCell sx={{ color: 'success.main', fontWeight: 'bold' }}>
+                              ₹{payment.payoutAmount}
+                            </TableCell>
+                            <TableCell>
+                              <Chip 
+                                label="Payment Held" 
+                                color="warning" 
+                                size="small" 
+                                variant="outlined"
+                              />
+                            </TableCell>
+                            <TableCell>
+                              {payment.paymentHeldAt 
+                                ? new Date(payment.paymentHeldAt).toLocaleDateString()
+                                : 'N/A'
+                              }
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      )}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              )}
+              
+              <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                <Button 
+                  variant="outlined" 
+                  onClick={fetchEscrowPayments}
+                  startIcon={<Visibility />}
+                >
+                  Refresh Escrow Data
+                </Button>
+              </Box>
             </Box>
           )}
 

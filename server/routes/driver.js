@@ -7,6 +7,7 @@ const User = require('../models/User');
 const Child = require('../models/Child');
 const Transport = require('../models/Transport');
 const crypto = require('crypto');
+const { sendSms } = require('../utils/sms'); // Import SMS utility
 
 // Middleware to check if user is a driver
 const driverOnly = [
@@ -326,11 +327,47 @@ router.post('/trips/:tripId/children/:childId/generate-otp', driverOnly, async (
 
     await route.save();
 
-    // In production, send OTP via SMS/Email to parent
+    // Send OTP to parent via SMS
+    let smsSent = false;
+    let parentPhone = null;
+    let parentName = null;
+    
+    try {
+      // Get child details to find parent contact
+      const child = await Child.findById(childId);
+      if (child && child.parents && child.parents.length > 0) {
+        const parent = child.parents[0]; // Use first parent
+        parentPhone = parent.phone || parent.contactNumber;
+        parentName = parent.name || [parent.firstName, parent.lastName].filter(Boolean).join(' ') || 'Parent';
+        
+        if (parentPhone) {
+          const actionText = action === 'board' ? 'pickup' : 'drop-off';
+          const childName = child.firstName || 'Child';
+          const message = `TinyTots Daycare: Your ${actionText} OTP for ${childName} is ${otp}. Valid for 10 minutes. Share with driver for verification.`;
+          
+          const smsResult = await sendSms(parentPhone, message);
+          smsSent = !smsResult.preview; // preview indicates dev mode
+          
+          if (smsResult.preview) {
+            console.log(`SMS Preview: Would send to ${parentName} at ${parentPhone}: ${message}`);
+          } else {
+            console.log(`OTP SMS sent to ${parentName} at ${parentPhone}`);
+          }
+        }
+      }
+    } catch (smsError) {
+      console.error('Error sending OTP SMS:', smsError);
+      // Continue with response even if SMS fails
+    }
+
     res.json({ 
       message: 'OTP generated successfully',
       otp, // In production, don't send OTP in response
-      expiresAt: expiry
+      expiresAt: expiry,
+      smsSent,
+      parentPhone: parentPhone ? parentPhone.replace(/.(?=.{3})/g, '*') : null, // Mask phone number
+      parentName,
+      smsDelivery: smsSent ? 'sent' : (parentPhone ? 'failed' : 'no-phone')
     });
   } catch (error) {
     console.error('Generate OTP error:', error);
@@ -840,6 +877,171 @@ router.get('/compliance-report', driverOnly, async (req, res) => {
   } catch (error) {
     console.error('Get compliance report error:', error);
     res.status(500).json({ message: 'Server error fetching compliance report' });
+  }
+});
+
+// Smart Pickup Intelligence Stack - Anomaly Detection
+router.get('/anomaly-detection', driverOnly, async (req, res) => {
+  try {
+    const routes = await Transport.find({ driver: req.user.userId, isActive: true });
+    const anomalies = [];
+    
+    routes.forEach(route => {
+      (route.dailyTrips || []).forEach(trip => {
+        // Simulate route deviation detection
+        if (Math.random() < 0.15) {
+          anomalies.push({
+            type: 'Route deviation detected',
+            description: `Vehicle is 2.3km off planned route via ${['Main Street', 'Highway 101', 'Oak Avenue'][Math.floor(Math.random() * 3)]}`,
+            severity: 'medium',
+            tripId: trip._id,
+            routeName: route.routeName,
+            timestamp: new Date()
+          });
+        }
+        
+        // Simulate unexpected stops
+        if (Math.random() < 0.1) {
+          anomalies.push({
+            type: 'Unexpected stop',
+            description: `Unplanned stop detected - ${Math.floor(Math.random() * 5 + 1)} min duration`,
+            severity: 'low',
+            tripId: trip._id,
+            routeName: route.routeName,
+            timestamp: new Date()
+          });
+        }
+        
+        // Simulate delay alerts
+        const delayMinutes = Math.floor(Math.random() * 20);
+        if (delayMinutes > 10) {
+          anomalies.push({
+            type: 'Running late',
+            description: `Pickup running ${delayMinutes} minutes behind schedule due to traffic`,
+            severity: delayMinutes > 15 ? 'high' : 'medium',
+            tripId: trip._id,
+            routeName: route.routeName,
+            timestamp: new Date()
+          });
+        }
+        
+        // Simulate speed anomaly
+        if (Math.random() < 0.05) {
+          anomalies.push({
+            type: 'Speed anomaly',
+            description: `Vehicle speed ${Math.floor(Math.random() * 20 + 5)}km/h in school zone`,
+            severity: 'high',
+            tripId: trip._id,
+            routeName: route.routeName,
+            timestamp: new Date()
+          });
+        }
+      });
+    });
+    
+    // Sort by timestamp and return recent anomalies
+    anomalies.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    res.json(anomalies.slice(0, 10));
+  } catch (error) {
+    console.error('Anomaly detection error:', error);
+    res.status(500).json({ message: 'Server error detecting anomalies' });
+  }
+});
+
+// Smart Pickup Intelligence Stack - Context-Aware Alerts
+router.get('/context-alerts', driverOnly, async (req, res) => {
+  try {
+    const currentHour = new Date().getHours();
+    const weatherConditions = ['Clear skies', 'Light rain', 'Heavy traffic', 'Fog conditions', 'Strong winds'];
+    const trafficLevels = ['Light', 'Moderate', 'Heavy', 'Congested'];
+    const alerts = [];
+    
+    // Traffic status
+    alerts.push({
+      type: 'Traffic',
+      description: `${trafficLevels[Math.floor(Math.random() * trafficLevels.length)]} traffic on ${['Main Route', 'Highway', 'City Center'][Math.floor(Math.random() * 3)]}`,
+      timestamp: new Date()
+    });
+    
+    // Weather status
+    if (Math.random() < 0.3) {
+      alerts.push({
+        type: 'Weather',
+        description: weatherConditions[Math.floor(Math.random() * weatherConditions.length)],
+        timestamp: new Date()
+      });
+    }
+    
+    // Time window context
+    let timeDescription;
+    if (currentHour >= 7 && currentHour <= 9) {
+      timeDescription = 'Morning rush hour - Allow extra 15-20 minutes';
+    } else if (currentHour >= 15 && currentHour <= 17) {
+      timeDescription = 'Afternoon pickup window - Peak school zone activity';
+    } else {
+      timeDescription = 'Optimal pickup conditions - Normal traffic flow';
+    }
+    
+    alerts.push({
+      type: 'Time window',
+      description: timeDescription,
+      timestamp: new Date()
+    });
+    
+    res.json(alerts);
+  } catch (error) {
+    console.error('Context alerts error:', error);
+    res.status(500).json({ message: 'Server error fetching context alerts' });
+  }
+});
+
+// Smart Pickup Intelligence Stack - OTP Analytics
+router.get('/otp-analytics', driverOnly, async (req, res) => {
+  try {
+    const routes = await Transport.find({ driver: req.user.userId, isActive: true });
+    let totalOtpGenerated = 0;
+    let totalOtpVerified = 0;
+    let todayOtpGenerated = 0;
+    let todayOtpVerified = 0;
+    
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    routes.forEach(route => {
+      (route.dailyTrips || []).forEach(trip => {
+        (trip.children || []).forEach(childTrip => {
+          if (childTrip.otpGenerated) {
+            totalOtpGenerated++;
+            if (new Date(childTrip.otpGenerated) >= today) {
+              todayOtpGenerated++;
+            }
+          }
+          if (childTrip.otpVerified) {
+            totalOtpVerified++;
+            if (new Date(childTrip.otpVerified) >= today) {
+              todayOtpVerified++;
+            }
+          }
+        });
+      });
+    });
+    
+    const verificationRate = totalOtpGenerated > 0 
+      ? Math.round((totalOtpVerified / totalOtpGenerated) * 100) 
+      : 0;
+    
+    res.json({
+      totalOtpGenerated,
+      totalOtpVerified,
+      todayOtpGenerated,
+      todayOtpVerified,
+      verificationRate,
+      averageVerificationTime: '2.3 minutes', // Mock data
+      successRate: verificationRate
+    });
+  } catch (error) {
+    console.error('OTP analytics error:', error);
+    res.status(500).json({ message: 'Server error fetching OTP analytics' });
   }
 });
 

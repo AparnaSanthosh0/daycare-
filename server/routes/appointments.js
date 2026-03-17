@@ -7,6 +7,7 @@ const DoctorEarning = require('../models/DoctorEarning');
 const DoctorSlot = require('../models/DoctorSlot');
 const auth = require('../middleware/auth');
 const { sendMail } = require('../utils/mailer');
+const { splitPayment } = require('../services/paymentService');
 
 // Generate a Jitsi Meet room link
 function generateMeetingLink(appointmentId) {
@@ -83,6 +84,8 @@ router.post('/book-slot', auth, async (req, res) => {
 });
 
 
+// Create appointment (legacy direct booking — no slot)
+router.post('/', auth, async (req, res) => {
   try {
     const { childId, appointmentDate, appointmentTime, reason, appointmentType, isEmergency } = req.body;
 
@@ -90,12 +93,12 @@ router.post('/book-slot', auth, async (req, res) => {
     const appointmentDateObj = new Date(appointmentDate);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    
+
     // Check if appointment is in the past
     if (appointmentDateObj < today) {
       return res.status(400).json({ message: 'Cannot book appointments in the past' });
     }
-    
+
     // Check if appointment is more than 3 months in future
     const maxDate = new Date();
     maxDate.setMonth(maxDate.getMonth() + 3);
@@ -134,8 +137,6 @@ router.post('/book-slot', auth, async (req, res) => {
     });
 
     await appointment.save();
-
-    // Populate appointment details
     await appointment.populate('child parent doctor');
 
     res.status(201).json({
@@ -145,6 +146,17 @@ router.post('/book-slot', auth, async (req, res) => {
   } catch (error) {
     console.error('Error creating appointment:', error);
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+});
+
+// Get active doctors list (accessible to parents for booking)
+router.get('/doctors/list', auth, async (req, res) => {
+  try {
+    const doctors = await User.find({ role: 'doctor', isActive: true })
+      .select('firstName lastName doctor.specialization doctor.qualification doctor.yearsOfExperience profileImage');
+    res.json(doctors);
+  } catch (error) {
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
@@ -322,79 +334,39 @@ router.patch('/:id/status', auth, async (req, res) => {
     }
 
     if (status === 'completed') {
+      // Check if appointment is scheduled for today (only for doctors)
+      if (req.user.role === 'doctor') {
+        const today = new Date();
+        const appointmentDate = new Date(appointment.appointmentDate);
+        
+        // Reset both dates to midnight for comparison
+        today.setHours(0, 0, 0, 0);
+        appointmentDate.setHours(0, 0, 0, 0);
+        
+        if (appointmentDate.getTime() !== today.getTime()) {
+          return res.status(400).json({ 
+            message: 'Appointments can only be completed on the scheduled day',
+            scheduledDate: appointment.appointmentDate,
+            today: new Date().toISOString().split('T')[0]
+          });
+        }
+      }
+      
       appointment.completedAt = new Date();
       
-      // Handle payment release to doctor when appointment is completed
-      if (appointment.payment && appointment.payment.status === 'payment_held') {
-        try {
-          const DoctorPayment = require('../models/DoctorPayment');
-          const DoctorEarning = require('../models/DoctorEarning');
-          const { sendMail } = require('../utils/mailer');
-          
-          // Find the payment record
-          const paymentRecord = await DoctorPayment.findOne({ 
-            appointment: appointment._id,
-            status: 'payment_held'
-          });
-          
-          if (paymentRecord) {
-            // Update payment status to released
-            paymentRecord.status = 'released';
-            paymentRecord.releasedAt = new Date();
-            await paymentRecord.save();
-            
-            // Update appointment payment status
-            appointment.payment.status = 'released';
-            appointment.payment.releasedAt = new Date();
-            
-            // Create earning record for doctor
-            const earning = new DoctorEarning({
-              doctor: appointment.doctor,
-              appointment: appointment._id,
-              child: appointment.child,
-              parent: appointment.parent,
-              consultationFee: paymentRecord.totalAmount,
-              commissionRate: paymentRecord.commissionRate,
-              commissionAmount: paymentRecord.commissionAmount,
-              netEarning: paymentRecord.payoutAmount,
-              status: 'credited',
-              consultationDate: appointment.appointmentDate,
-              creditedAt: new Date(),
-              notes: `Consultation fee for appointment on ${new Date(appointment.appointmentDate).toLocaleDateString()}`
-            });
-            await earning.save();
-            
-            // Send email notification to doctor
-            await appointment.populate('doctor parent');
-            const doctorEmail = appointment.doctor?.email;
-            if (doctorEmail) {
-              await sendMail({
-                to: doctorEmail,
-                subject: 'Payment Released - TinyTots',
-                html: `
-                  <h2>Payment Released</h2>
-                  <p>Dear Dr. ${appointment.doctor?.firstName} ${appointment.doctor?.lastName},</p>
-                  <p>Your consultation fee has been released to your account.</p>
-                  <h3>Payment Details:</h3>
-                  <ul>
-                    <li><strong>Total Amount:</strong> ₹${paymentRecord.totalAmount}</li>
-                    <li><strong>Platform Commission:</strong> ₹${paymentRecord.commissionAmount}</li>
-                    <li><strong>Your Payout:</strong> ₹${paymentRecord.payoutAmount}</li>
-                    <li><strong>Appointment Date:</strong> ${new Date(appointment.appointmentDate).toLocaleDateString()}</li>
-                  </ul>
-                  <p>The amount has been credited to your earnings and will be paid out according to the payout schedule.</p>
-                  <p>Thank you for using TinyTots!</p>
-                `
-              });
-              console.log('Payment release email sent to doctor:', doctorEmail);
-            }
-            
-            console.log('Payment released to doctor:', appointment.doctor, 'Amount:', paymentRecord.payoutAmount);
-          }
-        } catch (paymentError) {
-          console.error('Error releasing payment to doctor:', paymentError);
-          // Don't fail the entire request if payment release fails
+      // Automatically split payment when appointment is completed
+      try {
+        const paymentResult = await splitPayment(appointment._id);
+        console.log('Payment split completed:', paymentResult);
+        
+        // Update appointment payment status
+        if (appointment.payment) {
+          appointment.payment.status = 'admin_approved';
+          appointment.payment.paidToDoctorAt = new Date();
         }
+      } catch (paymentError) {
+        console.error('Payment split failed:', paymentError);
+        // Continue with appointment completion even if payment split fails
       }
     }
 
@@ -422,6 +394,22 @@ router.patch('/:id/consultation', auth, async (req, res) => {
       return res.status(404).json({ message: 'Appointment not found' });
     }
 
+    // Check if appointment is scheduled for today
+    const today = new Date();
+    const appointmentDate = new Date(appointment.appointmentDate);
+    
+    // Reset both dates to midnight for comparison
+    today.setHours(0, 0, 0, 0);
+    appointmentDate.setHours(0, 0, 0, 0);
+    
+    if (appointmentDate.getTime() !== today.getTime()) {
+      return res.status(400).json({ 
+        message: 'Appointments can only be completed on the scheduled day',
+        scheduledDate: appointment.appointmentDate,
+        today: new Date().toISOString().split('T')[0]
+      });
+    }
+
     appointment.diagnosis = diagnosis || appointment.diagnosis;
     appointment.prescription = prescription || appointment.prescription;
     appointment.healthAdvice = healthAdvice || appointment.healthAdvice;
@@ -432,136 +420,93 @@ router.patch('/:id/consultation', auth, async (req, res) => {
     await appointment.save();
     await appointment.populate('child parent doctor');
 
-    // Credit payment to doctor's account
-    const consultationFee = appointment.payment?.consultationFee || 500;
-    const commissionRate = appointment.payment?.commissionRate || 10;
-    const commissionAmount = (consultationFee * commissionRate) / 100;
-    const netEarning = consultationFee - commissionAmount;
-
-    // Update doctor's wallet
-    const doctor = await User.findById(appointment.doctor._id);
-    if (doctor && doctor.role === 'doctor') {
-      if (!doctor.doctor) {
-        doctor.doctor = {};
-      }
-      doctor.doctor.walletBalance = (doctor.doctor.walletBalance || 0) + netEarning;
-      doctor.doctor.totalEarnings = (doctor.doctor.totalEarnings || 0) + netEarning;
-      doctor.doctor.totalConsultations = (doctor.doctor.totalConsultations || 0) + 1;
-      await doctor.save();
-
-      // Create earning record
-      const earning = new DoctorEarning({
-        doctor: doctor._id,
-        appointment: appointment._id,
-        child: appointment.child._id,
-        parent: appointment.parent._id,
-        consultationFee,
-        commissionRate,
-        commissionAmount,
-        netEarning,
-        consultationDate: appointment.completedAt,
-        status: 'credited'
-      });
-      await earning.save();
-
-      // Update appointment payment status
-      if (!appointment.payment) {
-        appointment.payment = {};
-      }
-      appointment.payment.status = 'paid_to_doctor';
-      appointment.payment.paidToDoctorAt = new Date();
-      appointment.payment.commissionAmount = commissionAmount;
-      appointment.payment.doctorPayoutAmount = netEarning;
-      await appointment.save();
-
-      // Send email notification to doctor
+    // Only process payment splitting if payment was made and is in held status
+    if (appointment.payment && appointment.payment.status === 'payment_held') {
       try {
-        const childName = appointment.child ? `${appointment.child.firstName} ${appointment.child.lastName}` : 'Patient';
-        const emailSubject = '💰 Consultation Payment Credited - TinyTots';
-        const emailHtml = `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #4CAF50;">Payment Credited Successfully!</h2>
-            <p>Dear Dr. ${doctor.firstName} ${doctor.lastName},</p>
-            <p>Your consultation fee has been credited to your account.</p>
-            
-            <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-              <h3 style="margin-top: 0;">Consultation Details:</h3>
-              <p><strong>Patient:</strong> ${childName}</p>
-              <p><strong>Date:</strong> ${new Date(appointment.completedAt).toLocaleDateString()}</p>
-              <p><strong>Consultation Fee:</strong> ₹${consultationFee}</p>
-              <p><strong>Platform Commission (${commissionRate}%):</strong> -₹${commissionAmount.toFixed(2)}</p>
-              <p><strong>Net Earning:</strong> <span style="color: #4CAF50; font-size: 18px; font-weight: bold;">₹${netEarning.toFixed(2)}</span></p>
-            </div>
-            
-            <div style="background-color: #e3f2fd; padding: 15px; border-radius: 8px; margin: 20px 0;">
-              <h3 style="margin-top: 0;">Wallet Summary:</h3>
-              <p><strong>Current Balance:</strong> ₹${doctor.doctor.walletBalance.toFixed(2)}</p>
-              <p><strong>Total Earnings:</strong> ₹${doctor.doctor.totalEarnings.toFixed(2)}</p>
-              <p><strong>Total Consultations:</strong> ${doctor.doctor.totalConsultations}</p>
-            </div>
-            
-            <p>You can view your complete earnings history in your dashboard.</p>
-            
-            <p style="margin-top: 30px;">
-              <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/doctor/dashboard" 
-                 style="background-color: #4CAF50; color: white; padding: 12px 24px; text-decoration: none; border-radius: 4px; display: inline-block;">
-                View Dashboard
-              </a>
-            </p>
-            
-            <p style="color: #666; font-size: 12px; margin-top: 30px;">
-              Thank you for your service!<br/>
-              TinyTots Team
-            </p>
-          </div>
-        `;
-        const emailText = `
-Payment Credited Successfully!
-
-Dear Dr. ${doctor.firstName} ${doctor.lastName},
-
-Your consultation fee has been credited to your account.
-
-Consultation Details:
-- Patient: ${childName}
-- Date: ${new Date(appointment.completedAt).toLocaleDateString()}
-- Consultation Fee: ₹${consultationFee}
-- Platform Commission (${commissionRate}%): -₹${commissionAmount.toFixed(2)}
-- Net Earning: ₹${netEarning.toFixed(2)}
-
-Wallet Summary:
-- Current Balance: ₹${doctor.doctor.walletBalance.toFixed(2)}
-- Total Earnings: ₹${doctor.doctor.totalEarnings.toFixed(2)}
-- Total Consultations: ${doctor.doctor.totalConsultations}
-
-You can view your complete earnings history in your dashboard.
-
-Thank you for your service!
-TinyTots Team
-        `;
-
-        await sendMail({
-          to: doctor.email,
-          subject: emailSubject,
-          html: emailHtml,
-          text: emailText
-        });
-        console.log(`✅ Payment notification email sent to ${doctor.email}`);
-      } catch (emailError) {
-        console.error('Error sending email notification:', emailError);
-        // Don't fail the request if email fails
+        const paymentResult = await splitPayment(appointment._id);
+        console.log('Payment split completed on appointment day:', paymentResult);
+        
+        // Update appointment payment status
+        appointment.payment.status = 'admin_approved';
+        appointment.payment.paidToDoctorAt = new Date();
+      } catch (paymentError) {
+        console.error('Payment split failed:', paymentError);
+        // Don't fail the appointment completion if payment split fails
       }
     }
 
-    res.json({ 
-      message: 'Consultation details saved successfully', 
-      appointment,
-      paymentCredited: true,
-      netEarning: netEarning.toFixed(2)
-    });
+    res.json({ message: 'Consultation completed and prescription added', appointment });
   } catch (error) {
-    console.error('Error saving consultation:', error);
+    console.error('Error adding consultation details:', error);
     res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get prescriptions for parent (from completed appointments)
+router.get('/prescriptions', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'parent') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const appointments = await Appointment.find({ 
+      parent: req.user.userId, 
+      status: 'completed',
+      $or: [
+        { prescription: { $exists: true, $ne: '' } },
+        { 'prescriptionDetails.diagnosis': { $exists: true, $ne: '' } }
+      ]
+    })
+    .populate('child', 'firstName lastName')
+    .populate('doctor', 'firstName lastName')
+    .sort({ completedAt: -1 });
+
+    const prescriptions = appointments.map(apt => ({
+      appointmentId: apt._id,
+      childName: `${apt.child.firstName} ${apt.child.lastName}`,
+      doctorName: `${apt.doctor.firstName} ${apt.doctor.lastName}`,
+      completedAt: apt.completedAt,
+      appointmentDate: apt.appointmentDate,
+      diagnosis: apt.prescriptionDetails?.diagnosis || apt.diagnosis,
+      prescription: apt.prescriptionDetails?.medicines || [],
+      advice: apt.prescriptionDetails?.advice || apt.healthAdvice,
+      followUpDate: apt.prescriptionDetails?.followUpDate,
+      notes: apt.notes
+    }));
+
+    res.json(prescriptions);
+  } catch (error) {
+    console.error('Error fetching prescriptions:', error);
+    res.status(500).json({ message: 'Server error fetching prescriptions' });
+  }
+});
+
+// Get payment status for parent
+router.get('/payments/status', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'parent') {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+
+    const DoctorPayment = require('../models/DoctorPayment');
+    
+    const payments = await DoctorPayment.find({ 
+      parent: req.user.userId 
+    })
+    .populate('doctor', 'firstName lastName email')
+    .populate({
+      path: 'appointment',
+      populate: {
+        path: 'child',
+        select: 'firstName lastName'
+      }
+    })
+    .sort({ paymentReceivedAt: -1 });
+
+    res.json(payments);
+  } catch (error) {
+    console.error('Parent payment status error:', error);
+    res.status(500).json({ message: 'Server error fetching payment status' });
   }
 });
 

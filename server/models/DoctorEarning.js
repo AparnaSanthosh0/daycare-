@@ -25,7 +25,7 @@ const doctorEarningSchema = new mongoose.Schema({
   },
   commissionRate: {
     type: Number,
-    default: 10 // 10% platform commission
+    default: 30 // 30% platform commission, 70% doctor share
   },
   commissionAmount: {
     type: Number,

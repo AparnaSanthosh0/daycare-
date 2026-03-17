@@ -1681,16 +1681,17 @@ const ParentDashboard = ({ initialTab }) => {
   // Slot-based booking helpers
   const fetchAvailableDoctors = async () => {
     try {
-      const res = await api.get('/admin/users', { params: { role: 'doctor' } });
-      const docs = (Array.isArray(res.data) ? res.data : res.data?.users || []).filter(u => u.isActive);
+      const res = await api.get('/appointments/doctors/list');
+      const docs = Array.isArray(res.data) ? res.data : [];
       setAvailableDoctors(docs);
-      if (docs.length > 0 && !selectedDoctorId) setSelectedDoctorId(docs[0]._id);
-    } catch {
-      // fallback: try single doctor endpoint
-      try {
-        const res = await api.get('/doctor/profile');
-        if (res.data?._id) { setAvailableDoctors([res.data]); setSelectedDoctorId(res.data._id); }
-      } catch { /* ignore */ }
+      if (docs.length > 0) {
+        const docId = docs[0]._id;
+        setSelectedDoctorId(docId);
+        // fetch slots for the first doctor immediately
+        fetchAvailableSlots(docId, slotBookingDate);
+      }
+    } catch (err) {
+      console.error('Fetch doctors error:', err);
     }
   };
 
@@ -5904,7 +5905,7 @@ const ParentDashboard = ({ initialTab }) => {
             </Grid>
 
             {/* Date */}
-            <Grid item xs={12} sm={6}>
+            <Grid item xs={12} sm={availableDoctors.length > 1 ? 6 : 12}>
               <TextField fullWidth type="date" label="Select Date" value={slotBookingDate}
                 InputLabelProps={{ shrink: true }}
                 inputProps={{ min: new Date().toISOString().slice(0, 10) }}
@@ -5915,18 +5916,27 @@ const ParentDashboard = ({ initialTab }) => {
                 }} />
             </Grid>
 
-            {/* Doctor selector */}
-            <Grid item xs={12} sm={6}>
-              <FormControl fullWidth>
-                <InputLabel>Doctor</InputLabel>
-                <Select value={selectedDoctorId} label="Doctor"
-                  onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedSlot(null); fetchAvailableSlots(e.target.value, slotBookingDate); }}>
-                  {availableDoctors.map((d) => (
-                    <MenuItem key={d._id} value={d._id}>Dr. {d.firstName} {d.lastName}{d.doctor?.specialization ? ` — ${d.doctor.specialization}` : ''}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+            {/* Doctor selector — only show if multiple doctors */}
+            {availableDoctors.length > 1 ? (
+              <Grid item xs={12} sm={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Doctor</InputLabel>
+                  <Select value={selectedDoctorId} label="Doctor"
+                    onChange={(e) => { setSelectedDoctorId(e.target.value); setSelectedSlot(null); fetchAvailableSlots(e.target.value, slotBookingDate); }}>
+                    {availableDoctors.map((d) => (
+                      <MenuItem key={d._id} value={d._id}>Dr. {d.firstName} {d.lastName}{d.doctor?.specialization ? ` — ${d.doctor.specialization}` : ''}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            ) : availableDoctors.length === 1 ? (
+              <Grid item xs={12}>
+                <Alert severity="info" icon={false} sx={{ py: 0.5 }}>
+                  Doctor: Dr. {availableDoctors[0]?.firstName} {availableDoctors[0]?.lastName}
+                  {availableDoctors[0]?.doctor?.specialization ? ` — ${availableDoctors[0].doctor.specialization}` : ''}
+                </Alert>
+              </Grid>
+            ) : null}
 
             {/* Available Slots */}
             <Grid item xs={12}>

@@ -8,6 +8,7 @@ const Child = require('../models/Child');
 const Appointment = require('../models/Appointment');
 const Attendance = require('../models/Attendance');
 const DoctorEarning = require('../models/DoctorEarning');
+const { processWithdrawal } = require('../services/paymentService');
 
 const ENFORCE_DOCTOR_ASSIGNMENTS = false; // Set to true if doctors should be restricted to assigned children only
 
@@ -1655,6 +1656,112 @@ router.delete('/slots/:slotId', doctorOnly, async (req, res) => {
   } catch (err) {
     console.error('Delete slot error:', err);
     res.status(500).json({ message: 'Server error deleting slot' });
+  }
+});
+
+// Doctor: confirm a booked slot
+router.patch('/slots/:slotId/confirm', doctorOnly, async (req, res) => {
+  try {
+    const slot = await DoctorSlot.findOne({ _id: req.params.slotId, doctor: req.doctorUser._id })
+      .populate('appointment');
+    
+    if (!slot) return res.status(404).json({ message: 'Slot not found' });
+    if (slot.status !== 'booked') return res.status(400).json({ message: 'Only booked slots can be confirmed' });
+    
+    // Update appointment status to confirmed
+    if (slot.appointment) {
+      slot.appointment.status = 'confirmed';
+      await slot.appointment.save();
+    }
+    
+    res.json({ message: 'Booking confirmed successfully', slot });
+  } catch (err) {
+    console.error('Confirm booking error:', err);
+    res.status(500).json({ message: 'Server error confirming booking' });
+  }
+});
+
+// Doctor: modify appointment slot
+router.patch('/slots/:slotId/modify', doctorOnly, [
+  body('newDate').isISO8601().withMessage('Valid new date required'),
+  body('newStartTime').matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Valid start time required (HH:MM)'),
+  body('newEndTime').matches(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/).withMessage('Valid end time required (HH:MM)'),
+  body('reason').trim().isLength({ min: 5 }).withMessage('Reason for modification required (min 5 characters)')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ errors: errors.array() });
+    }
+
+    const slot = await DoctorSlot.findOne({ _id: req.params.slotId, doctor: req.doctorUser._id })
+      .populate('appointment');
+    
+    if (!slot) return res.status(404).json({ message: 'Slot not found' });
+    if (slot.status !== 'booked') return res.status(400).json({ message: 'Only booked slots can be modified' });
+
+    const { newDate, newStartTime, newEndTime, reason } = req.body;
+
+    // Update slot date and time
+    slot.date = new Date(newDate);
+    slot.startTime = newStartTime;
+    slot.endTime = newEndTime;
+    await slot.save();
+
+    // Update appointment if exists
+    if (slot.appointment) {
+      slot.appointment.appointmentDate = new Date(newDate);
+      slot.appointment.appointmentTime = newStartTime;
+      slot.appointment.notes = (slot.appointment.notes || '') + `\n\nModified by doctor: ${reason}`;
+      await slot.appointment.save();
+    }
+    
+    res.json({ message: 'Appointment modified successfully', slot });
+  } catch (err) {
+    console.error('Modify appointment error:', err);
+    res.status(500).json({ message: 'Server error modifying appointment' });
+  }
+});
+
+// Doctor: get pending payments (escrow)
+router.get('/payments/pending', doctorOnly, async (req, res) => {
+  try {
+    const DoctorPayment = require('../models/DoctorPayment');
+    
+    const pendingPayments = await DoctorPayment.find({ 
+      doctor: req.doctorUser._id,
+      status: 'payment_held' 
+    })
+    .populate('parent', 'firstName lastName email')
+    .populate({
+      path: 'appointment',
+      populate: {
+        path: 'child',
+        select: 'firstName lastName'
+      }
+    })
+    .sort({ paymentHeldAt: -1 });
+
+    res.json(pendingPayments);
+  } catch (error) {
+    console.error('Doctor pending payments error:', error);
+    res.status(500).json({ message: 'Server error fetching pending payments' });
+  }
+});
+
+// Doctor: process withdrawal request
+router.post('/earnings/withdraw', doctorOnly, async (req, res) => {
+  try {
+    const doctorId = req.doctorUser._id;
+    const result = await processWithdrawal(doctorId);
+    
+    res.json({ 
+      message: `Withdrawal of ₹${result.totalAmount} processed successfully`,
+      ...result
+    });
+  } catch (err) {
+    console.error('Withdrawal error:', err);
+    res.status(500).json({ message: err.message || 'Server error processing withdrawal' });
   }
 });
 

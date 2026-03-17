@@ -717,6 +717,46 @@ const DoctorDashboard = () => {
     }
   };
 
+  const handleConfirmBooking = async (slotId) => {
+    try {
+      const res = await api.patch(`/doctor/slots/${slotId}/confirm`);
+      setSuccess('Booking confirmed successfully');
+      fetchSlots(slotDate);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to confirm booking');
+    }
+  };
+
+  const [modifyDialog, setModifyDialog] = useState({ open: false, slot: null });
+  const [modifyForm, setModifyForm] = useState({
+    newDate: '',
+    newStartTime: '',
+    newEndTime: '',
+    reason: ''
+  });
+
+  const handleModifyAppointment = (slot) => {
+    setModifyForm({
+      newDate: new Date(slot.date).toISOString().slice(0, 10),
+      newStartTime: slot.startTime,
+      newEndTime: slot.endTime,
+      reason: ''
+    });
+    setModifyDialog({ open: true, slot });
+  };
+
+  const handleSaveModification = async () => {
+    try {
+      if (!modifyDialog.slot) return;
+      const res = await api.patch(`/doctor/slots/${modifyDialog.slot._id}/modify`, modifyForm);
+      setSuccess('Appointment modified successfully');
+      setModifyDialog({ open: false, slot: null });
+      fetchSlots(slotDate);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to modify appointment');
+    }
+  };
+
   const fetchEarningsSummary = async () => {
     try {
       const res = await api.get('/doctor/earnings/summary');
@@ -4481,12 +4521,26 @@ const DoctorDashboard = () => {
                               </IconButton>
                             </Tooltip>
                           )}
-                          {slot.status === 'booked' && slot.appointment?.meetingLink && (
-                            <Tooltip title="Join Meeting">
-                              <IconButton size="small" color="info" onClick={() => window.open(slot.appointment.meetingLink, '_blank')}>
-                                <LocalHospital fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
+                          {slot.status === 'booked' && (
+                            <Stack direction="row" spacing={1}>
+                              <Tooltip title="Confirm Booking">
+                                <IconButton size="small" color="success" onClick={() => handleConfirmBooking(slot._id)}>
+                                  <EventAvailable fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Modify Appointment">
+                                <IconButton size="small" color="info" onClick={() => handleModifyAppointment(slot)}>
+                                  <Edit fontSize="small" />
+                                </IconButton>
+                              </Tooltip>
+                              {slot.appointment?.meetingLink && (
+                                <Tooltip title="Join Meeting">
+                                  <IconButton size="small" color="primary" onClick={() => window.open(slot.appointment.meetingLink, '_blank')}>
+                                    <LocalHospital fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              )}
+                            </Stack>
                           )}
                         </TableCell>
                       </TableRow>
@@ -4540,6 +4594,43 @@ const DoctorDashboard = () => {
           <Button onClick={() => setPrescriptionDialog({ open: false, appointment: null })}>Cancel</Button>
           <Button variant="contained" onClick={handleSavePrescription} disabled={!prescriptionForm.diagnosis}>
             Save Prescription
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Modify Appointment Dialog */}
+      <Dialog open={modifyDialog.open} onClose={() => setModifyDialog({ open: false, slot: null })} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          Modify Appointment — {modifyDialog.slot?.appointment?.child?.firstName} {modifyDialog.slot?.appointment?.child?.lastName}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={2} sx={{ pt: 1 }}>
+            <Grid item xs={12}>
+              <TextField fullWidth type="date" label="New Date" value={modifyForm.newDate}
+                onChange={(e) => setModifyForm({ ...modifyForm, newDate: e.target.value })}
+                InputLabelProps={{ shrink: true }} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField fullWidth type="time" label="New Start Time" value={modifyForm.newStartTime}
+                onChange={(e) => setModifyForm({ ...modifyForm, newStartTime: e.target.value })}
+                InputLabelProps={{ shrink: true }} />
+            </Grid>
+            <Grid item xs={6}>
+              <TextField fullWidth type="time" label="New End Time" value={modifyForm.newEndTime}
+                onChange={(e) => setModifyForm({ ...modifyForm, newEndTime: e.target.value })}
+                InputLabelProps={{ shrink: true }} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth multiline rows={3} label="Reason for Modification" value={modifyForm.reason}
+                onChange={(e) => setModifyForm({ ...modifyForm, reason: e.target.value })} 
+                placeholder="Please explain why this appointment needs to be modified..." />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setModifyDialog({ open: false, slot: null })}>Cancel</Button>
+          <Button variant="contained" onClick={handleSaveModification} disabled={!modifyForm.newDate || !modifyForm.newStartTime || !modifyForm.newEndTime || !modifyForm.reason}>
+            Save Changes
           </Button>
         </DialogActions>
       </Dialog>
