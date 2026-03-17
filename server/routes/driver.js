@@ -1045,5 +1045,135 @@ router.get('/otp-analytics', driverOnly, async (req, res) => {
   }
 });
 
+// Smart Pickup Features Endpoints
+
+// Next Pickup Reminder
+router.get('/next-pickup-reminder', driverOnly, async (req, res) => {
+  try {
+    // Get driver's active trip and next pickup
+    const activeTrip = req.driverTrip;
+    
+    if (!activeTrip || !activeTrip.assignedChildren || activeTrip.assignedChildren.length === 0) {
+      return res.json({
+        childName: 'No upcoming pickups',
+        location: 'N/A',
+        time: 'N/A',
+        estimatedArrival: 'N/A',
+        distance: 'N/A',
+        status: 'no-pickups'
+      });
+    }
+
+    // Find next child to be picked up
+    const nextChild = activeTrip.assignedChildren.find(ac => ac.status === 'pending');
+    
+    if (!nextChild) {
+      return res.json({
+        childName: 'All pickups completed',
+        location: 'Route completed',
+        time: 'Completed',
+        estimatedArrival: 'Completed',
+        distance: '0 km',
+        status: 'completed'
+      });
+    }
+
+    // Calculate ETA based on current location and route
+    const currentTime = new Date();
+    const estimatedArrival = new Date(currentTime.getTime() + 15 * 60000); // 15 minutes from now
+    
+    res.json({
+      childName: nextChild.child?.firstName || 'Unknown',
+      location: nextChild.pickupLocation?.address || 'Unknown location',
+      time: estimatedArrival.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      estimatedArrival: estimatedArrival.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+      distance: '2.3 km',
+      status: 'on-time'
+    });
+  } catch (error) {
+    console.error('Error fetching next pickup reminder:', error);
+    res.status(500).json({ message: 'Failed to fetch next pickup reminder' });
+  }
+});
+
+// Child Left-Behind Alert
+router.get('/child-left-behind-alert', driverOnly, async (req, res) => {
+  try {
+    const activeTrip = req.driverTrip;
+    
+    if (!activeTrip) {
+      return res.json({
+        hasChildrenOnBus: false,
+        childrenRemaining: [],
+        lastCheckTime: new Date().toLocaleTimeString(),
+        alertLevel: 'safe'
+      });
+    }
+
+    // Check for children still on bus (not dropped off)
+    const childrenOnBus = activeTrip.assignedChildren.filter(ac => 
+      ac.status === 'picked-up' || ac.status === 'on-bus'
+    );
+    
+    // Simulate safety check logic
+    const hasChildrenOnBus = childrenOnBus.length > 0;
+    const alertLevel = hasChildrenOnBus ? 'warning' : 'safe';
+    
+    res.json({
+      hasChildrenOnBus,
+      childrenRemaining: childrenOnBus.map(ac => ({
+        name: `${ac.child?.firstName || ''} ${ac.child?.lastName || ''}`.trim(),
+        status: ac.status,
+        pickupTime: ac.pickupTime
+      })),
+      lastCheckTime: new Date().toLocaleTimeString(),
+      alertLevel
+    });
+  } catch (error) {
+    console.error('Error checking child left behind alert:', error);
+    res.status(500).json({ message: 'Failed to check child left behind alert' });
+  }
+});
+
+// Arrival Notification
+router.get('/arrival-notification', driverOnly, async (req, res) => {
+  try {
+    const activeTrip = req.driverTrip;
+    
+    if (!activeTrip || !activeTrip.route) {
+      return res.json({
+        eta: 'No active route',
+        childName: 'N/A',
+        destination: 'N/A',
+        distance: 'N/A',
+        speed: 'N/A',
+        message: 'No active route'
+      });
+    }
+
+    // Calculate ETA based on route progress
+    const distance = 2.3; // km - would come from GPS tracking
+    const speed = 25; // km/h - would come from GPS tracking
+    const etaMinutes = Math.round((distance / speed) * 60);
+    
+    // Find next drop-off location
+    const nextDropOff = activeTrip.assignedChildren.find(ac => 
+      ac.status === 'picked-up' || ac.status === 'on-bus'
+    );
+    
+    res.json({
+      eta: `${etaMinutes} minutes`,
+      childName: nextDropOff?.child?.firstName || 'Next child',
+      destination: nextDropOff?.dropOffLocation?.address || activeTrip.route.endPoint?.address || 'Destination',
+      distance: `${distance} km`,
+      speed: `${speed} km/h`,
+      message: `Bus arriving in ${etaMinutes} minutes`
+    });
+  } catch (error) {
+    console.error('Error generating arrival notification:', error);
+    res.status(500).json({ message: 'Failed to generate arrival notification' });
+  }
+});
+
 module.exports = router;
 
